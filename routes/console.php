@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
+use App\Models\Word;
 
 Artisan::command('token_words:build {--save} {--dest=}', function () {
     $baseAltego = storage_path('app/altego');
@@ -469,3 +470,132 @@ Artisan::command('patterns:list {--limit=20} {--page=1} {--like=}', function () 
 
     return 0;
 })->purpose('List stored patterns with optional filtering and pagination');
+
+Artisan::command('words:matches {source*} {--token=} {--list=} {--json} {--include-boring}', function () {
+    // Join source args back into a single string (allows spaces without quotes)
+    $sourceParts = (array) $this->argument('source');
+    $sourceName = trim(implode(' ', $sourceParts));
+    if ($sourceName === '') {
+        $this->error('Please provide a source name, e.g. php artisan words:matches "First Middle Last"');
+        return 1;
+    }
+
+    $filterToken = (string) $this->option('token');
+    $filterList  = (string) $this->option('list');
+    $asJson      = (bool) $this->option('json');
+    $includeBoring = (bool) $this->option('include-boring');
+
+    // Normalize and build signature of source
+    $normalize = function (string $s): string {
+        $s = mb_strtolower($s);
+        // Keep only letters and numbers (multibyte-aware)
+        $s = preg_replace('/[^\p{L}\p{N}]/u', '', $s) ?? '';
+        return $s;
+    };
+    $mbSplit = function (string $s): array {
+        if (function_exists('mb_str_split')) return mb_str_split($s);
+        $r = preg_split('//u', $s, -1, PREG_SPLIT_NO_EMPTY);
+        return $r === false ? [] : $r;
+    };
+    $makeSignature = function (string $s) use ($normalize, $mbSplit): string {
+        $norm = $normalize($s);
+        $chars = $mbSplit($norm);
+        sort($chars);
+        return implode('', $chars);
+    };
+
+    $srcSig = $makeSignature($sourceName);
+    $srcLen = mb_strlen($srcSig);
+
+    if ($srcLen === 0) {
+        $this->warn('Source signature is empty after normalization. No matches.');
+        return 0;
+    }
+
+    // Helper: check if word signature is a multiset-subset of the source signature
+    $isSubset = function (string $small, string $big): bool {
+        // both are sorted sequences of code points
+        $i = 0; $j = 0; $ls = mb_strlen($small); $lb = mb_strlen($big);
+        if ($ls === 0) return true;
+        while ($i < $ls && $j < $lb) {
+            $cs = mb_substr($small, $i, 1);
+            $cb = mb_substr($big, $j, 1);
+            $cmp = strcmp($cs, $cb);
+            if ($cmp === 0) { $i++; $j++; }
+            elseif ($cmp > 0) { $j++; }
+            else { return false; }
+        }
+        return $i === $ls;
+    };
+
+    // Build base query
+    $query = DB::table('words')->select('id','word','token_type','list_type','signature');
+    if ($filterToken !== '') $query->where('token_type', $filterToken);
+    if ($filterList !== '') {
+        $query->where('list_type', $filterList);
+    } else {
+        // By default exclude boring words unless explicitly included
+        if (!$includeBoring) {
+            $query->where('list_type', '!=', 'boring');
+        }
+    }
+
+    // We'll collect matches grouped by token_type then list_type
+    $grouped = [];
+    $total = 0;
+
+    // Iterate efficiently in chunks by id
+    $query->orderBy('id');
+    $query->chunkById(1000, function ($rows) use (&$grouped, &$total, $srcSig, $srcLen, $isSubset) {
+        foreach ($rows as $r) {
+            // quick length reject: word cannot be longer than source
+            $len = mb_strlen($r->signature ?? '');
+            if ($len === 0 || $len > $srcLen) continue;
+            if (!$isSubset((string)$r->signature, $srcSig)) continue;
+
+            $tok = (string)$r->token_type;
+            $lst = (string)$r->list_type;
+            $grouped[$tok][$lst][] = [
+                'id' => (int)$r->id,
+                'word' => (string)$r->word,
+                'signature' => (string)$r->signature,
+            ];
+            $total++;
+        }
+    }, 'id');
+
+    if ($asJson) {
+        $payload = [
+            'source' => $sourceName,
+            'signature' => $srcSig,
+            'total_matches' => $total,
+            'groups' => $grouped,
+        ];
+        $this->line(json_encode($payload, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));
+        return 0;
+    }
+
+    $this->info('Source: ' . $sourceName . ' | signature=' . $srcSig . ' | total matches=' . $total);
+    if ($total === 0) return 0;
+
+    // Pretty print grouped summary (limit sample per bucket for readability)
+    $sampleLimit = 10;
+    ksort($grouped, SORT_STRING);
+    foreach ($grouped as $token => $byList) {
+        $this->line('[' . $token . ']');
+        ksort($byList, SORT_STRING);
+        foreach ($byList as $listType => $items) {
+            $count = count($items);
+            $this->line(sprintf('  - %s: %d', $listType, $count));
+            $show = array_slice($items, 0, $sampleLimit);
+            foreach ($show as $it) {
+                $this->line('      • ' . $it['word'] . ' (' . $it['signature'] . ')');
+            }
+            if ($count > $sampleLimit) {
+                $this->line('      ... and ' . ($count - $sampleLimit) . ' more');
+            }
+        }
+    }
+
+    return 0;
+})->purpose('Find all token word matches whose letters fit within the given source name');

@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 
 Artisan::command('token_words:build {--save} {--dest=}', function () {
@@ -122,3 +123,97 @@ Artisan::command('token_words:build {--save} {--dest=}', function () {
     $this->info('token_words build complete.');
     return 0;
 })->purpose('Build token_words files from altego sources');
+
+Artisan::command('tokens:seed', function () {
+    $basePath = base_path('resources/token_words');
+
+    if (!File::exists($basePath)) {
+        $this->error("token_words directory not found: $basePath");
+        return 1;
+    }
+
+    $prioMap = [
+        'surname' => 1,
+        'forename' => 2,
+        'title' => 3,
+        'honorific' => 4,
+        'prefix' => 5,
+        'suffix' => 6,
+        'initials' => 7,
+    ];
+
+    $total = 0;
+
+    $dirs = array_values(array_filter(File::directories($basePath), function ($path) {
+        return File::isDirectory($path);
+    }));
+
+    foreach ($dirs as $dir) {
+        $name = basename($dir);
+        $prio = $prioMap[$name] ?? 999;
+
+        $okFile = $dir . DIRECTORY_SEPARATOR . 'ok.txt';
+        $funFile = $dir . DIRECTORY_SEPARATOR . 'fun.txt';
+        $boringFile = $dir . DIRECTORY_SEPARATOR . 'boring.txt';
+
+        $readLines = function ($filePath) {
+            if (!File::exists($filePath)) return [];
+            $content = File::get($filePath);
+            $lines = [];
+            foreach (preg_split('/\R/u', $content) as $line) {
+                $line = trim($line);
+                if ($line !== '') $lines[] = $line;
+            }
+            return $lines;
+        };
+
+        $ok = $readLines($okFile);
+        $fun = $readLines($funFile);
+        $boring = $readLines($boringFile);
+
+        $hasFun = count($fun) > 0;
+        $hasBoring = count($boring) > 0;
+
+        // Compute min signature length across all present lists
+        $all = array_merge($ok, $fun, $boring);
+        $minLen = 0;
+        if (!empty($all)) {
+            $min = null;
+            foreach ($all as $word) {
+                $normalized = mb_strtolower(preg_replace('/[^\p{L}\p{N}]/u', '', $word));
+                $letters = function_exists('mb_str_split') ? mb_str_split($normalized) : (preg_split('//u', $normalized, -1, PREG_SPLIT_NO_EMPTY) ?: []);
+                sort($letters);
+                $signature = implode('', $letters);
+                $len = mb_strlen($signature);
+                if ($min === null || $len < $min) {
+                    $min = $len;
+                }
+            }
+            $minLen = $min ?? 0;
+        }
+
+        // maxMultiples rule
+        $maxMultiples = 1;
+        if ($name === 'forename') $maxMultiples = 2;
+        if ($name === 'surname') $maxMultiples = 5;
+
+        DB::table('tokens')->updateOrInsert(
+            ['name' => $name],
+            [
+                'prio' => $prio,
+                'min_length' => $minLen,
+                'allow_nearly' => false,
+                'has_fun' => $hasFun,
+                'has_boring' => $hasBoring,
+                'max_multiples' => $maxMultiples,
+                'updated_at' => now(),
+                'created_at' => now(),
+            ]
+        );
+        $this->info("Seeded token: $name (prio=$prio, min=$minLen, fun=" . ($hasFun?'Y':'N') . ", boring=" . ($hasBoring?'Y':'N') . ", maxMultiples=$maxMultiples)");
+        $total++;
+    }
+
+    $this->info("Seeded $total tokens from resources/token_words.");
+    return 0;
+})->purpose('Seed tokens based on resources/token_words');

@@ -1,11 +1,9 @@
 <?php
 
-use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\File;
-use App\Models\Word;
-
-Artisan::command('token_words:build {--save} {--dest=}', function () {
+// Console routes were previously defined here as closures.
+// They've been extracted into dedicated Command classes under app/Console/Commands
+// and reusable services under app/Services to support controller reuse.
+/*
     $baseAltego = storage_path('app/altego');
     $baseToken = storage_path('app/token_words');
 
@@ -39,7 +37,7 @@ Artisan::command('token_words:build {--save} {--dest=}', function () {
         // Unique (case-insensitive), then sort (case-insensitive)
         $uniq = [];
         foreach ($lines as $l) {
-            $key = mb_strtolower($l);
+            $key = strtolower($l);
             $uniq[$key] = $l; // keep last occurrence's casing
         }
         $result = array_values($uniq);
@@ -181,11 +179,12 @@ Artisan::command('tokens:seed', function () {
         if (!empty($all)) {
             $min = null;
             foreach ($all as $word) {
-                $normalized = mb_strtolower(preg_replace('/[^\p{L}\p{N}]/u', '', $word));
-                $letters = function_exists('mb_str_split') ? mb_str_split($normalized) : (preg_split('//u', $normalized, -1, PREG_SPLIT_NO_EMPTY) ?: []);
+                $normalized = strtolower(preg_replace('/[^a-z0-9]/i', '', $word));
+                $letters = str_split($normalized);
                 sort($letters);
                 $signature = implode('', $letters);
-                $len = mb_strlen($signature);
+                $len = strlen($signature);
+                if ($len === 0) continue; // ignore empty signatures entirely
                 if ($min === null || $len < $min) {
                     $min = $len;
                 }
@@ -283,6 +282,12 @@ Artisan::command('patterns:generate {--dry-run} {--print=20}', function () {
 
                                 // Rule: forename:2 may not be followed by initials
                                 if ($fn >= 2 && $ini > 0) continue;
+
+                                // New rules:
+                                // - patterns with surname must also contain one of: title, forename, initials
+                                if ($sn > 0 && ($title === 0 && $fn === 0 && $ini === 0)) continue;
+                                // - patterns with forename must also contain one of: title, surname, honorific
+                                if ($fn > 0 && ($title === 0 && $sn === 0 && $hon === 0)) continue;
 
                                 // Enforce: minimum distinct token types in a pattern is 2
                                 $typesCount = 0;
@@ -439,37 +444,197 @@ Artisan::command('patterns:generate {--dry-run} {--print=20}', function () {
     return 0;
 })->purpose('Generate exhaustive name pattern templates honoring ordering and adjacency rules');
 
-Artisan::command('patterns:list {--limit=20} {--page=1} {--like=}', function () {
+Artisan::command('patterns:list {--limit=20} {--page=1} {--like=} {--source=} {--dynamic} {--list=} {--include-boring} {--filter-empty-only}', function () {
     $limit = (int) $this->option('limit');
     $page  = (int) $this->option('page');
     $like  = (string) $this->option('like');
+    $source = (string) $this->option('source');
+    $useDynamic = (bool) $this->option('dynamic');
+    $filterList = (string) $this->option('list');
+    $includeBoring = (bool) $this->option('include-boring');
+    $filterEmptyOnly = (bool) $this->option('filter-empty-only');
 
     if ($limit < 1) $limit = 20;
     if ($page < 1) $page = 1;
 
+    // Helpers for normalization/signature and subset check (ASCII-only)
+    $normalize = function (string $s): string {
+        $s = strtolower($s);
+        return preg_replace('/[^a-z0-9]/i', '', $s) ?? '';
+    };
+    $makeSignature = function (string $s) use ($normalize): string {
+        $norm = $normalize($s);
+        $chars = str_split($norm);
+        sort($chars);
+        return implode('', $chars);
+    };
+    $isSubset = function (string $small, string $big): bool {
+        // both are sorted ASCII strings
+        $i = 0; $j = 0; $ls = strlen($small); $lb = strlen($big);
+        if ($ls === 0) return true;
+        while ($i < $ls && $j < $lb) {
+            $cs = $small[$i];
+            $cb = $big[$j];
+            if ($cs === $cb) { $i++; $j++; }
+            elseif ($cs > $cb) { $j++; }
+            else { return false; }
+        }
+        return $i === $ls;
+    };
+
+    $srcSig = '';
+    $srcLen = null; // null means no source filtering
+    if ($source !== null && $source !== '') {
+        $srcSig = $makeSignature($source);
+        $srcLen = strlen($srcSig);
+    }
+
+    // Optionally compute dynamic effective token min lengths for this source
+    $effectiveMin = [];
+    $tokenNames = ['title','forename','initials','prefix','surname','suffix','honorific'];
+    $usedDynamic = false;
+    if (($useDynamic || $filterEmptyOnly) && $srcLen !== null && $srcLen > 0) {
+        $usedDynamic = true;
+        // Build base words query according to list options
+        $base = DB::table('words')->select('id','token_type','signature');
+        if ($filterList !== '') {
+            $base->where('list_type', $filterList);
+        } else {
+            if (!$includeBoring) {
+                $base->where('list_type', '!=', 'boring');
+            }
+        }
+        // Iterate in chunks to derive per-token minimum signature length among words that fit inside the source signature and aren't longer than it
+        $mins = [];
+        $base->orderBy('id');
+        $base->chunkById(1000, function ($rows) use (&$mins, $srcSig, $srcLen, $isSubset) {
+            foreach ($rows as $r) {
+                $sig = (string)($r->signature ?? '');
+                $len = strlen($sig);
+                if ($srcLen !== null && $len > $srcLen) continue;
+                if (!$isSubset($sig, $srcSig)) continue;
+                $tok = (string)$r->token_type;
+                if (!isset($mins[$tok]) || $len < $mins[$tok]) {
+                    $mins[$tok] = $len;
+                }
+            }
+        }, 'id');
+        foreach ($tokenNames as $tn) {
+            $effectiveMin[$tn] = $mins[$tn] ?? null; // null means no matching word for that token
+        }
+    }
+
+    // Base query for patterns
     $query = DB::table('patterns')->orderBy('popularity_rank');
     if ($like !== null && $like !== '') {
         $query->where('template', 'like', '%' . $like . '%');
     }
 
-    $total = (clone $query)->count();
+    // Apply preliminary static filtering if only source is provided without dynamic
+    if ($srcLen !== null && $srcLen >= 0) {
+        // Apply static length prefilter unless we're in full dynamic-length mode
+        if (!$usedDynamic || $filterEmptyOnly) {
+            $query->where('min_total_length', '<=', $srcLen);
+        }
+    }
+
+    // Fetch rows first (we might need to do dynamic per-row checks)
+    $allRows = $query->get();
+
+    // If dynamic filtering is requested, filter in-memory using effective token mins
+    $rows = $allRows;
+    $filteredCount = null;
+    if ($usedDynamic) {
+        $rows = $allRows->filter(function ($row) use ($effectiveMin, $srcLen, $filterEmptyOnly) {
+            // If any required token has no matches (null), the pattern cannot be satisfied
+            $min = 0;
+            // title
+            if ($row->has_title) {
+                if ($effectiveMin['title'] === null) return false;
+                if (!$filterEmptyOnly) $min += $effectiveMin['title'];
+            }
+            // forename
+            if (($row->forename_count ?? 0) > 0) {
+                if ($effectiveMin['forename'] === null) return false;
+                if (!$filterEmptyOnly) $min += $effectiveMin['forename'] * (int)$row->forename_count;
+            }
+            // initials
+            if ($row->has_initials) {
+                if ($effectiveMin['initials'] === null) return false;
+                if (!$filterEmptyOnly) $min += $effectiveMin['initials'];
+            }
+            // prefix
+            if ($row->has_prefix) {
+                if ($effectiveMin['prefix'] === null) return false;
+                if (!$filterEmptyOnly) $min += $effectiveMin['prefix'];
+            }
+            // surname
+            if (($row->surname_count ?? 0) > 0) {
+                if ($effectiveMin['surname'] === null) return false;
+                if (!$filterEmptyOnly) $min += $effectiveMin['surname'] * (int)$row->surname_count;
+            }
+            // suffix
+            if ($row->has_suffix) {
+                if ($effectiveMin['suffix'] === null) return false;
+                if (!$filterEmptyOnly) $min += $effectiveMin['suffix'];
+            }
+            // honorific
+            if ($row->has_honorific) {
+                if ($effectiveMin['honorific'] === null) return false;
+                if (!$filterEmptyOnly) $min += $effectiveMin['honorific'];
+            }
+            if ($filterEmptyOnly) return true; // availability-only mode
+            return $srcLen === null ? true : ($min <= $srcLen);
+        })->values();
+        $filteredCount = count($rows);
+    }
+
+    $total = count($rows);
     if ($total === 0) {
-        $this->info('No patterns found' . ($like ? ' matching "' . $like . '"' : '') . '.');
+        $suffix = $like ? ' matching "' . $like . '"' : '';
+        if ($srcLen !== null) $suffix .= ' for source length ' . $srcLen;
+        if ($usedDynamic) $suffix .= ' (dynamic)';
+        $this->info('No patterns found' . $suffix . '.');
         return 0;
     }
 
     $pages = (int) ceil($total / $limit);
     $offset = ($page - 1) * $limit;
 
-    $rows = $query->offset($offset)->limit($limit)->get();
+    $rowsPage = collect($rows)->slice($offset, $limit)->values();
 
-    $this->line('Total: ' . $total . ' | Page ' . $page . ' of ' . $pages . ' | Showing ' . count($rows) . ' (limit ' . $limit . ')');
-    foreach ($rows as $row) {
-        $this->line(sprintf('%5d. %s (min=%d)', $row->popularity_rank, $row->template, $row->min_total_length ?? 0));
+    $header = 'Total: ' . $total . ' | Page ' . $page . ' of ' . $pages . ' | Showing ' . count($rowsPage) . ' (limit ' . $limit . ')';
+    if ($srcLen !== null) {
+        $mode = $usedDynamic ? ($filterEmptyOnly ? ' (avail-only)' : ' (dynamic)') : '';
+        $header .= ' | source_len=' . $srcLen . $mode;
+        if ($filterList !== '') $header .= ' | list=' . $filterList;
+        elseif (!$includeBoring) $header .= ' | boring=excluded';
+    }
+    $this->line($header);
+
+    foreach ($rowsPage as $row) {
+        if ($usedDynamic) {
+            if ($filterEmptyOnly) {
+                $this->line(sprintf('%5d. %s (avail)', $row->popularity_rank, $row->template));
+            } else {
+                // recompute dynamic min for display (cheap re-do similar to above)
+                $min = 0;
+                if ($row->has_title) $min += $effectiveMin['title'] ?? 0;
+                if (($row->forename_count ?? 0) > 0) $min += ($effectiveMin['forename'] ?? 0) * (int)$row->forename_count;
+                if ($row->has_initials) $min += $effectiveMin['initials'] ?? 0;
+                if ($row->has_prefix) $min += $effectiveMin['prefix'] ?? 0;
+                if (($row->surname_count ?? 0) > 0) $min += ($effectiveMin['surname'] ?? 0) * (int)$row->surname_count;
+                if ($row->has_suffix) $min += $effectiveMin['suffix'] ?? 0;
+                if ($row->has_honorific) $min += $effectiveMin['honorific'] ?? 0;
+                $this->line(sprintf('%5d. %s (dyn_min=%d)', $row->popularity_rank, $row->template, $min));
+            }
+        } else {
+            $this->line(sprintf('%5d. %s (min=%d)', $row->popularity_rank, $row->template, $row->min_total_length ?? 0));
+        }
     }
 
     return 0;
-})->purpose('List stored patterns with optional filtering and pagination');
+})->purpose('List stored patterns with optional filtering and pagination (supports --source and dynamic min filtering)');
 
 Artisan::command('words:matches {source*} {--token=} {--list=} {--json} {--include-boring}', function () {
     // Join source args back into a single string (allows spaces without quotes)
@@ -485,44 +650,34 @@ Artisan::command('words:matches {source*} {--token=} {--list=} {--json} {--inclu
     $asJson      = (bool) $this->option('json');
     $includeBoring = (bool) $this->option('include-boring');
 
-    // Normalize and build signature of source
+    // Normalize and build signature of source (ASCII-only)
     $normalize = function (string $s): string {
-        $s = mb_strtolower($s);
-        // Keep only letters and numbers (multibyte-aware)
-        $s = preg_replace('/[^\p{L}\p{N}]/u', '', $s) ?? '';
+        $s = strtolower($s);
+        // Keep only ASCII letters and digits
+        $s = preg_replace('/[^a-z]/i', '', $s) ?? '';
         return $s;
     };
-    $mbSplit = function (string $s): array {
-        if (function_exists('mb_str_split')) return mb_str_split($s);
-        $r = preg_split('//u', $s, -1, PREG_SPLIT_NO_EMPTY);
-        return $r === false ? [] : $r;
-    };
-    $makeSignature = function (string $s) use ($normalize, $mbSplit): string {
+    $makeSignature = function (string $s) use ($normalize): string {
         $norm = $normalize($s);
-        $chars = $mbSplit($norm);
+        $chars = str_split($norm);
         sort($chars);
         return implode('', $chars);
     };
 
     $srcSig = $makeSignature($sourceName);
-    $srcLen = mb_strlen($srcSig);
+    $srcLen = strlen($srcSig);
 
-    if ($srcLen === 0) {
-        $this->warn('Source signature is empty after normalization. No matches.');
-        return 0;
-    }
 
-    // Helper: check if word signature is a multiset-subset of the source signature
+    // Helper: check if word signature is a multiset-subset of the source signature (ASCII-only)
     $isSubset = function (string $small, string $big): bool {
-        // both are sorted sequences of code points
-        $i = 0; $j = 0; $ls = mb_strlen($small); $lb = mb_strlen($big);
+        // both are sorted ASCII strings
+        $i = 0; $j = 0; $ls = strlen($small); $lb = strlen($big);
         if ($ls === 0) return true;
         while ($i < $ls && $j < $lb) {
-            $cs = mb_substr($small, $i, 1);
-            $cb = mb_substr($big, $j, 1);
-            $cmp = strcmp($cs, $cb);
-            if ($cmp === 0) { $i++; $j++; }
-            elseif ($cmp > 0) { $j++; }
+            $cs = $small[$i];
+            $cb = $big[$j];
+            if ($cs === $cb) { $i++; $j++; }
+            elseif ($cs > $cb) { $j++; }
             else { return false; }
         }
         return $i === $ls;
@@ -549,8 +704,8 @@ Artisan::command('words:matches {source*} {--token=} {--list=} {--json} {--inclu
     $query->chunkById(1000, function ($rows) use (&$grouped, &$total, $srcSig, $srcLen, $isSubset) {
         foreach ($rows as $r) {
             // quick length reject: word cannot be longer than source
-            $len = mb_strlen($r->signature ?? '');
-            if ($len === 0 || $len > $srcLen) continue;
+            $len = strlen($r->signature);
+            if ($len > $srcLen) continue;
             if (!$isSubset((string)$r->signature, $srcSig)) continue;
 
             $tok = (string)$r->token_type;
@@ -599,3 +754,8 @@ Artisan::command('words:matches {source*} {--token=} {--list=} {--json} {--inclu
 
     return 0;
 })->purpose('Find all token word matches whose letters fit within the given source name');
+
+
+}
+
+*/

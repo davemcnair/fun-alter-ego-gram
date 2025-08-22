@@ -29,13 +29,18 @@ class ImportWordLists extends Command
                 $lines = @file($file->getRealPath(), FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
 
                 foreach ($lines as $word) {
-                    // Normalize: lowercase, remove punctuation
-                    $normalized = mb_strtolower(preg_replace('/[^\p{L}\p{N}]/u', '', $word));
+                    // Normalize: lowercase, remove punctuation (ASCII-only)
+                    $normalized = strtolower(preg_replace('/[^a-z0-9]/i', '', $word));
 
-                    // Signature: sorted letters (multibyte-aware)
-                    $letters = $this->mbStringSplit($normalized);
+                    // Signature: sorted letters (ASCII-only)
+                    $letters = str_split($normalized);
                     sort($letters);
                     $signature = implode('', $letters);
+
+                    // Skip storing words that normalize to an empty signature
+                    if ($signature === '') {
+                        continue;
+                    }
 
                     Word::updateOrCreate(
                         [
@@ -51,21 +56,5 @@ class ImportWordLists extends Command
 
         $this->info('Imported all word lists with normalization.');
         return self::SUCCESS;
-    }
-
-    /**
-     * Split a multibyte string into an array of characters.
-     * Falls back to preg_split for environments without mb_str_split (PHP < 7.4).
-     *
-     * @param string $string
-     * @return array<int, string>
-     */
-    protected function mbStringSplit(string $string): array
-    {
-        if (function_exists('mb_str_split')) {
-            return mb_str_split($string);
-        }
-        $result = preg_split('//u', $string, -1, PREG_SPLIT_NO_EMPTY);
-        return $result === false ? [] : $result;
     }
 }

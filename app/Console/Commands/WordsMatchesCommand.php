@@ -3,12 +3,15 @@
 namespace App\Console\Commands;
 
 use App\Services\WordMatchService;
+use App\Traits\HelpsMatchWords;
 use Illuminate\Console\Attributes\AsCommand;
 use Illuminate\Console\Command;
 
 #[AsCommand(name: 'words:matches', description: 'Find all token word matches whose letters fit within the given source name')]
 class WordsMatchesCommand extends Command
 {
+    use HelpsMatchWords;
+
     protected $signature = 'words:matches {source*} {--token=} {--list=} {--json} {--include-boring}';
 
     public function handle(WordMatchService $svc): int
@@ -19,8 +22,8 @@ class WordsMatchesCommand extends Command
             $this->error('Please provide a source name, e.g. php artisan words:matches "First Middle Last"');
             return self::FAILURE;
         }
-
-        $payload = $svc->findMatches($sourceName, [
+        $sourceSignature = $this->makeSignature($sourceName);
+        $payload = $svc->findMatches($sourceSignature, [
             'token' => (string)$this->option('token'),
             'list' => (string)$this->option('list'),
             'include_boring' => (bool)$this->option('include-boring'),

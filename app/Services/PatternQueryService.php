@@ -2,133 +2,46 @@
 
 namespace App\Services;
 
+use App\Models\Token;
+use App\Traits\HelpsMatchWords;
 use Illuminate\Support\Facades\DB;
 
 class PatternQueryService
 {
-    public function __construct(private readonly TextSignatureService $sig)
-    {
-    }
+    use HelpsMatchWords;
 
     /**
-     * Query patterns with optional dynamic/availability filtering.
-     * Returns header meta and rows for presentation.
+     * Plain list of patterns (no source-based filtering).
+     * Supports like, pagination. Returns min_total_length per row.
      *
-     * @param array{
-     *   like?:string, source?:string, dynamic?:bool, list?:string, include_boring?:bool, filter_empty_only?:bool,
-     *   limit?:int, page?:int
-     * } $opts
+     * @param array{like?:string, limit?:int, page?:int} $opts
      * @return array{
-     *   meta: array{total:int, page:int, pages:int, count:int, source_len?:int, mode?:string, list?:string, boring?:string},
-     *   rows: array<int, array{popularity_rank:int, template:string, min?:int, dyn_min?:int, avail?:bool}>
+     *   meta: array{total:int, page:int, pages:int, count:int},
+     *   rows: array<int, array{popularity_rank:int, template:string, min:int}>
      * }
      */
     public function list(array $opts): array
     {
-        $limit = max(1, (int)($opts['limit'] ?? 20));
-        $page  = max(1, (int)($opts['page'] ?? 1));
-        $like  = (string)($opts['like'] ?? '');
-        $source = (string)($opts['source'] ?? '');
-        $useDynamic = (bool)($opts['dynamic'] ?? false);
-        $filterList = (string)($opts['list'] ?? '');
-        $includeBoring = (bool)($opts['include_boring'] ?? false);
-        $filterEmptyOnly = (bool)($opts['filter_empty_only'] ?? false);
-
-        $srcSig = '';
-        $srcLen = null;
-        if ($source !== '') { $srcSig = $this->sig->makeSignature($source); $srcLen = strlen($srcSig); }
-
-        $effectiveMin = [];
-        $tokenNames = ['title','forename','initials','prefix','surname','suffix','honorific'];
-        $usedDynamic = false;
-        if (($useDynamic || $filterEmptyOnly) && $srcLen !== null && $srcLen > 0) {
-            $usedDynamic = true;
-            $base = DB::table('words')->select('id','token_type','signature');
-            if ($filterList !== '') {
-                $base->where('list_type', $filterList);
-            } else {
-                if (!$includeBoring) $base->where('list_type', '!=', 'boring');
-            }
-            $mins = [];
-            $base->orderBy('id');
-            $sigSvc = $this->sig;
-            $base->chunkById(1000, function ($rows) use (&$mins, $srcSig, $srcLen, $sigSvc) {
-                foreach ($rows as $r) {
-                    $sig = (string)($r->signature ?? '');
-                    $len = strlen($sig);
-                    if ($srcLen !== null && $len > $srcLen) continue;
-                    if (!$sigSvc->isSubset($sig, $srcSig)) continue;
-                    $tok = (string)$r->token_type;
-                    if (!isset($mins[$tok]) || $len < $mins[$tok]) $mins[$tok] = $len;
-                }
-            }, 'id');
-            foreach ($tokenNames as $tn) $effectiveMin[$tn] = $mins[$tn] ?? null;
-        }
+        $limit = max(1, (int)($opts['limit'] ?? 500));
+        $page = max(1, (int)($opts['page'] ?? 1));
+        $like = (string)($opts['like'] ?? '');
 
         $query = DB::table('patterns')->orderBy('popularity_rank');
         if ($like !== '') $query->where('template', 'like', '%' . $like . '%');
-        if ($srcLen !== null) {
-            if (!$usedDynamic || $filterEmptyOnly) $query->where('min_total_length', '<=', $srcLen);
-        }
+
         $allRows = $query->get();
-
-        $rows = $allRows;
-        if ($usedDynamic) {
-            $rows = $allRows->filter(function ($row) use ($effectiveMin, $srcLen, $filterEmptyOnly) {
-                $min = 0;
-                if ($row->has_title) { if ($effectiveMin['title'] === null) return false; if (!$filterEmptyOnly) $min += $effectiveMin['title']; }
-                if (($row->forename_count ?? 0) > 0) { if ($effectiveMin['forename'] === null) return false; if (!$filterEmptyOnly) $min += $effectiveMin['forename'] * (int)$row->forename_count; }
-                if ($row->has_initials) { if ($effectiveMin['initials'] === null) return false; if (!$filterEmptyOnly) $min += $effectiveMin['initials']; }
-                if ($row->has_prefix) { if ($effectiveMin['prefix'] === null) return false; if (!$filterEmptyOnly) $min += $effectiveMin['prefix']; }
-                if (($row->surname_count ?? 0) > 0) { if ($effectiveMin['surname'] === null) return false; if (!$filterEmptyOnly) $min += $effectiveMin['surname'] * (int)$row->surname_count; }
-                if ($row->has_suffix) { if ($effectiveMin['suffix'] === null) return false; if (!$filterEmptyOnly) $min += $effectiveMin['suffix']; }
-                if ($row->has_honorific) { if ($effectiveMin['honorific'] === null) return false; if (!$filterEmptyOnly) $min += $effectiveMin['honorific']; }
-                if ($filterEmptyOnly) return true;
-                return $srcLen === null ? true : ($min <= $srcLen);
-            })->values();
-        }
-
-        $total = count($rows);
-        $pages = (int) ceil(max(1, $total) / $limit);
+        $total = count($allRows);
+        $pages = (int)ceil(max(1, $total) / $limit);
         $offset = ($page - 1) * $limit;
-        $rowsPage = collect($rows)->slice($offset, $limit)->values();
-
-        $mode = null;
-        if ($srcLen !== null) {
-            $mode = $usedDynamic ? ($filterEmptyOnly ? 'avail-only' : 'dynamic') : null;
-        }
+        $rowsPage = collect($allRows)->slice($offset, $limit)->values();
 
         $presentRows = [];
         foreach ($rowsPage as $row) {
-            if ($usedDynamic) {
-                if ($filterEmptyOnly) {
-                    $presentRows[] = [
-                        'popularity_rank' => (int)$row->popularity_rank,
-                        'template' => (string)$row->template,
-                        'avail' => true,
-                    ];
-                } else {
-                    $min = 0;
-                    if ($row->has_title) $min += $effectiveMin['title'] ?? 0;
-                    if (($row->forename_count ?? 0) > 0) $min += ($effectiveMin['forename'] ?? 0) * (int)$row->forename_count;
-                    if ($row->has_initials) $min += $effectiveMin['initials'] ?? 0;
-                    if ($row->has_prefix) $min += $effectiveMin['prefix'] ?? 0;
-                    if (($row->surname_count ?? 0) > 0) $min += ($effectiveMin['surname'] ?? 0) * (int)$row->surname_count;
-                    if ($row->has_suffix) $min += $effectiveMin['suffix'] ?? 0;
-                    if ($row->has_honorific) $min += $effectiveMin['honorific'] ?? 0;
-                    $presentRows[] = [
-                        'popularity_rank' => (int)$row->popularity_rank,
-                        'template' => (string)$row->template,
-                        'dyn_min' => $min,
-                    ];
-                }
-            } else {
-                $presentRows[] = [
-                    'popularity_rank' => (int)$row->popularity_rank,
-                    'template' => (string)$row->template,
-                    'min' => (int)($row->min_total_length ?? 0),
-                ];
-            }
+            $presentRows[] = [
+                'popularity_rank' => (int)$row->popularity_rank,
+                'template' => (string)$row->template,
+                'min' => (int)($row->min_total_length ?? 0),
+            ];
         }
 
         $meta = [
@@ -137,13 +50,88 @@ class PatternQueryService
             'pages' => $pages,
             'count' => count($presentRows),
         ];
-        if ($srcLen !== null) {
-            $meta['source_len'] = $srcLen;
-            if ($mode) $meta['mode'] = $mode;
-            if ($filterList !== '') $meta['list'] = $filterList;
-            elseif (!$includeBoring) $meta['boring'] = 'excluded';
-        }
 
-        return [ 'meta' => $meta, 'rows' => $presentRows ];
+        return ['meta' => $meta, 'rows' => $presentRows];
+    }
+
+    /**
+     * List patterns for a given source with dynamic/availability filtering options.
+     *
+     * @return array{
+     *   meta: array{total:int, page:int, pages:int, count:int, source_len:int, mode?:string, list?:string, boring?:string},
+     *   rows: array<int, array{popularity_rank:int, template:string, dyn_min?:int, avail?:bool, min?:int}>
+     * }
+     */
+    public function listForSource(string $source, bool $includeBoring = false): array
+    {
+        $srcSig = $this->makeSignature($source);
+        $srcLen = strlen($srcSig);
+
+        $base = DB::table('words')->select('id', 'token_type', 'signature');
+
+        if (!$includeBoring) $base->where('list_type', '!=', 'boring');
+        $actualMins = Token::query()->pluck('min_length', 'name')->toArray();
+        // can be larger
+        $effectiveMins = $actualMins;
+        $anyWordsFound = [];
+        $base->chunkById(1000, function ($rows) use (&$effectiveMins, &$anyWordsFound, $srcSig, $srcLen) {
+            foreach ($rows as $r) {
+                $sig = $r->signature;
+                $len = strlen($sig);
+                if ($len > $srcLen) continue;
+                if (!$this->isSubset($sig, $srcSig)) continue;
+                $tok = $r->token_type;
+                $anyWordsFound[$tok] = true;
+                if ($len > $effectiveMins[$tok]) $effectiveMins[$tok] = $len;
+            }
+        }, 'id');
+
+        $allRows = DB::table('patterns')
+            ->where('min_total_length', '<=', $srcLen)
+            ->orderBy('popularity_rank')
+            ->get();
+
+        $rows = $allRows->filter(function ($row) use ($actualMins, $effectiveMins, $anyWordsFound, $srcLen) {
+            // Determine if the pattern row includes a given token type using stored columns
+            $hasToken = function ($row, string $name): bool {
+                return match ($name) {
+                    Token::TOKEN_NAME_TITLE => (bool)($row->has_title ?? false),
+                    Token::TOKEN_NAME_FORENAME => (int)($row->forename_count ?? 0) > 0,
+                    Token::TOKEN_NAME_INITIALS => (bool)($row->has_initials ?? false),
+                    Token::TOKEN_NAME_PREFIX => (bool)($row->has_prefix ?? false),
+                    Token::TOKEN_NAME_SURNAME => (int)($row->surname_count ?? 0) > 0,
+                    Token::TOKEN_NAME_SUFFIX => (bool)($row->has_suffix ?? false),
+                    Token::TOKEN_NAME_HONORIFIC => (bool)($row->has_honorific ?? false),
+                    default => false,
+                };
+            };
+
+            $minLengthUnchanged = true;
+            foreach (Token::NAMES as $name) {
+                if ($hasToken($row, $name)) {
+                    if (!isset($anyWordsFound[$name])) return false;
+                    if (($effectiveMins[$name] ?? 0) > ($actualMins[$name] ?? 0)) {
+                        $minLengthUnchanged = false;
+                    }
+                }
+            }
+
+            return $minLengthUnchanged || array_sum($effectiveMins) <= $srcLen;
+        })->values();
+        $presentRows=[];
+        foreach ($rows as $row) {
+            $presentRows[] = [
+                'popularity_rank' => (int)$row->popularity_rank,
+                'template' => (string)$row->template,
+                'min' => $row->min_total_length
+            ];
+        }
+        $meta = [
+            'count' => count($presentRows),
+            'source_len' => $srcLen,
+        ];
+        if (!$includeBoring) $meta['boring'] = 'excluded';
+
+        return ['meta' => $meta, 'rows' => $presentRows];
     }
 }

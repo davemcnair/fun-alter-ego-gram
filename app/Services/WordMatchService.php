@@ -6,9 +6,6 @@ use Illuminate\Support\Facades\DB;
 
 class WordMatchService
 {
-    public function __construct(private readonly TextSignatureService $sig)
-    {
-    }
 
     /**
      * Find matching words grouped by token_type and list_type.
@@ -17,14 +14,13 @@ class WordMatchService
      * @param array{token?:string,list?:string,include_boring?:bool} $options
      * @return array{source:string, signature:string, total:int, groups: array<string, array<string, array<int,array{id:int,word:string,signature:string}>>>>
      */
-    public function findMatches(string $sourceName, array $options = []): array
+    public function findMatches(string $sourceSignature, array $options = []): array
     {
         $filterToken = (string)($options['token'] ?? '');
         $filterList = (string)($options['list'] ?? '');
         $includeBoring = (bool)($options['include_boring'] ?? false);
 
-        $srcSig = $this->sig->makeSignature($sourceName);
-        $srcLen = strlen($srcSig);
+        $srcLen = strlen($sourceSignature);
 
         $query = DB::table('words')->select('id', 'word', 'token_type', 'list_type', 'signature');
         if ($filterToken !== '') $query->where('token_type', $filterToken);
@@ -40,11 +36,11 @@ class WordMatchService
         $total = 0;
 
         $query->orderBy('id');
-        $query->chunkById(1000, function ($rows) use (&$grouped, &$total, $srcSig, $srcLen) {
+        $query->chunkById(1000, function ($rows) use (&$grouped, &$total, $sourceSignature, $srcLen) {
             foreach ($rows as $r) {
                 $len = strlen($r->signature ?? '');
                 if ($len > $srcLen) continue;
-                if (!$this->sig->isSubset((string)$r->signature, $srcSig)) continue;
+                if (!$this->sig->isSubset((string)$r->signature, $sourceSignature)) continue;
                 $tok = (string)$r->token_type;
                 $lst = (string)$r->list_type;
                 $grouped[$tok][$lst][] = [
@@ -57,8 +53,6 @@ class WordMatchService
         }, 'id');
 
         return [
-            'source' => $sourceName,
-            'signature' => $srcSig,
             'total' => $total,
             'groups' => $grouped,
         ];

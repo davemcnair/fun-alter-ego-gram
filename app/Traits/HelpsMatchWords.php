@@ -1,14 +1,14 @@
 <?php
 
-namespace App\Services;
+namespace App\Traits;
 
-class TextSignatureService
+trait HelpsMatchWords
 {
-    // ASCII-only normalization: keep a–z and digits, lowercase
+    // ASCII-only normalization: keep a–z, lowercase
     public function normalize(string $s): string
     {
         $s = strtolower($s);
-        return preg_replace('/[^a-z0-9]/i', '', $s) ?? '';
+        return preg_replace('/[^a-z]/i', '', $s) ?? '';
     }
 
     // Make a sorted-letter signature from input string

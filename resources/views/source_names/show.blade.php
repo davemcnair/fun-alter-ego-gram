@@ -18,6 +18,7 @@
         a.link { color: #2563eb; text-decoration: none; }
         .columns { display: grid; grid-template-columns: 1fr; gap: 16px; }
         @media (min-width: 900px) { .columns { grid-template-columns: 1fr 1fr; } }
+        .highlight-fun { background: #fff3cd; color: #92400e; padding: 0 3px; border-radius: 3px; }
     </style>
 </head>
 <body>
@@ -33,10 +34,10 @@
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items:center;">
             <div>
                 <div>Status: <span id="status" class="tag">{{ $item->status }}</span></div>
-                <div style="margin-top:6px;">Current pattern: <strong id="currentPattern">{{ $item->current_pattern ?? '—' }}</strong></div>
                 <div style="margin-top:6px;">Patterns searched: <strong id="patternsSearched">{{ $item->patterns_searched }}</strong> / <strong id="patternsTotal">{{ $item->patterns_total }}</strong></div>
                 <div style="margin-top:6px;">Alter egos found: <strong id="alterEgosFound">{{ $item->alteregos_found }}</strong></div>
-                <div style="margin-top:6px;">Time elapsed: <strong id="timeElapsed">{{ $item->elapsed_seconds }}</strong> s</div>
+                <div style="margin-top:6px;">Fun alter egos found: <strong id="funAlterEgosFound">0</strong></div>
+                <div style="margin-top:6px;">Time elapsed: <strong id="timeElapsed">{{ max(0, (int)$item->elapsed_seconds) }}</strong> s</div>
             </div>
             <div style="justify-self:end; display:flex; gap:8px; align-items:center;">
                 <button id="pauseBtn">Pause</button>
@@ -48,14 +49,19 @@
 
         <div class="columns">
         <div class="card">
-            <h3 style="margin-top:0;">Alter Egos</h3>
+            <h3 style="margin-top:0; display:flex; align-items:center; gap:10px;">
+                Alter Egos
+                <label style="margin-left:auto; font-weight:normal; display:flex; align-items:center; gap:6px; font-size:14px;">
+                    <input type="checkbox" id="onlyFunToggle"> Only fun
+                </label>
+            </h3>
             <div id="alterEgoGroups">
                 @php $hasAny = false; @endphp
                 @foreach(($patterns ?? []) as $p)
                     @if(($p->alterEgos ?? collect())->count() > 0)
                         @php $hasAny = true; @endphp
                         <div style="margin-bottom:10px;">
-                            <div><strong>{{ $p->pattern_template }}</strong> <span class="tag">rank {{ $p->popularity_rank }}</span></div>
+                            <div><strong>{{ $p->pattern_template }}</strong> <span class="tag">{{ ($p->alterEgos ?? collect())->count() }} found</span></div>
                             <ul style="margin-top:6px;">
                                 @foreach($p->alterEgos as $ae)
                                     <li>{{ $ae->phrase }}</li>
@@ -170,19 +176,147 @@
 </div>
 
 <script>
+// Build sets of known fun words from server-provided matches (lowercased)
+@php
+    $funSurname = [];
+    $funForename = [];
+    $groupsForFun = $matches['groups'] ?? [];
+    if (isset($groupsForFun['surname']['fun'])) {
+        foreach ($groupsForFun['surname']['fun'] as $it) {
+            $w = strtolower((string)($it['word'] ?? ''));
+            if ($w !== '') { $funSurname[$w] = true; }
+        }
+    }
+    if (isset($groupsForFun['forename']['fun'])) {
+        foreach ($groupsForFun['forename']['fun'] as $it) {
+            $w = strtolower((string)($it['word'] ?? ''));
+            if ($w !== '') { $funForename[$w] = true; }
+        }
+    }
+@endphp
+const FUN_SURNAME = new Set(@json(array_keys($funSurname)));
+const FUN_FORENAME = new Set(@json(array_keys($funForename)));
+
 (function(){
     const id = {{ $item->id }};
     let paused = {{ ($item->status === 'paused' || $item->status === 'idle') ? 'true' : 'false' }};
     let completed = {{ $item->status === 'completed' ? 'true' : 'false' }};
     const statusEl = document.getElementById('status');
-    const curEl = document.getElementById('currentPattern');
     const pattS = document.getElementById('patternsSearched');
     const pattT = document.getElementById('patternsTotal');
     const aeFound = document.getElementById('alterEgosFound');
+    const funAeFound = document.getElementById('funAlterEgosFound');
     const elapsed = document.getElementById('timeElapsed');
     const groupsEl = document.getElementById('alterEgoGroups');
     const pauseBtn = document.getElementById('pauseBtn');
     const resumeBtn = document.getElementById('resumeBtn');
+    const onlyFunToggle = document.getElementById('onlyFunToggle');
+    let onlyFun = false;
+
+    if (onlyFunToggle) {
+        try {
+            // Restore previous preference
+            const saved = localStorage.getItem('onlyFunToggle');
+            if (saved === '1') { onlyFun = true; onlyFunToggle.checked = true; }
+            onlyFunToggle.addEventListener('change', function(){
+                onlyFun = !!onlyFunToggle.checked;
+                try { localStorage.setItem('onlyFunToggle', onlyFun ? '1' : '0'); } catch (e) {}
+                // Re-render using last known progress if available
+                call("{{ route('source-names.progress', $item) }}", 'GET').then(render).catch(function(){});
+            });
+        } catch (e) { /* ignore */ }
+    }
+
+    function parseBlocks(template) {
+        // Returns array of blocks: {type:'surname', count:n} or {type:'other', name:string, count:n}
+        const re = /\{([a-z]+)(?::(\d+))?\}/ig;
+        const blocks = [];
+        let m;
+        while ((m = re.exec(template)) !== null) {
+            const name = (m[1] || '').toLowerCase();
+            const count = Math.max(1, parseInt(m[2] || '1', 10));
+            if (name === 'surname') {
+                // merge with previous surname block if consecutive
+                const last = blocks[blocks.length - 1];
+                if (last && last.type === 'surname') {
+                    last.count += count;
+                } else {
+                    blocks.push({type: 'surname', count});
+                }
+            } else {
+                blocks.push({type: 'other', name, count});
+            }
+        }
+        return blocks;
+    }
+
+    function hasAnyFunToken(phrase, template) {
+        try {
+            const tokens = String(phrase).split(' ').filter(t => t.length > 0);
+            const blocks = parseBlocks(String(template || ''));
+            let ti = 0;
+            for (let b of blocks) {
+                if (b.type === 'surname') {
+                    const tok = tokens[ti++] || '';
+                    const parts = tok.split('-');
+                    for (let part of parts) {
+                        if (FUN_SURNAME.has(String(part).toLowerCase())) return true;
+                    }
+                } else {
+                    const c = Math.max(1, parseInt(b.count || 1, 10));
+                    for (let k = 0; k < c; k++) {
+                        const tok = tokens[ti++] || '';
+                        if (b.name === 'forename') {
+                            if (FUN_FORENAME.has(String(tok).toLowerCase())) return true;
+                        }
+                    }
+                }
+            }
+        } catch (e) { /* ignore */ }
+        return false;
+    }
+
+    function highlightPhrase(phrase, template) {
+        try {
+            const tokens = String(phrase).split(' ').filter(t => t.length > 0);
+            const blocks = parseBlocks(String(template || ''));
+            const out = [];
+            let ti = 0;
+            for (let b of blocks) {
+                if (b.type === 'surname') {
+                    const tok = tokens[ti++] || '';
+                    // split hyphenated surname parts and wrap fun ones
+                    const parts = tok.split('-').map(function(part){
+                        const low = part.toLowerCase();
+                        if (FUN_SURNAME.has(low)) {
+                            return '<span class="highlight-fun">' + part + '</span>';
+                        }
+                        return part;
+                    });
+                    out.push(parts.join('-'));
+                } else {
+                    // other tokens; handle counts (e.g., forename:2)
+                    const c = Math.max(1, parseInt(b.count || 1, 10));
+                    for (let k = 0; k < c; k++) {
+                        const tok = tokens[ti++] || '';
+                        if (b.name === 'forename') {
+                            const low = tok.toLowerCase();
+                            if (FUN_FORENAME.has(low)) {
+                                out.push('<span class="highlight-fun">' + tok + '</span>');
+                                continue;
+                            }
+                        }
+                        out.push(tok);
+                    }
+                }
+            }
+            // If mismatch between tokens and blocks, fall back to original phrase
+            if (out.join(' ').trim().length === 0) return phrase;
+            return out.join(' ');
+        } catch (e) {
+            return phrase;
+        }
+    }
 
     async function call(url, method = 'POST') {
         const res = await fetch(url, {method, headers: {'X-Requested-With':'XMLHttpRequest','X-CSRF-TOKEN': '{{ csrf_token() }}' }});
@@ -203,11 +337,20 @@
 
     function render(p) {
         statusEl.textContent = p.status;
-        curEl.textContent = p.currentPattern || '—';
         pattS.textContent = p.patternsSearched;
         pattT.textContent = p.patternsTotal;
         aeFound.textContent = p.alterEgosFound;
-        elapsed.textContent = p.timeElapsed;
+        // compute fun alter egos found across all groups
+        try {
+            const groups = Array.isArray(p.groups) ? p.groups : [];
+            let funCount = 0;
+            groups.forEach(function(g){
+                const phrases = Array.isArray(g.phrases) ? g.phrases : [];
+                phrases.forEach(function(ph){ if (hasAnyFunToken(ph, g.pattern)) funCount++; });
+            });
+            if (funAeFound) funAeFound.textContent = String(funCount);
+        } catch (e) { if (funAeFound) funAeFound.textContent = '0'; }
+        elapsed.textContent = Math.max(0, parseInt(p.timeElapsed || 0, 10));
         // Render grouped alter egos by pattern
         if (groupsEl) {
             groupsEl.innerHTML = '';
@@ -219,6 +362,9 @@
                 groupsEl.appendChild(div);
             } else {
                 groups.forEach(function (g) {
+                    const all = Array.from(g.phrases || []);
+                    const list = onlyFun ? all.filter(function(ph){ return hasAnyFunToken(ph, g.pattern); }) : all;
+                    if (list.length === 0) return; // skip empty groups when filtering
                     const wrap = document.createElement('div');
                     wrap.style.marginBottom = '10px';
                     const head = document.createElement('div');
@@ -227,15 +373,15 @@
                     const rank = document.createElement('span');
                     rank.className = 'tag';
                     rank.style.marginLeft = '6px';
-                    rank.textContent = 'rank ' + g.rank;
+                    rank.textContent = list.length + ' found';
                     head.appendChild(strong);
                     head.appendChild(rank);
                     wrap.appendChild(head);
                     const ul = document.createElement('ul');
                     ul.style.marginTop = '6px';
-                    (g.phrases || []).forEach(function (ph) {
+                    list.forEach(function (ph) {
                         const li = document.createElement('li');
-                        li.textContent = ph;
+                        li.innerHTML = highlightPhrase(ph, g.pattern);
                         ul.appendChild(li);
                     });
                     wrap.appendChild(ul);

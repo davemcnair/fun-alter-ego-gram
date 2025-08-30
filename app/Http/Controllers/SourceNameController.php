@@ -189,8 +189,10 @@ class SourceNameController extends Controller
 
         // Update elapsed
         $elapsed = (int) (microtime(true) - $tickStart);
-        $totalElapsed = now()->diffInSeconds($startedAt);
-        $source->elapsed_seconds = $totalElapsed;
+        // Use signed diff and clamp to avoid negative elapsed due to clock skew
+        $totalElapsed = now()->diffInSeconds($startedAt, false);
+        if ($totalElapsed < 0) { $totalElapsed = 0; }
+        $source->elapsed_seconds = (int)$totalElapsed;
         $source->save();
 
         // If no more pending -> complete

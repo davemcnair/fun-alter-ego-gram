@@ -2,14 +2,13 @@
 
 namespace App\Services;
 
+use App\Traits\HelpsMatchWords;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 
 class TokenSeedService
 {
-    public function __construct(private readonly TextSignatureService $sig)
-    {
-    }
+    use HelpsMatchWords;
 
     public function seedFromResources(string $basePath): array
     {
@@ -59,7 +58,7 @@ class TokenSeedService
             $all = array_merge($ok, $fun, $boring);
             $min = null;
             foreach ($all as $word) {
-                $sig = $this->sig->makeSignature($word);
+                $sig = $this->makeSignature($word);
                 $len = strlen($sig);
                 if ($len === 0) continue;
                 if ($min === null || $len < $min) $min = $len;

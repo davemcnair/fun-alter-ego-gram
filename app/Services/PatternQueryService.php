@@ -64,34 +64,44 @@ class PatternQueryService
      */
     public function listForSource(string $source, bool $includeBoring = false): array
     {
-        $srcSig = $this->makeSignature($source);
-        $srcLen = strlen($srcSig);
+        $sourceSignature = $this->makeSignature($source);
+        $sourceLength = strlen($sourceSignature);
 
-        $base = DB::table('words')->select('id', 'token_type', 'signature');
+        $wordsQuery = DB::table('words')->select('id', 'token_type', 'signature');
 
-        if (!$includeBoring) $base->where('list_type', '!=', 'boring');
+        if (!$includeBoring) $wordsQuery->where('list_type', '!=', 'boring');
         $actualMins = Token::query()->pluck('min_length', 'name')->toArray();
         // can be larger
-        $effectiveMins = $actualMins;
+        $effectiveMins = [];
         $anyWordsFound = [];
-        $base->chunkById(1000, function ($rows) use (&$effectiveMins, &$anyWordsFound, $srcSig, $srcLen) {
+        $wordsQuery->chunkById(1000, function ($rows) use (&$effectiveMins, &$anyWordsFound, $sourceSignature, $sourceLength) {
             foreach ($rows as $r) {
-                $sig = $r->signature;
-                $len = strlen($sig);
-                if ($len > $srcLen) continue;
-                if (!$this->isSubset($sig, $srcSig)) continue;
-                $tok = $r->token_type;
-                $anyWordsFound[$tok] = true;
-                if ($len > $effectiveMins[$tok]) $effectiveMins[$tok] = $len;
+                $signature = $r->signature;
+                $length = strlen($signature);
+                if ($length > $sourceLength) continue;
+                if (!$this->isSubset($signature, $sourceSignature)) continue;
+                $token_type = $r->token_type;
+                $anyWordsFound[$token_type] = true;
+                if (!isset($effectiveMins[$token_type]) || $length < $effectiveMins[$token_type]) {
+                    $effectiveMins[$token_type] = $length;
+                }
             }
         }, 'id');
 
         $allRows = DB::table('patterns')
-            ->where('min_total_length', '<=', $srcLen)
+            ->where('min_total_length', '<=', $sourceLength)
             ->orderBy('popularity_rank')
             ->get();
 
-        $rows = $allRows->filter(function ($row) use ($actualMins, $effectiveMins, $anyWordsFound, $srcLen) {
+        // If we found no matching words for any token at all, fall back to static filtering only
+        $foundAnyWords = !empty($anyWordsFound);
+
+        $rows = $allRows->filter(function ($row) use ($actualMins, $effectiveMins, $anyWordsFound, $sourceLength, $foundAnyWords) {
+            if (!$foundAnyWords) {
+                // Static prefilter (min_total_length) was already applied in the query; accept row
+                return true;
+            }
+
             // Determine if the pattern row includes a given token type using stored columns
             $hasToken = function ($row, string $name): bool {
                 return match ($name) {
@@ -107,16 +117,26 @@ class PatternQueryService
             };
 
             $minLengthUnchanged = true;
+            $dynMin = 0;
             foreach (Token::NAMES as $name) {
                 if ($hasToken($row, $name)) {
+                    // If this pattern requires a token for which no words were found, reject
                     if (!isset($anyWordsFound[$name])) return false;
+                    // Track if any effective min grew compared to static
                     if (($effectiveMins[$name] ?? 0) > ($actualMins[$name] ?? 0)) {
                         $minLengthUnchanged = false;
                     }
+                    // Sum dynamic min only for tokens used by this pattern
+                    $count = match ($name) {
+                        Token::TOKEN_NAME_FORENAME => (int)($row->forename_count ?? 0),
+                        Token::TOKEN_NAME_SURNAME => (int)($row->surname_count ?? 0),
+                        default => 1,
+                    };
+                    $dynMin += (int)($effectiveMins[$name] ?? 0) * max(1, $count);
                 }
             }
 
-            return $minLengthUnchanged || array_sum($effectiveMins) <= $srcLen;
+            return $minLengthUnchanged || $dynMin <= $sourceLength;
         })->values();
         $presentRows=[];
         foreach ($rows as $row) {
@@ -128,7 +148,7 @@ class PatternQueryService
         }
         $meta = [
             'count' => count($presentRows),
-            'source_len' => $srcLen,
+            'source_len' => $sourceLength,
         ];
         if (!$includeBoring) $meta['boring'] = 'excluded';
 

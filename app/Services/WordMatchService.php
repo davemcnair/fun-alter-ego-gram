@@ -2,15 +2,17 @@
 
 namespace App\Services;
 
+use App\Traits\HelpsMatchWords;
 use Illuminate\Support\Facades\DB;
 
 class WordMatchService
 {
+    use HelpsMatchWords;
 
     /**
      * Find matching words grouped by token_type and list_type.
      *
-     * @param string $sourceName
+     * @param string $sourceSignature
      * @param array{token?:string,list?:string,include_boring?:bool} $options
      * @return array{source:string, signature:string, total:int, groups: array<string, array<string, array<int,array{id:int,word:string,signature:string}>>>>
      */
@@ -40,7 +42,7 @@ class WordMatchService
             foreach ($rows as $r) {
                 $len = strlen($r->signature ?? '');
                 if ($len > $srcLen) continue;
-                if (!$this->sig->isSubset((string)$r->signature, $sourceSignature)) continue;
+                if (!$this->isSubset((string)$r->signature, $sourceSignature)) continue;
                 $tok = (string)$r->token_type;
                 $lst = (string)$r->list_type;
                 $grouped[$tok][$lst][] = [

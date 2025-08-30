@@ -2,13 +2,12 @@
 
 namespace App\Services;
 
+use App\Traits\HelpsMatchWords;
 use Illuminate\Support\Facades\DB;
 
 class PatternGenerationService
 {
-    public function __construct(private readonly TextSignatureService $sig)
-    {
-    }
+    use HelpsMatchWords;
 
     /**
      * Generate patterns and optionally persist them.
@@ -99,33 +98,14 @@ class PatternGenerationService
             }
         }
 
-        $scoreOf = function (string $tpl, array $p) {
-            $segments = ($p['title']>0) + ($p['fn']>0 ? $p['fn'] : 0) + ($p['ini']>0) + ($p['pre']>0) + ($p['sn']>0 ? $p['sn'] : 0) + ($p['suf']>0) + ($p['hon']>0);
-            $score = 0;
-            $score += $segments * 10;
-            if ($p['title']>0) $score += 3;
-            if ($p['ini']>0)   $score += 20; // rarer
-            if ($p['pre']>0)   $score += 8;
-            if ($p['suf']>0)   $score += 5;
-            if ($p['hon']>0)   $score += 9;
-            if ($p['fn']>1) $score += ($p['fn']-1) * 2;
-            if ($p['sn']>1) $score += ($p['sn']-1) * 2;
-            if ($p['sn'] >= 3) {
-                $score += match($p['sn']) { 3 => 25, 4 => 45, default => 65 };
-            }
-            if ($p['fn']===0) $score += 30;
-            if ($tpl === '{forename}{surname}') return -1000;
-            if ($tpl === '{forename}{surname:2}') return -999;
-            if ($tpl === '{title}{forename}{surname}') return -998;
-            return $score;
-        };
+        $scorer = app(\App\Services\ScorePatternService::class);
 
         $list = [];
         foreach ($patterns as $tpl => $p) {
             $list[] = [
                 'template' => $tpl,
                 'meta' => $p,
-                'score' => $scoreOf($tpl, $p),
+                'score' => $scorer->score($p, $tpl),
             ];
         }
         usort($list, function ($a, $b) {

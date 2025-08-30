@@ -29,7 +29,7 @@ class Pattern extends Model
             Token::TOKEN_NAME_FORENAME => $this->forename_count > 0,
             Token::TOKEN_NAME_INITIALS => $this->has_initials,
             Token::TOKEN_NAME_PREFIX => $this->has_prefix,
-            Token::TOKEN_NAME_SURNAME => $this->has_surname,
+            Token::TOKEN_NAME_SURNAME => $this->surname_count > 0,
             Token::TOKEN_NAME_SUFFIX => $this->has_suffix,
             Token::TOKEN_NAME_HONORIFIC => $this->has_honorific,
         };

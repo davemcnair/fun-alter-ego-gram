@@ -69,6 +69,10 @@ final class Anagrammer
             $stack = $next;
         }
         foreach ($stack as $combo) {
+            // Enforce non-decreasing ordering within consecutive identical-token runs to prune permutations
+            if (!$this->isNonDecreasingByBlocks($combo, $slots)) {
+                continue;
+            }
             // Exact check: the phrase must have exactly the same letter histogram as the source
             $formatted = $this->phraseBuilder->formatPhraseBySlots($combo, $slots);
             if ($this->hist($formatted) === $need) {
@@ -135,6 +139,12 @@ final class Anagrammer
 
         foreach ($viableIndices as $i) {
             $cand = $this->candidates[$slot['name']][$i];
+
+            // Prune permutations for consecutive identical-token runs: enforce non-decreasing order
+            if ($this->violatesRunOrder($slot, $slotOrder, $chosen, $cand['name'])) {
+                continue;
+            }
+
             // Fast can-fit check
             if (!$this->canCover($need, $cand['hist'])) continue;
 
@@ -225,6 +235,49 @@ final class Anagrammer
     private function sum(array $hist): int
     {
         $t = 0; foreach ($hist as $n) $t += $n; return $t;
+    }
+
+    /** Determine if choosing $word for $slot would violate non-decreasing order within a consecutive run of the same token name. */
+    private function violatesRunOrder(array $slot, array $slotOrder, array $chosen, string $word): bool
+    {
+        $pos = (int)($slot['pos'] ?? -1);
+        $name = strtolower((string)($slot['name'] ?? ''));
+        if ($pos <= 0) return false;
+        $prev = $slotOrder[$pos - 1] ?? null;
+        if (!$prev) return false;
+        if (strtolower((string)($prev['name'] ?? '')) !== $name) return false; // not a consecutive run
+        $prevWord = $chosen[$pos - 1] ?? null;
+        if ($prevWord === null) return false; // previous not chosen yet; but in our left-to-right DFS it should be chosen
+        return strcasecmp((string)$prevWord, $word) > 0; // disallow decreasing
+    }
+
+    /** Check that within each consecutive identical-token run, words are non-decreasing (case-insensitive). */
+    private function isNonDecreasingByBlocks(array $words, array $slotOrder): bool
+    {
+        $n = count($slotOrder);
+        $wi = 0;
+        for ($i = 0; $i < $n; $i++) {
+            $name = strtolower((string)($slotOrder[$i]['name'] ?? ''));
+            // determine length of this run
+            $j = $i + 1;
+            while ($j < $n && strtolower((string)($slotOrder[$j]['name'] ?? '')) === $name) {
+                $j++;
+            }
+            $runLen = $j - $i;
+            if ($runLen > 1) {
+                $prev = null;
+                for ($k = 0; $k < $runLen; $k++) {
+                    $w = (string)($words[$wi + $k] ?? '');
+                    if ($prev !== null && strcasecmp($prev, $w) > 0) {
+                        return false;
+                    }
+                    $prev = $w;
+                }
+            }
+            $wi += $runLen;
+            $i = $j - 1; // advance outer loop to end of run
+        }
+        return true;
     }
 }
 

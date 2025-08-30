@@ -11,10 +11,15 @@ final class PhraseBuilderService
      *   and join them with hyphens.
      * - Non-surname tokens are included as-is.
      *
+     * When $displayDoubleSurnameVariants is true, and a consecutive surname run has length 2,
+     * the surname token will list both hyphen variants comma-separated (e.g., "Dim-Vinci, Vinci-Dim").
+     * For any other run length, the canonical single hyphen chain is produced.
+     *
      * @param array<int,string> $words      Words in the original slot order (one per slot)
      * @param array<int,array{name:string,pos:int}> $slotOrder Slot definitions in the original order
+     * @param bool $displayDoubleSurnameVariants If true, lists both variants for double-surname runs (display-only)
      */
-    public function formatPhraseBySlots(array $words, array $slotOrder): string
+    public function formatPhraseBySlots(array $words, array $slotOrder, bool $displayDoubleSurnameVariants = false): string
     {
         $parts = [];
         $wi = 0; // index into $words
@@ -37,7 +42,15 @@ final class PhraseBuilderService
                 // Move outer loop to the last consumed surname slot
                 $i = $j - 1;
                 if (!empty($surnames)) {
-                    $parts[] = implode('-', $surnames);
+                    if ($displayDoubleSurnameVariants && count($surnames) === 2) {
+                        // If the surname block is at the end of the phrase, duplicate the full phrase with both orders
+                        $ab = $surnames[0] . '-' . $surnames[1];
+                        $ba = $surnames[1] . '-' . $surnames[0];
+                        // List both orders within the surname token (keeps entire phrase a single string)
+                        $parts[] = $ab . ', ' . $ba;
+                    } else {
+                        $parts[] = implode('-', $surnames);
+                    }
                 }
             } else {
                 $word = $words[$wi] ?? '';

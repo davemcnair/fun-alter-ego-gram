@@ -68,4 +68,28 @@ class AnagrammerTest extends TestCase
         $this->assertContains('dr adam vinci', $lower, 'Expected to generate: Dr Adam vinci');
         $this->assertContains('vicar dan dim', $lower, 'Expected to generate: Vicar Dan dim');
     }
+
+    /**
+     * For patterns with multiple identical token slots (e.g., surname:2), the generator
+     * should prune permutations and emit only one ordering per multiset.
+     */
+    public function test_prunes_permutations_for_double_surname(): void
+    {
+        $source = 'Vic Mad Drain'; // letters match "Vic" + "Mad" + "Drain"
+        $matches = [
+            'forename' => ['Vic'],
+            'surname' => ['Mad', 'Drain'],
+        ];
+        $anagrammer = new Anagrammer($matches);
+        $slots = [
+            ['name' => 'forename', 'pos' => 0],
+            ['name' => 'surname', 'pos' => 1],
+            ['name' => 'surname', 'pos' => 2],
+        ];
+        $phrases = iterator_to_array($anagrammer->generate($source, $slots));
+        // Only one phrase should be emitted; it must include both surname parts in some hyphen order
+        $this->assertCount(1, $phrases, 'Expected only one phrase (permutation-pruned)');
+        $lower = strtolower($phrases[0]);
+        $this->assertMatchesRegularExpression('/^vic (mad-drain|drain-mad)$/', $lower);
+    }
 }

@@ -33,4 +33,33 @@ class PhraseBuilderServiceTest extends TestCase
         $phrase = $svc->formatPhraseBySlots($words, $slots);
         $this->assertSame('Vicar Dan Dim-Vinci', $phrase);
     }
+
+    public function test_double_surname_lists_both_variants_for_display(): void
+    {
+        $svc = new PhraseBuilderService();
+        $words = ['Vicar', 'Dan', 'dim', 'vinci'];
+        $slots = [
+            ['name' => 'title', 'pos' => 0],
+            ['name' => 'forename', 'pos' => 1],
+            ['name' => 'surname', 'pos' => 2],
+            ['name' => 'surname', 'pos' => 3],
+        ];
+        $phrase = $svc->formatPhraseBySlots($words, $slots, true);
+        $this->assertSame('Vicar Dan Dim-Vinci, Vinci-Dim', $phrase);
+    }
+
+    public function test_triple_surname_does_not_list_variants_for_display(): void
+    {
+        $svc = new PhraseBuilderService();
+        $words = ['Sir', 'adam', 'dim', 'vinci', 'mongrel'];
+        $slots = [
+            ['name' => 'title', 'pos' => 0],
+            ['name' => 'forename', 'pos' => 1],
+            ['name' => 'surname', 'pos' => 2],
+            ['name' => 'surname', 'pos' => 3],
+            ['name' => 'surname', 'pos' => 4],
+        ];
+        $phrase = $svc->formatPhraseBySlots($words, $slots, true);
+        $this->assertSame('Sir adam Dim-Vinci-Mongrel', $phrase);
+    }
 }

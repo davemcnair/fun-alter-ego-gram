@@ -11,9 +11,13 @@ Route::post('/source-names/bulk-destroy', [SourceNameController::class, 'bulkDes
 
 // Pattern CRUD
 Route::resource('patterns', PatternController::class)->except(['show']);
+// Inline update for pattern type
+Route::post('/patterns/{pattern}/type', [PatternController::class, 'updateType'])->name('patterns.update-type');
 
 // Word CRUD
 Route::resource('words', WordController::class)->except(['show']);
+// Promote a word to fun (AJAX)
+Route::post('/words/{word}/promote', [WordController::class, 'promote'])->name('words.promote');
 
 // Pattern preview for create page
 Route::get('/patterns/preview', [SourceNameController::class, 'previewPatterns'])->name('patterns.preview');

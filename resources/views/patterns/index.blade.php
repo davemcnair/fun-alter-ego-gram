@@ -37,9 +37,13 @@
 
     <form class="tools" method="get" action="{{ route('patterns.index') }}">
         <div>
-            <input type="text" name="q" value="{{ $q }}" placeholder="Filter by template...">
-            <input type="hidden" name="per_page" value="{{ $perPage }}">
-            <button type="submit">Search</button>
+            @php $opts = ['' => 'All tokens', 'title' => 'Title', 'forename' => 'Forename', 'initials' => 'Initials', 'prefix' => 'Prefix', 'surname' => 'Surname', 'suffix' => 'Suffix', 'honorific' => 'Honorific']; @endphp
+            <select name="token" style="padding:10px 12px; border:1px solid #d1d5db; border-radius:6px; min-width: 200px;">
+                @foreach($opts as $val => $label)
+                    <option value="{{ $val }}" {{ (isset($token) && $token === $val) ? 'selected' : '' }}>{{ $label }}</option>
+                @endforeach
+            </select>
+            <button type="submit">Filter</button>
         </div>
     </form>
 
@@ -47,32 +51,73 @@
         <thead>
         <tr>
             <th>Rank</th>
+            <th>Type</th>
             <th>Template</th>
             <th>Min len</th>
-            <th></th>
         </tr>
         </thead>
         <tbody>
         @forelse($items as $p)
             <tr>
                 <td>{{ $p->popularity_rank }}</td>
+                <td>
+                    <select onchange="setType({{ $p->id }}, this.value, this)" data-prev="{{ $p->pattern_type }}" style="padding:6px 8px; border:1px solid #d1d5db; border-radius:6px;">
+                        @foreach(['standard','longer','exotic'] as $opt)
+                            <option value="{{ $opt }}" {{ $p->pattern_type === $opt ? 'selected' : '' }}>{{ ucfirst($opt) }}</option>
+                        @endforeach
+                    </select>
+                </td>
                 <td>{{ $p->template }}</td>
                 <td>{{ $p->min_total_length }}</td>
-                <td class="row-actions">
-                    <a class="btn" href="{{ route('patterns.edit', $p) }}">Edit</a>
-                    <form method="post" action="{{ route('patterns.destroy', $p) }}" onsubmit="return confirm('Delete this pattern?');">
-                        @csrf
-                        @method('DELETE')
-                        <button type="submit" style="background:#dc2626;">Delete</button>
-                    </form>
-                </td>
             </tr>
         @empty
             <tr><td colspan="7">No patterns found.</td></tr>
         @endforelse
         </tbody>
     </table>
-    <div style="margin-top: 12px;">{{ $items->links() }}</div>
 </div>
+<script>
+(function(){
+    async function post(url, body) {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify(body || {})
+        });
+        if (!res.ok) {
+            const t = await res.text().catch(function(){ return ''; });
+            throw new Error('HTTP ' + res.status + ' ' + res.statusText + (t ? (': ' + t) : ''));
+        }
+        return await res.json();
+    }
+    window.setType = async function(id, value, sel){
+        try {
+            if (!id || !value || !sel) return;
+            const prev = sel.getAttribute('data-prev') || '';
+            sel.disabled = true;
+            const url = '{{ route('patterns.update-type', ['pattern' => '__ID__']) }}'.replace('__ID__', String(id));
+            const resp = await post(url, { pattern_type: String(value) });
+            if (resp && resp.ok) {
+                sel.setAttribute('data-prev', String(value));
+            } else {
+                if (prev) sel.value = prev;
+                alert('Failed to update type.');
+            }
+        } catch (e) {
+            try {
+                const prev = sel.getAttribute('data-prev') || '';
+                if (prev) sel.value = prev;
+            } catch (err) {}
+            alert('Error updating type: ' + (e && e.message ? e.message : 'Unknown error'));
+        } finally {
+            sel.disabled = false;
+        }
+    }
+})();
+</script>
 </body>
 </html>

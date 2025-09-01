@@ -19,6 +19,10 @@
         .columns { display: grid; grid-template-columns: 1fr; gap: 16px; }
         @media (min-width: 900px) { .columns { grid-template-columns: 1fr 1fr; } }
         .highlight-fun { background: #fff3cd; color: #92400e; padding: 0 3px; border-radius: 3px; }
+        .highlight-match { background: #dcfce7; color: #065f46; padding: 0 3px; border-radius: 3px; cursor: pointer; }
+        .highlight-active { outline: 2px solid #10b981; box-shadow: 0 0 0 2px rgba(16,185,129,0.2) inset; }
+        .filter-pill { display:inline-flex; align-items:center; gap:6px; background:#ecfeff; color:#0e7490; border:1px solid #a5f3fc; border-radius:9999px; padding:2px 8px; font-size:12px; }
+        .filter-pill button { background:none; color:#0e7490; border:0; cursor:pointer; padding:0; }
     </style>
 </head>
 <body>
@@ -55,6 +59,7 @@
                     <input type="checkbox" id="onlyFunToggle"> Only fun
                 </label>
             </h3>
+            <div id="wordFilterStatus" class="muted" style="margin:4px 0 8px 0; font-size:14px;"></div>
             <div id="alterEgoGroups">
                 @php $hasAny = false; @endphp
                 @foreach(($patterns ?? []) as $p)
@@ -78,10 +83,20 @@
 
         <div>
             <div class="card">
-                <h3 style="margin-top:0;">Token word matches</h3>
+                <h3 style="margin-top:0; display:flex; align-items:center; gap:10px;">Token word matches
+                    <label style="margin-left:auto; font-weight:normal; display:flex; align-items:center; gap:6px; font-size:14px;">
+                        <input type="checkbox" id="onlyUsedToggle" checked> Only used
+                    </label>
+                </h3>
                 @php
                     $groups = $matches['groups'] ?? [];
-                    ksort($groups, SORT_STRING);
+                    if (!empty($groups)) {
+                        uksort($groups, function($a, $b){
+                            if ($a === 'surname' && $b !== 'surname') return -1;
+                            if ($b === 'surname' && $a !== 'surname') return 1;
+                            return strcasecmp((string)$a, (string)$b);
+                        });
+                    }
                 @endphp
                 @if(empty($groups))
                     <div class="muted">No word matches found.</div>
@@ -100,24 +115,40 @@
                             @php ksort($byList, SORT_STRING); @endphp
                             @foreach($byList as $listType => $items)
                                 @php $count = count($items); $sample = array_slice($items, 0, 5); $rowId = md5($token.'|'.$listType); @endphp
-                                <tr style="border-bottom:1px solid #e5e7eb;">
+                                <tr id="row-{{ $rowId }}" data-rowid="{{ $rowId }}" data-token="{{ $token }}" data-list="{{ $listType }}" data-total="{{ $count }}" style="border-bottom:1px solid #e5e7eb;">
                                     <td style="padding:8px;">{{ $token }}</td>
                                     <td style="padding:8px;">
                                         <span class="tag">{{ $listType }}</span>
                                     </td>
-                                    <td style="padding:8px;">{{ $count }}</td>
+                                    <td style="padding:8px;"><span id="count-{{ $rowId }}">{{ $count }}</span></td>
                                     <td style="padding:8px;" class="muted">
-                                        <div id="sample-{{ $rowId }}" style="display:block;">
+                                        <div id="sample-{{ $rowId }}" style="display:none;">
                                             @foreach($sample as $it)
-                                                <span style="display:inline-block; margin-right:6px;">{{ $it['word'] }}</span>
+                                                @php $wid = (int)($it['id'] ?? 0); $w = (string)($it['word'] ?? ''); @endphp
+                                                @if(in_array($token, ['forename','surname']) && $listType === 'ok')
+                                                    <span class="tok-word" data-token="{{ $token }}" data-word="{{ $w }}" style="display:inline-block; margin-right:6px; cursor:pointer; text-decoration:underline;" onclick="promoteOkWord({{ $wid }}, '{{ addslashes($w) }}')" title="Promote to fun">{{ $w }}</span>
+                                                    <button type="button" class="link" style="border:0;background:none;color:#2563eb;cursor:pointer;padding:0;" onclick="window.setWordFilter('{{ addslashes($w) }}','{{ $token }}')"></button>
+                                                @elseif(in_array($token, ['forename','surname']))
+                                                    <span class="tok-word" data-token="{{ $token }}" data-word="{{ $w }}" style="display:inline-block; margin-right:6px; cursor:pointer; color:#2563eb; text-decoration:underline;" onclick="window.setWordFilter('{{ addslashes($w) }}','{{ $token }}')">{{ $w }}</span>
+                                                @else
+                                                    <span class="tok-word" data-token="{{ $token }}" data-word="{{ $w }}" style="display:inline-block; margin-right:6px;">{{ $w }}</span>
+                                                @endif
                                             @endforeach
                                             @if($count > count($sample))
                                                 <button type="button" class="link" style="border:0;background:none;color:#2563eb;cursor:pointer;padding:0;" onclick="toggleWords('{{ $rowId }}', true)">show all ({{ $count }})</button>
                                             @endif
                                         </div>
-                                        <div id="all-{{ $rowId }}" style="display:none; max-height:160px; overflow:auto;">
+                                        <div id="all-{{ $rowId }}" style="display:block; max-height:160px; overflow:auto;">
                                             @foreach($items as $it)
-                                                <span style="display:inline-block; margin-right:6px;">{{ $it['word'] }}</span>
+                                                @php $wid = (int)($it['id'] ?? 0); $w = (string)($it['word'] ?? ''); @endphp
+                                                @if(in_array($token, ['forename','surname']) && $listType === 'ok')
+                                                    <span class="tok-word" data-token="{{ $token }}" data-word="{{ $w }}" style="display:inline-block; margin-right:6px; cursor:pointer; text-decoration:underline;" onclick="promoteOkWord({{ $wid }}, '{{ addslashes($w) }}')" title="Promote to fun">{{ $w }}</span>
+                                                    <button type="button" class="link" style="border:0;background:none;color:#2563eb;cursor:pointer;padding:0;" onclick="window.setWordFilter('{{ addslashes($w) }}','{{ $token }}')"></button>
+                                                @elseif(in_array($token, ['forename','surname']))
+                                                    <span class="tok-word" data-token="{{ $token }}" data-word="{{ $w }}" style="display:inline-block; margin-right:6px; cursor:pointer; color:#2563eb; text-decoration:underline;" onclick="window.setWordFilter('{{ addslashes($w) }}','{{ $token }}')">{{ $w }}</span>
+                                                @else
+                                                    <span class="tok-word" data-token="{{ $token }}" data-word="{{ $w }}" style="display:inline-block; margin-right:6px;">{{ $w }}</span>
+                                                @endif
                                             @endforeach
                                             <div><button type="button" class="link" style="border:0;background:none;color:#2563eb;cursor:pointer;padding:0;" onclick="toggleWords('{{ $rowId }}', false)">show less</button></div>
                                         </div>
@@ -176,11 +207,14 @@
 </div>
 
 <script>
-// Build sets of known fun words from server-provided matches (lowercased)
+// Build sets of known fun words and all matched words from server-provided matches (lowercased)
 @php
     $funSurname = [];
     $funForename = [];
+    $allSurname = [];
+    $allForename = [];
     $groupsForFun = $matches['groups'] ?? [];
+    // collect fun
     if (isset($groupsForFun['surname']['fun'])) {
         foreach ($groupsForFun['surname']['fun'] as $it) {
             $w = strtolower((string)($it['word'] ?? ''));
@@ -193,15 +227,29 @@
             if ($w !== '') { $funForename[$w] = true; }
         }
     }
+    // collect all matched (both ok and fun)
+    if (isset($groupsForFun['surname'])) {
+        foreach ($groupsForFun['surname'] as $lt => $items) {
+            foreach ($items as $it) { $w = strtolower((string)($it['word'] ?? '')); if ($w !== '') { $allSurname[$w] = true; } }
+        }
+    }
+    if (isset($groupsForFun['forename'])) {
+        foreach ($groupsForFun['forename'] as $lt => $items) {
+            foreach ($items as $it) { $w = strtolower((string)($it['word'] ?? '')); if ($w !== '') { $allForename[$w] = true; } }
+        }
+    }
 @endphp
 const FUN_SURNAME = new Set(@json(array_keys($funSurname)));
 const FUN_FORENAME = new Set(@json(array_keys($funForename)));
+const ALL_SURNAME = new Set(@json(array_keys($allSurname)));
+const ALL_FORENAME = new Set(@json(array_keys($allForename)));
 
 (function(){
     const id = {{ $item->id }};
     let paused = {{ ($item->status === 'paused' || $item->status === 'idle') ? 'true' : 'false' }};
     let completed = {{ $item->status === 'completed' ? 'true' : 'false' }};
     const statusEl = document.getElementById('status');
+    const wordFilterStatus = document.getElementById('wordFilterStatus');
     const pattRow = document.getElementById('patternsRow');
     const pattS = document.getElementById('patternsSearched');
     const pattT = document.getElementById('patternsTotal');
@@ -214,7 +262,11 @@ const FUN_FORENAME = new Set(@json(array_keys($funForename)));
     const pauseBtn = document.getElementById('pauseBtn');
     const resumeBtn = document.getElementById('resumeBtn');
     const onlyFunToggle = document.getElementById('onlyFunToggle');
+    const onlyUsedToggle = document.getElementById('onlyUsedToggle');
     let onlyFun = false;
+    let onlyUsed = true;
+    let renderedOnce = false;
+    let wordFilter = { word: null, token: null };
 
     if (onlyFunToggle) {
         try {
@@ -225,6 +277,20 @@ const FUN_FORENAME = new Set(@json(array_keys($funForename)));
                 onlyFun = !!onlyFunToggle.checked;
                 try { localStorage.setItem('onlyFunToggle', onlyFun ? '1' : '0'); } catch (e) {}
                 // Re-render using last known progress if available
+                call("{{ route('source-names.progress', $item) }}", 'GET').then(render).catch(function(){});
+            });
+        } catch (e) { /* ignore */ }
+    }
+
+    if (onlyUsedToggle) {
+        try {
+            // Restore previous preference for Only used (default true)
+            const savedUsed = localStorage.getItem('onlyUsedToggle');
+            if (savedUsed === '0') { onlyUsed = false; onlyUsedToggle.checked = false; }
+            onlyUsedToggle.addEventListener('change', function(){
+                onlyUsed = !!onlyUsedToggle.checked;
+                try { localStorage.setItem('onlyUsedToggle', onlyUsed ? '1' : '0'); } catch (e) {}
+                // Refresh UI against latest progress to recompute used sets
                 call("{{ route('source-names.progress', $item) }}", 'GET').then(render).catch(function(){});
             });
         } catch (e) { /* ignore */ }
@@ -260,10 +326,13 @@ const FUN_FORENAME = new Set(@json(array_keys($funForename)));
             let ti = 0;
             for (let b of blocks) {
                 if (b.type === 'surname') {
-                    const tok = tokens[ti++] || '';
-                    const parts = tok.split('-');
-                    for (let part of parts) {
-                        if (FUN_SURNAME.has(String(part).toLowerCase())) return true;
+                    const c = Math.max(1, parseInt(b.count || 1, 10));
+                    for (let k = 0; k < c; k++) {
+                        const tok = tokens[ti++] || '';
+                        const parts = tok.split('-');
+                        for (let part of parts) {
+                            if (FUN_SURNAME.has(String(part).toLowerCase())) return true;
+                        }
                     }
                 } else {
                     const c = Math.max(1, parseInt(b.count || 1, 10));
@@ -279,54 +348,228 @@ const FUN_FORENAME = new Set(@json(array_keys($funForename)));
         return false;
     }
 
-    function highlightPhrase(phrase, template) {
+    // Generate all unique permutations of an array of strings
+    function permute(parts) {
+        const res = [];
+        const used = Array(parts.length).fill(false);
+        const cur = [];
+        const seen = new Set();
+        function backtrack() {
+            if (cur.length === parts.length) {
+                const key = cur.join('\u0001');
+                if (!seen.has(key)) { seen.add(key); res.push(cur.slice()); }
+                return;
+            }
+            for (let i = 0; i < parts.length; i++) {
+                if (used[i]) continue;
+                used[i] = true;
+                cur.push(parts[i]);
+                backtrack();
+                cur.pop();
+                used[i] = false;
+            }
+        }
+        backtrack();
+        return res;
+    }
+
+    function escHtml(s) {
+        return String(s).replace(/[&<>"']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]); });
+    }
+    function highlightToken(word, tokenName) {
+        const wStr = String(word);
+        if (tokenName === 'surname') {
+            const rawParts = wStr.split('-');
+            return rawParts.map(function(part){
+                const low = part.toLowerCase();
+                return FUN_SURNAME.has(low) ? ('<span class="highlight-fun">' + escHtml(part) + '</span>') : escHtml(part);
+            }).join('-');
+        }
+        if (tokenName === 'forename') {
+            const low = wStr.toLowerCase();
+            return FUN_FORENAME.has(low) ? ('<span class="highlight-fun">' + escHtml(wStr) + '</span>') : escHtml(wStr);
+        }
+        return escHtml(wStr);
+    }
+
+    function computePhraseVariants(phrase, template) {
+        // Helpers
+        function hyphenVariants(word) {
+            // Do not permute hyphen-internal parts; treat the token as atomic
+            return [String(word)];
+        }
+        function cartesian(arrays, sep) {
+            let acc = [''];
+            arrays.forEach(function(a){
+                const next = [];
+                acc.forEach(function(prefix){
+                    a.forEach(function(v){
+                        next.push(prefix ? (prefix + sep + v) : v);
+                    });
+                });
+                acc = next;
+            });
+            return acc;
+        }
+        function buildBlockVariants(tokensSlice) {
+            const perTok = tokensSlice.map(hyphenVariants);
+            if (perTok.length === 1) return perTok[0];
+            // Permute the order of tokens within the block, and combine internal variants
+            const idx = perTok.map((_, i) => i);
+            const orderings = permute(idx);
+            const results = [];
+            const seen = new Set();
+            orderings.forEach(function(ord){
+                const arrays = ord.map(i => perTok[i]);
+                const combos = cartesian(arrays, ' ');
+                combos.forEach(function(s){
+                    const key = s.toLowerCase();
+                    if (!seen.has(key)) { seen.add(key); results.push(s); }
+                });
+            });
+            return results;
+        }
+        // Build all variants by permuting hyphenated multi-part tokens and multi-token blocks (forename and surname)
+        const tokens = String(phrase).split(' ').filter(t => t.length > 0);
+        const blocks = parseBlocks(String(template || ''));
+        let ti = 0;
+        const segments = [];
+        for (let b of blocks) {
+            const c = Math.max(1, parseInt(b.count || 1, 10));
+            if (b.type === 'surname') {
+                const slice = [];
+                for (let k = 0; k < c; k++) { slice.push(tokens[ti++] || ''); }
+                const variants = buildBlockVariants(slice);
+                segments.push({name:'surname', variants});
+            } else {
+                if (b.name === 'forename') {
+                    const slice = [];
+                    for (let k = 0; k < c; k++) { slice.push(tokens[ti++] || ''); }
+                    const variants = buildBlockVariants(slice);
+                    segments.push({name:'forename', variants});
+                } else {
+                    for (let k = 0; k < c; k++) {
+                        const tok = tokens[ti++] || '';
+                        segments.push({name:b.name || 'other', variants: [tok]});
+                    }
+                }
+            }
+        }
+        // Cartesian product of segments' variants
+        let acc = [''];
+        const names = [];
+        segments.forEach(function(seg){
+            const next = [];
+            acc.forEach(function(prefix){
+                seg.variants.forEach(function(v){
+                    next.push((prefix ? (prefix + ' ') : '') + v);
+                });
+            });
+            acc = next;
+            names.push(seg.name);
+        });
+        // Global case-insensitive de-duplication of full phrase variants
+        const uniqAcc = [];
+        const seenAll = new Set();
+        acc.forEach(function(s){
+            const key = String(s).toLowerCase();
+            if (!seenAll.has(key)) { seenAll.add(key); uniqAcc.push(s); }
+        });
+        return { variants: uniqAcc, names: names };
+    }
+
+    let __phraseIdSeq = 0;
+    function highlightPhraseDisplay(phrase, template) {
         try {
             const tokens = String(phrase).split(' ').filter(t => t.length > 0);
             const blocks = parseBlocks(String(template || ''));
             const out = [];
             let ti = 0;
-            for (let idx = 0; idx < blocks.length; idx++) {
-                const b = blocks[idx];
-                const isLast = (idx === blocks.length - 1);
+            let hasMulti = false;
+            for (let b of blocks) {
+                const c = Math.max(1, parseInt(b.count || 1, 10));
                 if (b.type === 'surname') {
-                    const tok = tokens[ti++] || '';
-                    const rawParts = tok.split('-');
-                    // Prepare highlighted parts
-                    const partsHighlighted = rawParts.map(function(part){
-                        const low = part.toLowerCase();
-                        if (FUN_SURNAME.has(low)) {
-                            return '<span class="highlight-fun">' + part + '</span>';
-                        }
-                        return part;
-                    });
-                    if (isLast && parseInt(b.count || 1, 10) === 2) {
-                        // Duplicate entire phrase: prefix + A-B, prefix + B-A
-                        const prefix = out.join(' ').trim();
-                        const pref = prefix.length ? prefix + ' ' : '';
-                        const ab = partsHighlighted.join('-');
-                        const ba = partsHighlighted.slice().reverse().join('-');
-                        return (pref + ab + ', ' + pref + ba);
-                    }
-                    out.push(partsHighlighted.join('-'));
-                } else {
-                    // other tokens; handle counts (e.g., forename:2)
-                    const c = Math.max(1, parseInt(b.count || 1, 10));
+                    const parts = [];
                     for (let k = 0; k < c; k++) {
                         const tok = tokens[ti++] || '';
-                        if (b.name === 'forename') {
-                            const low = tok.toLowerCase();
-                            if (FUN_FORENAME.has(low)) {
-                                out.push('<span class="highlight-fun">' + tok + '</span>');
-                                continue;
-                            }
+                        parts.push(highlightToken(tok, 'surname'));
+                    }
+                    if (c > 1) { hasMulti = true; }
+                    out.push(parts.join(' '));
+                } else {
+                    if (b.name === 'forename') {
+                        const parts = [];
+                        for (let k = 0; k < c; k++) {
+                            const tok = tokens[ti++] || '';
+                            parts.push(highlightToken(tok, 'forename'));
                         }
-                        out.push(tok);
+                        if (c > 1) { hasMulti = true; }
+                        out.push(parts.join(' '));
+                    } else {
+                        for (let k = 0; k < c; k++) {
+                            const tok = tokens[ti++] || '';
+                            out.push(highlightToken(tok, b.name));
+                        }
                     }
                 }
             }
-            // If mismatch between tokens and blocks, fall back to original phrase
-            if (out.join(' ').trim().length === 0) return phrase;
-            return out.join(' ');
+            const baseHtml = out.join(' ');
+            if (!hasMulti) return baseHtml;
+            // Build all variants
+            const { variants } = computePhraseVariants(phrase, template);
+            // Unique and stable order; ensure original phrase first
+            const seen = new Set();
+            const list = [];
+            const original = String(phrase);
+            const origLower = original.toLowerCase();
+            list.push(original);
+            seen.add(origLower);
+            variants.forEach(v => { const low = String(v).toLowerCase(); if (!seen.has(low)) { seen.add(low); list.push(v); } });
+            const total = list.length;
+            const pid = (++__phraseIdSeq);
+            const sid = 'ph-sample-' + pid;
+            const aid = 'ph-all-' + pid;
+            // Build expanded list with highlighting
+            const expanded = list.map(function(v){
+                // Re-highlight each variant
+                const toks = v.split(' ').filter(t => t.length > 0);
+                const blocks2 = parseBlocks(String(template || ''));
+                const out2 = [];
+                let ti2 = 0;
+                for (let b2 of blocks2) {
+                    const c2 = Math.max(1, parseInt(b2.count || 1, 10));
+                    if (b2.type === 'surname') {
+                        const parts = [];
+                        for (let kk = 0; kk < c2; kk++) {
+                            parts.push(highlightToken(toks[ti2++] || '', 'surname'));
+                        }
+                        out2.push(parts.join(' '));
+                    } else {
+                        if (b2.name === 'forename') {
+                            const parts = [];
+                            for (let kk = 0; kk < c2; kk++) {
+                                parts.push(highlightToken(toks[ti2++] || '', 'forename'));
+                            }
+                            out2.push(parts.join(' '));
+                        } else {
+                            for (let kk = 0; kk < c2; kk++) {
+                                out2.push(highlightToken(toks[ti2++] || '', b2.name));
+                            }
+                        }
+                    }
+                }
+                return '<div>' + out2.join(' ') + '</div>';
+            }).join('');
+            return (
+                '<div id="' + sid + '" style="display:block;">' +
+                    baseHtml +
+                    (total > 1 ? ' <button type="button" class="link" style="border:0;background:none;color:#2563eb;cursor:pointer;padding:0;" onclick="togglePhraseVariants(\'' + pid + '\', true)">expand (' + total + ')</button>' : '') +
+                '</div>' +
+                '<div id="' + aid + '" style="display:none; max-height:160px; overflow:auto;">' +
+                    expanded +
+                    (total > 1 ? '<div><button type="button" class="link" style="border:0;background:none;color:#2563eb;cursor:pointer;padding:0;" onclick="togglePhraseVariants(\'' + pid + '\', false)">show less</button></div>' : '') +
+                '</div>'
+            );
         } catch (e) {
             return phrase;
         }
@@ -349,6 +592,252 @@ const FUN_FORENAME = new Set(@json(array_keys($funForename)));
         return await res.json();
     }
 
+    async function promoteOkWord(id, word) {
+        try {
+            if (!id) return;
+            if (!confirm('Promote ' + word + ' to fun?')) return;
+            const url = '{{ route('words.promote', ['word' => 'WORD_ID']) }}'.replace('WORD_ID', String(id));
+            const res = await callJson(url, {});
+            if (res && res.ok) {
+                // easiest, reliable refresh so counts and fun filters update
+                window.location.reload();
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    function phraseContainsWord(phrase, template, word, tokenName) {
+        if (!word) return true;
+        try {
+            const tokens = String(phrase).split(' ').filter(t => t.length > 0);
+            const blocks = parseBlocks(String(template || ''));
+            let ti = 0;
+            const wlow = String(word).toLowerCase();
+            for (let b of blocks) {
+                const c = Math.max(1, parseInt(b.count || 1, 10));
+                if (b.type === 'surname') {
+                    for (let k = 0; k < c; k++) {
+                        const tok = tokens[ti++] || '';
+                        const parts = tok.split('-');
+                        for (let part of parts) {
+                            if ((!tokenName || tokenName === 'surname') && part.toLowerCase() === wlow) return true;
+                        }
+                    }
+                } else {
+                    for (let k = 0; k < c; k++) {
+                        const tok = tokens[ti++] || '';
+                        if (b.name === 'forename') {
+                            if ((!tokenName || tokenName === 'forename') && tok.toLowerCase() === wlow) return true;
+                        } else {
+                            // other tokens not part of this filter requirement
+                        }
+                    }
+                }
+            }
+        } catch (e) { /* ignore */ }
+        return false;
+    }
+
+    function appendGroupToDom(g) {
+        const all = Array.isArray(g.phrases) ? g.phrases.slice() : [];
+        const list1 = onlyFun ? all.filter(function(ph){ return hasAnyFunToken(ph, g.pattern); }) : all;
+        const list = (wordFilter.word ? list1.filter(function(ph){ return phraseContainsWord(ph, g.pattern, wordFilter.word, wordFilter.token); }) : list1);
+        if (list.length === 0) return false; // nothing to append when filtered
+        // Remove empty message if present
+        if (groupsEl && groupsEl.firstChild && groupsEl.firstChild.classList && groupsEl.firstChild.classList.contains('muted')) {
+            groupsEl.innerHTML = '';
+        }
+        const wrap = document.createElement('div');
+        wrap.style.marginBottom = '10px';
+        const head = document.createElement('div');
+        const strong = document.createElement('strong');
+        strong.textContent = g.pattern;
+        const rank = document.createElement('span');
+        rank.className = 'tag';
+        rank.style.marginLeft = '6px';
+        rank.textContent = list.length + ' found';
+        head.appendChild(strong);
+        head.appendChild(rank);
+        wrap.appendChild(head);
+        const ul = document.createElement('ul');
+        ul.style.marginTop = '6px';
+        list.forEach(function (ph) {
+            const li = document.createElement('li');
+            li.innerHTML = highlightPhraseDisplay(ph, g.pattern);
+            ul.appendChild(li);
+        });
+        wrap.appendChild(ul);
+        groupsEl.appendChild(wrap);
+        return true;
+    }
+
+    function setWordFilter(word, token) {
+        try {
+            const w = String(word || '').trim();
+            const t = String(token || '').toLowerCase();
+            if (!w) { wordFilter = {word:null, token:null}; }
+            else {
+                if (wordFilter.word && wordFilter.word.toLowerCase() === w.toLowerCase() && wordFilter.token === t) {
+                    wordFilter = { word: null, token: null };
+                } else {
+                    wordFilter = { word: w, token: (t === 'surname' || t === 'forename') ? t : null };
+                }
+            }
+            // Re-render based on latest progress to refresh highlighting
+            call("{{ route('source-names.progress', $item) }}", 'GET').then(render).catch(function(){});
+        } catch (e) { /* ignore */ }
+    }
+    function clearWordFilter(){ setWordFilter('', ''); }
+    window.setWordFilter = setWordFilter;
+    window.clearWordFilter = clearWordFilter;
+
+    function updateWordFilterStatus(){
+        if (!wordFilterStatus) return;
+        if (wordFilter.word) {
+            const label = (wordFilter.token ? (wordFilter.token + ': ') : '') + wordFilter.word;
+            wordFilterStatus.innerHTML = '<span class="filter-pill">Filtering by ' + escHtml(label) + ' <button type="button" onclick="window.clearWordFilter()">clear</button></span>';
+        } else {
+            wordFilterStatus.textContent = '';
+        }
+    }
+
+    function computeUsedWordSetsFromGroups(groups) {
+        const usedForename = new Set();
+        const usedSurname = new Set();
+        const byToken = {};
+        try {
+            const arr = Array.isArray(groups) ? groups : [];
+            arr.forEach(function(g){
+                const allPhrases = Array.isArray(g.phrases) ? g.phrases : [];
+                // Apply same filtering as display list
+                const filtered1 = onlyFun ? allPhrases.filter(function(ph){ return hasAnyFunToken(ph, g.pattern); }) : allPhrases;
+                const filtered = (wordFilter.word ? filtered1.filter(function(ph){ return phraseContainsWord(ph, g.pattern, wordFilter.word, wordFilter.token); }) : filtered1);
+                const blocks = parseBlocks(String(g.pattern || ''));
+                filtered.forEach(function(ph){
+                    const tokens = String(ph).split(' ').filter(t => t.length > 0);
+                    let ti = 0;
+                    for (let b of blocks) {
+                        const c = Math.max(1, parseInt(b.count || 1, 10));
+                        if (b.type === 'surname') {
+                            for (let k = 0; k < c; k++) {
+                                const tok = tokens[ti++] || '';
+                                const low = tok.toLowerCase();
+                                if (low) {
+                                    usedSurname.add(low);
+                                    byToken['surname'] = byToken['surname'] || new Set();
+                                    byToken['surname'].add(low);
+                                }
+                                // also include hyphen parts
+                                const parts = tok.split('-');
+                                for (let part of parts) {
+                                    const pl = String(part).toLowerCase();
+                                    if (pl) {
+                                        usedSurname.add(pl);
+                                        byToken['surname'] = byToken['surname'] || new Set();
+                                        byToken['surname'].add(pl);
+                                    }
+                                }
+                            }
+                        } else if (b.name === 'forename') {
+                            for (let k = 0; k < c; k++) {
+                                const tok = tokens[ti++] || '';
+                                const low = tok.toLowerCase();
+                                if (low) {
+                                    usedForename.add(low);
+                                    byToken['forename'] = byToken['forename'] || new Set();
+                                    byToken['forename'].add(low);
+                                }
+                            }
+                        } else {
+                            for (let k = 0; k < c; k++) {
+                                const tok = tokens[ti++] || '';
+                                const low = String(tok).toLowerCase();
+                                const tname = String(b.name || 'other').toLowerCase();
+                                if (low) {
+                                    byToken[tname] = byToken[tname] || new Set();
+                                    byToken[tname].add(low);
+                                }
+                            }
+                        }
+                    }
+                });
+            });
+        } catch (e) { /* ignore */ }
+        return { forename: usedForename, surname: usedSurname, byToken: byToken };
+    }
+
+    function refreshTokenWordsUI(used) {
+        try {
+            const byToken = used.byToken || {};
+            const nodes = document.querySelectorAll('.tok-word');
+            nodes.forEach(function(n){
+                const token = String(n.getAttribute('data-token') || '').toLowerCase();
+                const word = String(n.getAttribute('data-word') || '').toLowerCase();
+                const set = byToken[token];
+                const isUsed = !!(set && set.has(word));
+                n.classList.remove('highlight-match', 'highlight-active');
+                // Reset clickability by default
+                n.style.cursor = '';
+                n.onclick = null;
+                if (isUsed) {
+                    n.classList.add('highlight-match');
+                    // make clickable to filter only for forename/surname
+                    if (token === 'forename' || token === 'surname') {
+                        n.style.cursor = 'pointer';
+                        n.onclick = function(){ window.setWordFilter(n.getAttribute('data-word') || '', token); };
+                    }
+                }
+                // active indicator if matches current filter
+                if (wordFilter.word && (token === wordFilter.token) && wordFilter.word.toLowerCase() === word) {
+                    n.classList.add('highlight-active');
+                }
+            });
+        } catch (e) { /* ignore */ }
+    }
+
+    function applyOnlyUsedFilterToTable(used) {
+        try {
+            const byToken = used.byToken || {};
+            const rows = document.querySelectorAll('tr[data-rowid]');
+            rows.forEach(function(row){
+                const rowId = row.getAttribute('data-rowid') || '';
+                const token = String(row.getAttribute('data-token') || '').toLowerCase();
+                const total = parseInt(row.getAttribute('data-total') || '0', 10) || 0;
+                const set = byToken[token] || null;
+                const allContainer = document.getElementById('all-' + rowId);
+                const sampleContainer = document.getElementById('sample-' + rowId);
+                let visibleCount = 0;
+                const showWord = function(wordLower) {
+                    if (!onlyUsed) return true;
+                    return !!(set && set.has(wordLower));
+                };
+                // Iterate both containers
+                [allContainer, sampleContainer].forEach(function(container){
+                    if (!container) return;
+                    const words = container.querySelectorAll('.tok-word');
+                    words.forEach(function(n){
+                        const wordLower = String(n.getAttribute('data-word') || '').toLowerCase();
+                        const shouldShow = showWord(wordLower);
+                        n.style.display = shouldShow ? '' : 'none';
+                        // hide/show adjacent inline filter button (only present for ok forename/surname items)
+                        const sib = n.nextElementSibling;
+                        if (sib && sib.tagName === 'BUTTON' && sib.classList.contains('link')) {
+                            sib.style.display = shouldShow ? '' : 'none';
+                        }
+                        if (container === allContainer && shouldShow) {
+                            visibleCount++;
+                        }
+                    });
+                });
+                // Update count and row visibility
+                const countEl = document.getElementById('count-' + rowId);
+                if (countEl) {
+                    countEl.textContent = onlyUsed ? String(visibleCount) : String(total);
+                }
+                row.style.display = (onlyUsed && visibleCount === 0) ? 'none' : '';
+            });
+        } catch (e) { /* ignore */ }
+    }
+
     function render(p) {
         statusEl.textContent = p.status;
         const groupsArr = Array.isArray(p.groups) ? p.groups : [];
@@ -364,62 +853,75 @@ const FUN_FORENAME = new Set(@json(array_keys($funForename)));
         }
         // Alter egos counts
         aeFound.textContent = p.alterEgosFound;
-        if (patternsWithAE) patternsWithAE.textContent = String(groupsArr.length);
-        // compute fun alter egos found and number of patterns containing at least one fun token
-        try {
-            let funCount = 0;
-            let funPatterns = 0;
-            groupsArr.forEach(function(g){
-                const phrases = Array.isArray(g.phrases) ? g.phrases : [];
+        // Compute fun/AE counts: full recompute when doing full render; incremental otherwise
+        const hasLast = !!p.lastGroup;
+        if (!renderedOnce || !hasLast) {
+            if (patternsWithAE) patternsWithAE.textContent = String(groupsArr.length);
+            try {
+                let funCount = 0;
+                let funPatterns = 0;
+                groupsArr.forEach(function(g){
+                    const phrases = Array.isArray(g.phrases) ? g.phrases : [];
+                    let hasFunInGroup = false;
+                    phrases.forEach(function(ph){
+                        const isFun = hasAnyFunToken(ph, g.pattern);
+                        if (isFun) { funCount++; hasFunInGroup = true; }
+                    });
+                    if (hasFunInGroup) funPatterns++;
+                });
+                if (funAeFound) funAeFound.textContent = String(funCount);
+                if (patternsWithFunAE) patternsWithFunAE.textContent = String(funPatterns);
+            } catch (e) { if (funAeFound) funAeFound.textContent = '0'; if (patternsWithFunAE) patternsWithFunAE.textContent = '0'; }
+        } else if (hasLast) {
+            // Incremental update for lastGroup
+            if (patternsWithAE) {
+                const cur = parseInt(patternsWithAE.textContent || '0', 10) || 0;
+                patternsWithAE.textContent = String(cur + 1);
+            }
+            try {
+                const phrases = Array.isArray(p.lastGroup.phrases) ? p.lastGroup.phrases : [];
+                let addFun = 0;
                 let hasFunInGroup = false;
                 phrases.forEach(function(ph){
-                    const isFun = hasAnyFunToken(ph, g.pattern);
-                    if (isFun) { funCount++; hasFunInGroup = true; }
+                    if (hasAnyFunToken(ph, p.lastGroup.pattern)) { addFun++; hasFunInGroup = true; }
                 });
-                if (hasFunInGroup) funPatterns++;
-            });
-            if (funAeFound) funAeFound.textContent = String(funCount);
-            if (patternsWithFunAE) patternsWithFunAE.textContent = String(funPatterns);
-        } catch (e) { if (funAeFound) funAeFound.textContent = '0'; if (patternsWithFunAE) patternsWithFunAE.textContent = '0'; }
+                if (funAeFound) {
+                    const curFun = parseInt(funAeFound.textContent || '0', 10) || 0;
+                    funAeFound.textContent = String(curFun + addFun);
+                }
+                if (hasFunInGroup && patternsWithFunAE) {
+                    const curFP = parseInt(patternsWithFunAE.textContent || '0', 10) || 0;
+                    patternsWithFunAE.textContent = String(curFP + 1);
+                }
+            } catch (e) { /* ignore */ }
+        }
         elapsed.textContent = Math.max(0, parseInt(p.timeElapsed || 0, 10));
         // Render grouped alter egos by pattern
         if (groupsEl) {
-            groupsEl.innerHTML = '';
-            const groups = p.groups || [];
-            if (groups.length === 0) {
-                const div = document.createElement('div');
-                div.className = 'muted';
-                div.textContent = 'No alter egos yet. Processing will populate this section.';
-                groupsEl.appendChild(div);
-            } else {
-                groups.forEach(function (g) {
-                    const all = Array.from(g.phrases || []);
-                    const list = onlyFun ? all.filter(function(ph){ return hasAnyFunToken(ph, g.pattern); }) : all;
-                    if (list.length === 0) return; // skip empty groups when filtering
-                    const wrap = document.createElement('div');
-                    wrap.style.marginBottom = '10px';
-                    const head = document.createElement('div');
-                    const strong = document.createElement('strong');
-                    strong.textContent = g.pattern;
-                    const rank = document.createElement('span');
-                    rank.className = 'tag';
-                    rank.style.marginLeft = '6px';
-                    rank.textContent = list.length + ' found';
-                    head.appendChild(strong);
-                    head.appendChild(rank);
-                    wrap.appendChild(head);
-                    const ul = document.createElement('ul');
-                    ul.style.marginTop = '6px';
-                    list.forEach(function (ph) {
-                        const li = document.createElement('li');
-                        li.innerHTML = highlightPhrase(ph, g.pattern);
-                        ul.appendChild(li);
-                    });
-                    wrap.appendChild(ul);
-                    groupsEl.appendChild(wrap);
-                });
+            if (!renderedOnce || !p.lastGroup) {
+                groupsEl.innerHTML = '';
+                const groups = p.groups || [];
+                if (groups.length === 0) {
+                    const div = document.createElement('div');
+                    div.className = 'muted';
+                    div.textContent = 'No alter egos yet. Processing will populate this section.';
+                    groupsEl.appendChild(div);
+                } else {
+                    groups.forEach(function (g) { appendGroupToDom(g); });
+                }
+                renderedOnce = true;
+            } else if (p.lastGroup) {
+                appendGroupToDom(p.lastGroup);
             }
         }
+        // Update word filter status UI
+        updateWordFilterStatus();
+        // Highlight used words in the token match column and make them clickable
+        try {
+            const used = computeUsedWordSetsFromGroups(groupsArr);
+            refreshTokenWordsUI(used);
+            applyOnlyUsedFilterToTable(used);
+        } catch (e) { /* ignore */ }
         paused = p.status === 'paused';
         completed = p.status === 'completed';
         pauseBtn.style.display = (!paused && !completed) ? 'inline-block' : 'none';
@@ -448,6 +950,13 @@ const FUN_FORENAME = new Set(@json(array_keys($funForename)));
     window.toggleTokenWords = function(id, expand) {
         const sample = document.getElementById('tok-sample-' + id);
         const all = document.getElementById('tok-all-' + id);
+        if (!sample || !all) return;
+        if (expand) { sample.style.display = 'none'; all.style.display = 'block'; }
+        else { all.style.display = 'none'; sample.style.display = 'block'; }
+    }
+    window.togglePhraseVariants = function(id, expand) {
+        const sample = document.getElementById('ph-sample-' + id);
+        const all = document.getElementById('ph-all-' + id);
         if (!sample || !all) return;
         if (expand) { sample.style.display = 'none'; all.style.display = 'block'; }
         else { all.style.display = 'none'; sample.style.display = 'block'; }

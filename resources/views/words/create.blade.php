@@ -42,12 +42,22 @@
         <div class="row" style="margin-top:10px;">
             <div class="field">
                 <label for="token_type">Token type</label>
-                <input id="token_type" name="token_type" type="text" value="{{ old('token_type', $word->token_type) }}" required>
+                @php $tokenOld = old('token_type', $word->token_type); @endphp
+                <select id="token_type" name="token_type" required style="padding:10px 12px; border:1px solid #d1d5db; border-radius:6px;">
+                    @foreach(['forename','surname','title','suffix'] as $opt)
+                        <option value="{{ $opt }}" {{ strtolower($tokenOld) === $opt ? 'selected' : '' }}>{{ ucfirst($opt) }}</option>
+                    @endforeach
+                </select>
                 @error('token_type')<div class="error">{{ $message }}</div>@enderror
             </div>
             <div class="field">
                 <label for="list_type">List type</label>
-                <input id="list_type" name="list_type" type="text" value="{{ old('list_type', $word->list_type) }}" required>
+                @php $listOld = old('list_type', $word->list_type); @endphp
+                <select id="list_type" name="list_type" required style="padding:10px 12px; border:1px solid #d1d5db; border-radius:6px;">
+                    @foreach(['fun','ok','boring'] as $opt)
+                        <option value="{{ $opt }}" {{ strtolower($listOld) === $opt ? 'selected' : '' }}>{{ ucfirst($opt) }}</option>
+                    @endforeach
+                </select>
                 @error('list_type')<div class="error">{{ $message }}</div>@enderror
             </div>
         </div>

@@ -17,9 +17,9 @@ final class PhraseBuilderService
      *
      * @param array<int,string> $words      Words in the original slot order (one per slot)
      * @param array<int,array{name:string,pos:int}> $slotOrder Slot definitions in the original order
-     * @param bool $displayDoubleSurnameVariants If true, lists both variants for double-surname runs (display-only)
+     * @param bool $displayMultipleVariants If true, lists both variants for double-surname runs (display-only)
      */
-    public function formatPhraseBySlots(array $words, array $slotOrder, bool $displayDoubleSurnameVariants = false): string
+    public function formatPhraseBySlots(array $words, array $slotOrder, bool $displayMultipleVariants = false): string
     {
         $parts = [];
         $wi = 0; // index into $words
@@ -28,28 +28,28 @@ final class PhraseBuilderService
             $slot = $slotOrder[$i];
             $name = strtolower((string)($slot['name'] ?? ''));
 
-            if ($name === 'surname') {
-                $surnames = [];
-                // Collect this and any subsequent consecutive surname slots
+            if (in_array($name, ['forename','surname'])) {
+                $variants = [];
+                // Collect this and any subsequent consecutive multi slots
                 $j = $i;
-                while ($j < $n && strtolower((string)($slotOrder[$j]['name'] ?? '')) === 'surname') {
+                while ($j < $n && strtolower((string)($slotOrder[$j]['name'] ?? '')) === $name) {
                     $word = $words[$wi] ?? '';
                     // Capitalize: first letter uppercase, rest lowercase
                     $word = $this->capitalizeWord($word);
-                    if ($word !== '') $surnames[] = $word;
+                    if ($word !== '') $variants[] = $word;
                     $wi++; $j++;
                 }
                 // Move outer loop to the last consumed surname slot
                 $i = $j - 1;
-                if (!empty($surnames)) {
-                    if ($displayDoubleSurnameVariants && count($surnames) === 2) {
+                if (!empty($variants)) {
+                    if ($displayMultipleVariants && in_array(count($variants), [2, 3])) {
                         // If the surname block is at the end of the phrase, duplicate the full phrase with both orders
-                        $ab = $surnames[0] . '-' . $surnames[1];
-                        $ba = $surnames[1] . '-' . $surnames[0];
+                        $ab = $variants[0] . '-' . $variants[1];
+                        $ba = $variants[1] . '-' . $variants[0];
                         // List both orders within the surname token (keeps entire phrase a single string)
                         $parts[] = $ab . ', ' . $ba;
                     } else {
-                        $parts[] = implode('-', $surnames);
+                        $parts[] = implode('-', $variants);
                     }
                 }
             } else {
@@ -64,8 +64,23 @@ final class PhraseBuilderService
     private function capitalizeWord(string $w): string
     {
         if ($w === '') return $w;
-        // Basic ASCII title-case for consistency; input words expected to be [A-Za-z]+
+        // Title-case within the word: capitalize first letter and any letter after apostrophe or hyphen
         $lw = strtolower($w);
-        return strtoupper($lw[0]) . substr($lw, 1);
+        $len = strlen($lw);
+        $out = '';
+        for ($i = 0; $i < $len; $i++) {
+            $ch = $lw[$i];
+            if ($i === 0) {
+                $out .= strtoupper($ch);
+            } else {
+                $prev = $lw[$i-1];
+                if ($prev === "'" || $prev === '-') {
+                    $out .= strtoupper($ch);
+                } else {
+                    $out .= $ch;
+                }
+            }
+        }
+        return $out;
     }
 }

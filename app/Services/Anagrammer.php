@@ -88,10 +88,9 @@ final class Anagrammer
             $this->candidates[$slot] = [];
             $this->letterIndex[$slot] = []; // e.g. 'a' => [0,7,13]
             foreach ($words as $i => $w) {
-                // Reject any candidate containing non-letter characters (punctuation, digits, etc.)
-                if (preg_match('/[^a-z]/i', $w)) continue;
+                // Allow punctuation like apostrophes/hyphens; rely on normalization for histograms
                 $norm = $this->norm($w);
-                if ($norm === '') continue;
+                if ($norm === '') continue; // skip if no letters remain
                 $hist = $this->hist($norm);
                 $entry = ['name' => $w, 'len' => strlen($norm), 'hist' => $hist];
                 $this->candidates[$slot][$i] = $entry;

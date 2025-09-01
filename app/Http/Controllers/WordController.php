@@ -65,6 +65,23 @@ class WordController extends Controller
         return redirect()->route('words.index')->with('status', 'Word deleted.');
     }
 
+    // Promote a word from OK to FUN (AJAX)
+    public function promote(Request $request, Word $word)
+    {
+        // Only allow promotion for fun-able tokens
+        $funAble = ['forename', 'surname'];
+        if (!in_array(strtolower((string)$word->token_type), $funAble, true)) {
+            return response()->json(['ok' => false, 'error' => 'Token not fun-able'], 400);
+        }
+        // No-op if already fun
+        if (strtolower((string)$word->list_type) === 'fun') {
+            return response()->json(['ok' => true, 'already' => true]);
+        }
+        $word->list_type = 'fun';
+        $word->save();
+        return response()->json(['ok' => true]);
+    }
+
     private function validateData(Request $request, ?int $ignoreId = null): array
     {
         $unique = 'unique:words,word';

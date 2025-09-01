@@ -5,22 +5,20 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class Word extends Model
+class AnagramGroup extends Model
 {
     use HasFactory;
 
-    protected $table = 'words';
+    protected $table = 'anagram_groups';
 
     protected $fillable = [
-        'word',
         'token_type',
-        'list_type',
         'signature',
-        'anagram_group_id',
+        'words_count',
     ];
 
-    public function anagramGroup()
+    public function words()
     {
-        return $this->belongsTo(AnagramGroup::class);
+        return $this->hasMany(Word::class);
     }
 }

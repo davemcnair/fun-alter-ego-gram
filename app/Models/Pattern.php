@@ -12,6 +12,7 @@ class Pattern extends Model
     protected $fillable = [
         'template',
         'popularity_rank',
+        'pattern_type',
         'min_total_length',
         'forename_count',
         'surname_count',

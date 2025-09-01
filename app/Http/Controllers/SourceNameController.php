@@ -204,7 +204,23 @@ class SourceNameController extends Controller
             $source->save();
         }
 
-        return response()->json(['ok' => true] + $this->progressPayload($source->fresh()));
+        $payload = ['ok' => true] + $this->progressPayload($source->fresh());
+        // Attach the just-completed group to enable incremental UI append
+        if (isset($next)) {
+            $phrases = \App\Models\AlterEgo::where('source_name_id', $source->id)
+                ->where('source_name_pattern_id', $next->id)
+                ->orderBy('id')
+                ->pluck('phrase')
+                ->all();
+            if (!empty($phrases)) {
+                $payload['lastGroup'] = [
+                    'pattern' => $next->pattern_template,
+                    'rank' => (int) $next->popularity_rank,
+                    'phrases' => array_values(array_unique($phrases)),
+                ];
+            }
+        }
+        return response()->json($payload);
     }
 
     public function pause(SourceName $source_name)

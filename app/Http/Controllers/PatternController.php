@@ -4,19 +4,43 @@ namespace App\Http\Controllers;
 
 use App\Models\Pattern;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 
 class PatternController extends Controller
 {
     public function index(Request $request)
     {
-        $q = (string) $request->get('q', '');
-        $perPage = max(1, (int) $request->get('per_page', 25));
+        $token = (string) $request->get('token', '');
         $query = Pattern::query()->orderBy('popularity_rank');
-        if ($q !== '') {
-            $query->where('template', 'like', "%$q%");
+        if ($token !== '') {
+            switch (strtolower($token)) {
+                case 'title':
+                    $query->where('has_title', true);
+                    break;
+                case 'forename':
+                    $query->where('forename_count', '>', 0);
+                    break;
+                case 'initials':
+                    $query->where('has_initials', true);
+                    break;
+                case 'prefix':
+                    $query->where('has_prefix', true);
+                    break;
+                case 'surname':
+                    $query->where('surname_count', '>', 0);
+                    break;
+                case 'suffix':
+                    $query->where('has_suffix', true);
+                    break;
+                case 'honorific':
+                    $query->where('has_honorific', true);
+                    break;
+            }
         }
-        $items = $query->paginate($perPage)->appends(['q' => $q, 'per_page' => $perPage]);
-        return view('patterns.index', compact('items', 'q', 'perPage'));
+        // No pagination per requirement
+        $items = $query->get();
+        $hasTypeColumn = Schema::hasColumn('patterns', 'pattern_type');
+        return view('patterns.index', compact('items', 'token', 'hasTypeColumn'));
     }
 
     public function create()
@@ -48,6 +72,21 @@ class PatternController extends Controller
     {
         $pattern->delete();
         return redirect()->route('patterns.index')->with('status', 'Pattern deleted.');
+    }
+
+    // Inline update for pattern type (AJAX)
+    public function updateType(Request $request, Pattern $pattern)
+    {
+        $data = $request->validate([
+            'pattern_type' => ['required','in:standard,longer,exotic'],
+        ]);
+        // If the column doesn't exist (migration not yet applied), avoid a 500 and inform the client
+        if (!Schema::hasColumn('patterns', 'pattern_type')) {
+            return response()->json(['ok' => false, 'error' => 'pattern_type column not found. Please run migrations.'], 400);
+        }
+        $pattern->pattern_type = (string)$data['pattern_type'];
+        $pattern->save();
+        return response()->json(['ok' => true, 'id' => $pattern->id, 'pattern_type' => $pattern->pattern_type]);
     }
 
     /**

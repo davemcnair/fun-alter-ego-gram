@@ -10,6 +10,9 @@ final class Anagrammer
     /** @var array<string, array<string, array<int>>> letter -> list indices per token type */
     private array $letterIndex = [];
 
+    /** @var array<string, array<string, int>> per slot type: max occurrences of each letter in any candidate */
+    private array $slotLetterMax = [];
+
     private PhraseBuilderService $phraseBuilder;
 
     /** @param array<string, string[]> $matches e.g. ['forename'=>['Dave',...], 'surname'=>['Mongrel',...], 'title'=>['Vicar',...]] */
@@ -81,12 +84,13 @@ final class Anagrammer
         }
     }
 
-    /** Precompute histograms and a letter→candidate index per token type */
+    /** Precompute histograms, letter→candidate index, and per-slot letter maxima */
     private function precompute(): void
     {
         foreach ($this->matches as $slot => $words) {
             $this->candidates[$slot] = [];
             $this->letterIndex[$slot] = []; // e.g. 'a' => [0,7,13]
+            $this->slotLetterMax[$slot] = [];
             foreach ($words as $i => $w) {
                 // Allow punctuation like apostrophes/hyphens; rely on normalization for histograms
                 $norm = $this->norm($w);
@@ -97,6 +101,9 @@ final class Anagrammer
                 foreach ($hist as $ch => $n) {
                     $this->letterIndex[$slot][$ch] ??= [];
                     $this->letterIndex[$slot][$ch][] = $i;
+                    // track per-letter maximum count among candidates for this slot type
+                    $prevMax = $this->slotLetterMax[$slot][$ch] ?? 0;
+                    if ($n > $prevMax) { $this->slotLetterMax[$slot][$ch] = $n; }
                 }
             }
         }
@@ -177,16 +184,50 @@ final class Anagrammer
      */
     private function narrowCandidates(string $slot, array $need, int $cap = PHP_INT_MAX): array
     {
-        // For correctness in unit tests, avoid aggressive narrowing that may drop valid branches.
-        // Simply return all candidate indices for this slot and let canCover/subtract prune.
-        return array_keys($this->candidates[$slot] ?? []);
+        $all = $this->candidates[$slot] ?? [];
+        if (empty($all) || empty($need)) return array_keys($all);
+        $idxByLetter = $this->letterIndex[$slot] ?? [];
+        $union = [];
+        // Union indices for letters still needed
+        foreach ($need as $ch => $n) {
+            if (isset($idxByLetter[$ch])) {
+                foreach ($idxByLetter[$ch] as $i) { $union[$i] = true; }
+            }
+        }
+        if (empty($union)) return [];
+        $indices = array_keys($union);
+        // Filter by canCover(need, cand.hist)
+        $filtered = [];
+        foreach ($indices as $i) {
+            $cand = $all[$i] ?? null;
+            if ($cand === null) continue;
+            if ($this->canCover($need, $cand['hist'])) {
+                $filtered[] = $i;
+                if (count($filtered) >= $cap) break;
+            }
+        }
+        return $filtered;
     }
 
-    /** Quick union check: do remaining slots’ unions cover all needed counts? */
+    /** Quick feasibility: do remaining slots’ maximal supplies cover all needed letters? (safe upper bound) */
     private function unionCanFill(array $slots, array $need): bool
     {
-        // Be permissive for correctness (avoid false negatives from heuristic pruning)
-        // This check is an optimization; returning true ensures all valid combinations are explored.
+        if (empty($need) || empty($slots)) return true;
+        // Build an upper-bound supply histogram by summing per-slot-type maxima over the remaining slots
+        $supply = [];
+        foreach ($slots as $slot) {
+            $name = strtolower((string)($slot['name'] ?? ''));
+            $maxes = $this->slotLetterMax[$name] ?? [];
+            if (empty($maxes)) continue;
+            foreach ($need as $ch => $n) {
+                if (!isset($maxes[$ch])) continue;
+                $supply[$ch] = ($supply[$ch] ?? 0) + (int)$maxes[$ch];
+            }
+        }
+        // If for any needed letter the supply upper bound is less than required, prune
+        foreach ($need as $ch => $n) {
+            if (($supply[$ch] ?? 0) < $n) return false;
+        }
         return true;
     }
 

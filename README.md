@@ -225,3 +225,27 @@ To keep each runStep responsive, you can cap how many phrases a single pattern e
 PHRASES_PER_STEP_CAP=100
 ```
 - Or leave it unset/0 to disable the cap (unlimited).
+
+
+## Background jobs & queues
+This app now performs generation in background jobs. To enable this locally:
+
+1) Set your .env:
+```
+QUEUE_CONNECTION=database
+```
+
+2) Run migrations (adds jobs and failed_jobs tables):
+```
+php artisan migrate
+```
+
+3) Start a worker in a separate terminal:
+```
+php artisan queue:work
+```
+
+Notes:
+- The Search page now polls the progress endpoint on an interval; it no longer posts run-step for generation.
+- Pausing sets the Source Name status to paused; queued jobs will skip work if paused/completed when they start.
+- You can adjust per-pattern emission via PHRASES_PER_STEP_CAP in .env.

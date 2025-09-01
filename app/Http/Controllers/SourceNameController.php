@@ -10,6 +10,7 @@ use App\Services\WordMatchService;
 use App\Services\Anagrammer;
 use App\Traits\HelpsMatchWords;
 use Illuminate\Http\Request;
+use App\Jobs\ProcessPatternJob;
 
 class SourceNameController extends Controller
 {
@@ -120,106 +121,10 @@ class SourceNameController extends Controller
         ]);
     }
 
-    // Lightweight step runner to process a small chunk per request
+    // Background-mode: no-op step, return progress only for backward compatibility
     public function runStep(SourceName $source_name)
     {
-        $source = $source_name;
-        if ($source->status === 'paused') {
-            return response()->json(['ok' => true, 'paused' => true] + $this->progressPayload($source));
-        }
-        if ($source->status === 'completed') {
-            return response()->json(['ok' => true, 'completed' => true] + $this->progressPayload($source));
-        }
-
-        if ($source->status !== 'running') {
-            $source->status = 'running';
-            $source->started_at = $source->started_at ?? now();
-            $source->save();
-        }
-
-        $startedAt = $source->started_at ?? now();
-        $tickStart = microtime(true);
-
-        // Find next pending pattern
-        $next = SourceNamePattern::where('source_name_id', $source->id)
-            ->where('status', 'pending')
-            ->orderBy('popularity_rank')
-            ->first();
-
-        if ($next) {
-            $next->status = 'processing';
-            $next->save();
-            $source->current_pattern = $next->pattern_template;
-            $source->save();
-
-            // Integrate Anagrammer to generate alter egos for this pattern
-            $slots = $this->parsePatternSlots($next->pattern_template);
-            $matchesPayload = app(WordMatchService::class)->findMatches($source->signature, [
-                // Include boring lists during generation to allow complete phrases like "Vicar Dan Dim"
-                'include_boring' => true,
-            ]);
-            $candidatesByToken = $this->flattenMatchesByToken($matchesPayload['groups'] ?? []);
-            $anagrammer = new Anagrammer($candidatesByToken);
-
-            $phrasesMade = 0;
-            foreach ($anagrammer->generate($source->name, $slots) as $phrase) {
-                // store unique phrases per source
-                $created = AlterEgo::firstOrCreate(
-                    ['source_name_id' => $source->id, 'phrase' => $phrase],
-                    ['source_name_pattern_id' => $next->id]
-                );
-                if ($created->wasRecentlyCreated) {
-                    $source->increment('alteregos_found');
-                    $phrasesMade++;
-                }
-                // Configurable cap per step to keep UI responsive
-                $cap = (int) config('search.phrases_per_step_cap', 0);
-                if ($cap > 0 && $phrasesMade >= $cap) {
-                    break;
-                }
-            }
-
-            // Mark pattern done for now (single step per pattern)
-            $next->status = 'done';
-            $next->save();
-
-            $source->increment('patterns_searched');
-        }
-
-        // Update elapsed
-        $elapsed = (int) (microtime(true) - $tickStart);
-        // Use signed diff and clamp to avoid negative elapsed due to clock skew
-        $totalElapsed = now()->diffInSeconds($startedAt, false);
-        if ($totalElapsed < 0) { $totalElapsed = 0; }
-        $source->elapsed_seconds = (int)$totalElapsed;
-        $source->save();
-
-        // If no more pending -> complete
-        $pendingLeft = SourceNamePattern::where('source_name_id', $source->id)->where('status','pending')->count();
-        if ($pendingLeft === 0) {
-            $source->status = 'completed';
-            $source->completed_at = now();
-            $source->current_pattern = null;
-            $source->save();
-        }
-
-        $payload = ['ok' => true] + $this->progressPayload($source->fresh());
-        // Attach the just-completed group to enable incremental UI append
-        if (isset($next)) {
-            $phrases = \App\Models\AlterEgo::where('source_name_id', $source->id)
-                ->where('source_name_pattern_id', $next->id)
-                ->orderBy('id')
-                ->pluck('phrase')
-                ->all();
-            if (!empty($phrases)) {
-                $payload['lastGroup'] = [
-                    'pattern' => $next->pattern_template,
-                    'rank' => (int) $next->popularity_rank,
-                    'phrases' => array_values(array_unique($phrases)),
-                ];
-            }
-        }
-        return response()->json($payload);
+        return response()->json(['ok' => true] + $this->progressPayload($source_name->fresh()));
     }
 
     public function pause(SourceName $source_name)
@@ -237,6 +142,16 @@ class SourceNameController extends Controller
         $source->status = 'running';
         $source->paused_at = null;
         $source->save();
+
+        // Enqueue remaining pending patterns
+        $pending = SourceNamePattern::where('source_name_id', $source->id)
+            ->where('status', 'pending')
+            ->orderBy('popularity_rank')
+            ->pluck('id');
+        foreach ($pending as $pid) {
+            ProcessPatternJob::dispatch($source->id, (int)$pid);
+        }
+
         return response()->json(['ok' => true] + $this->progressPayload($source));
     }
 
@@ -272,6 +187,11 @@ class SourceNameController extends Controller
                 $source_name->completed_at = null;
             }
             $source_name->save();
+
+            // If running, enqueue this pattern for background processing
+            if ($source_name->status === 'running') {
+                ProcessPatternJob::dispatch($source_name->id, $pattern->id);
+            }
         }
         return response()->json(['ok' => true] + $this->progressPayload($source_name->fresh()));
     }
@@ -327,6 +247,15 @@ class SourceNameController extends Controller
 
         $source->status = 'running';
         $source->save();
+
+        // Enqueue all pending patterns for background processing
+        $pending = SourceNamePattern::where('source_name_id', $source->id)
+            ->where('status', 'pending')
+            ->orderBy('popularity_rank')
+            ->pluck('id');
+        foreach ($pending as $pid) {
+            ProcessPatternJob::dispatch($source->id, (int)$pid);
+        }
 
         return response()->json(['ok' => true] + $this->progressPayload($source->fresh()));
     }

@@ -60,6 +60,6 @@ class PhraseBuilderServiceTest extends TestCase
             ['name' => 'surname', 'pos' => 4],
         ];
         $phrase = $svc->formatPhraseBySlots($words, $slots, true);
-        $this->assertSame('Sir adam Dim-Vinci-Mongrel', $phrase);
+        $this->assertSame('Sir Adam Dim-Vinci-Mongrel', $phrase);
     }
 }

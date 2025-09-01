@@ -42,11 +42,10 @@ final class PhraseBuilderService
                 // Move outer loop to the last consumed surname slot
                 $i = $j - 1;
                 if (!empty($variants)) {
-                    if ($displayMultipleVariants && in_array(count($variants), [2, 3])) {
-                        // If the surname block is at the end of the phrase, duplicate the full phrase with both orders
+                    if ($displayMultipleVariants && count($variants) === 2) {
+                        // If the surname block is at the end of the phrase, list both orders for display
                         $ab = $variants[0] . '-' . $variants[1];
                         $ba = $variants[1] . '-' . $variants[0];
-                        // List both orders within the surname token (keeps entire phrase a single string)
                         $parts[] = $ab . ', ' . $ba;
                     } else {
                         $parts[] = implode('-', $variants);

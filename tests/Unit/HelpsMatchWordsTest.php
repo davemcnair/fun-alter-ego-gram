@@ -27,7 +27,7 @@ class HelpsMatchWordsTest extends TestCase
 
     public function test_make_signature_sorts_letters(): void
     {
-        $this->assertSame('aaddiimnrv', $this->helper->makeSignature('David McNair'));
+        $this->assertSame('aacddiimnrv', $this->helper->makeSignature('David McNair'));
         $this->assertSame('aaabnn', $this->helper->makeSignature('Banana'));
         $this->assertSame('', $this->helper->makeSignature('---')); // no letters
     }

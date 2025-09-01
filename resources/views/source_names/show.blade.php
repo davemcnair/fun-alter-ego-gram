@@ -896,23 +896,19 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
             } catch (e) { /* ignore */ }
         }
         elapsed.textContent = Math.max(0, parseInt(p.timeElapsed || 0, 10));
-        // Render grouped alter egos by pattern
+        // Render grouped alter egos by pattern (full re-render each poll to reflect background updates)
         if (groupsEl) {
-            if (!renderedOnce || !p.lastGroup) {
-                groupsEl.innerHTML = '';
-                const groups = p.groups || [];
-                if (groups.length === 0) {
-                    const div = document.createElement('div');
-                    div.className = 'muted';
-                    div.textContent = 'No alter egos yet. Processing will populate this section.';
-                    groupsEl.appendChild(div);
-                } else {
-                    groups.forEach(function (g) { appendGroupToDom(g); });
-                }
-                renderedOnce = true;
-            } else if (p.lastGroup) {
-                appendGroupToDom(p.lastGroup);
+            groupsEl.innerHTML = '';
+            const groups = p.groups || [];
+            if (groups.length === 0) {
+                const div = document.createElement('div');
+                div.className = 'muted';
+                div.textContent = 'No alter egos yet. Processing will populate this section.';
+                groupsEl.appendChild(div);
+            } else {
+                groups.forEach(function (g) { appendGroupToDom(g); });
             }
+            renderedOnce = true;
         }
         // Update word filter status UI
         updateWordFilterStatus();
@@ -931,11 +927,11 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
     async function stepLoop() {
         if (paused || completed) return;
         try {
-            const p = await call("{{ route('source-names.run-step', $item) }}", 'POST');
+            const p = await call("{{ route('source-names.progress', $item) }}", 'GET');
             render(p);
         } catch (e) { /* ignore */ }
         if (!paused && !completed) {
-            setTimeout(stepLoop, 50);
+            setTimeout(stepLoop, 300);
         }
     }
 

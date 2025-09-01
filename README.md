@@ -199,3 +199,29 @@ If you discover a security vulnerability within Laravel, please send an e-mail t
 ## License
 
 The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+
+
+---
+
+## Principal Review & Roadmap
+For a full architecture review, refactor proposals, and a prioritized roadmap, see:
+- docs/principal_review.md
+
+## Anagram Groups and Backfill
+Recent updates introduced anagram grouping and default deduplication in matching.
+
+- Run migrations (required):
+  - php artisan migrate
+- If you already have words loaded, backfill anagram groups:
+  - php artisan words:backfill-anagram-groups
+- Alternatively, re-import word lists (anagram groups will be linked during import):
+  - php artisan words:import resources/token_words
+
+## Configuration: phrases-per-step cap (optional)
+To keep each runStep responsive, you can cap how many phrases a single pattern emits per HTTP step. By default it is unlimited.
+
+- In your .env, set for example:
+```
+PHRASES_PER_STEP_CAP=100
+```
+- Or leave it unset/0 to disable the cap (unlimited).

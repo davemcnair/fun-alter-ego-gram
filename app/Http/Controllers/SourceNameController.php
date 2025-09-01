@@ -147,10 +147,6 @@ class SourceNameController extends Controller
             ->first();
 
         if ($next) {
-            if ($next->pattern_template =='{title}{forename}{surname}')
-            {
-                $a=1;
-            }
             $next->status = 'processing';
             $next->save();
             $source->current_pattern = $next->pattern_template;
@@ -176,8 +172,11 @@ class SourceNameController extends Controller
                     $source->increment('alteregos_found');
                     $phrasesMade++;
                 }
-                // cap per step to keep UI responsive (raised to improve coverage for desired phrases like "Vicar Dan Dim")
-//                if ($phrasesMade >= 100) break;
+                // Configurable cap per step to keep UI responsive
+                $cap = (int) config('search.phrases_per_step_cap', 0);
+                if ($cap > 0 && $phrasesMade >= $cap) {
+                    break;
+                }
             }
 
             // Mark pattern done for now (single step per pattern)

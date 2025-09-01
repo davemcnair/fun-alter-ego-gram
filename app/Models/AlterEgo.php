@@ -11,7 +11,7 @@ class AlterEgo extends Model
     use HasFactory;
 
     protected $fillable = [
-        'source_name_id', 'source_name_pattern_id', 'phrase'
+        'source_name_id', 'source_name_pattern_id', 'phrase', 'starred'
     ];
 
     public function sourceName(): BelongsTo

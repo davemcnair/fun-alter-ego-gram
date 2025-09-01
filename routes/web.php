@@ -28,5 +28,8 @@ Route::post('/source-names/{source_name}/resume', [SourceNameController::class, 
 Route::get('/source-names/{source_name}/progress', [SourceNameController::class, 'progress'])->name('source-names.progress');
 Route::post('/source-names/{source_name}/run-step', [SourceNameController::class, 'runStep'])->name('source-names.run-step');
 Route::post('/source-names/{source_name}/start', [SourceNameController::class, 'start'])->name('source-names.start');
+// Star / Unstar phrase for this source
+Route::post('/source-names/{source_name}/star', [SourceNameController::class, 'star'])->name('source-names.star');
+Route::post('/source-names/{source_name}/unstar', [SourceNameController::class, 'unstar'])->name('source-names.unstar');
 // Enable (re-enable) a deselected pattern
 Route::post('/source-names/{source_name}/patterns/{pattern}/enable', [SourceNameController::class, 'enablePattern'])->name('source-names.patterns.enable');

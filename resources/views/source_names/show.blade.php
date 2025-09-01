@@ -23,6 +23,8 @@
         .highlight-active { outline: 2px solid #10b981; box-shadow: 0 0 0 2px rgba(16,185,129,0.2) inset; }
         .filter-pill { display:inline-flex; align-items:center; gap:6px; background:#ecfeff; color:#0e7490; border:1px solid #a5f3fc; border-radius:9999px; padding:2px 8px; font-size:12px; }
         .filter-pill button { background:none; color:#0e7490; border:0; cursor:pointer; padding:0; }
+        .star-btn { background: none; border: 0; font-size: 16px; cursor: pointer; color: #9ca3af; padding:0 4px; }
+        .star-btn.starred { color: #f59e0b; }
     </style>
 </head>
 <body>
@@ -60,6 +62,10 @@
                 </label>
             </h3>
             <div id="wordFilterStatus" class="muted" style="margin:4px 0 8px 0; font-size:14px;"></div>
+            <div id="starredSection" style="margin-bottom:10px; display:none;">
+                <div><strong>Starred</strong> <span class="tag"><span id="starredCount">0</span></span></div>
+                <ul id="starredList" style="margin-top:6px;"></ul>
+            </div>
             <div id="alterEgoGroups">
                 @php $hasAny = false; @endphp
                 @foreach(($patterns ?? []) as $p)
@@ -263,10 +269,16 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
     const resumeBtn = document.getElementById('resumeBtn');
     const onlyFunToggle = document.getElementById('onlyFunToggle');
     const onlyUsedToggle = document.getElementById('onlyUsedToggle');
+    const starredSection = document.getElementById('starredSection');
+    const starredList = document.getElementById('starredList');
+    const starredCount = document.getElementById('starredCount');
+    const URL_STAR = "{{ route('source-names.star', $item) }}";
+    const URL_UNSTAR = "{{ route('source-names.unstar', $item) }}";
     let onlyFun = false;
     let onlyUsed = true;
     let renderedOnce = false;
     let wordFilter = { word: null, token: null };
+    let starredSet = new Set();
 
     if (onlyFunToggle) {
         try {
@@ -592,6 +604,33 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
         return await res.json();
     }
 
+    function escAttr(s) {
+        return String(s).replace(/["'\\]/g, function(c){
+            if (c === '"') return '&quot;';
+            if (c === "'") return '&#39;';
+            return '\\' + c;
+        });
+    }
+
+    function starBtnHTML(phrase) {
+        const isStar = starredSet.has(phrase);
+        const cls = 'star-btn' + (isStar ? ' starred' : '');
+        const title = isStar ? 'Unstar' : 'Star';
+        const icon = isStar ? '★' : '☆';
+        const pEsc = phrase.replace(/'/g, "\\'");
+        return '<button type="button" class="' + cls + '" title="' + title + '" onclick="window.toggleStar(\'' + pEsc + '\')">' + icon + '</button>';
+    }
+
+    window.toggleStar = async function(phrase){
+        try {
+            const isStar = starredSet.has(phrase);
+            const url = isStar ? URL_UNSTAR : URL_STAR;
+            await callJson(url, { phrase: phrase });
+            const p = await call("{{ route('source-names.progress', $item) }}", 'GET');
+            render(p);
+        } catch (e) { /* ignore */ }
+    }
+
     async function promoteOkWord(id, word) {
         try {
             if (!id) return;
@@ -662,7 +701,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
         ul.style.marginTop = '6px';
         list.forEach(function (ph) {
             const li = document.createElement('li');
-            li.innerHTML = highlightPhraseDisplay(ph, g.pattern);
+            li.innerHTML = starBtnHTML(ph) + ' ' + highlightPhraseDisplay(ph, g.pattern);
             ul.appendChild(li);
         });
         wrap.appendChild(ul);
@@ -838,9 +877,34 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
         } catch (e) { /* ignore */ }
     }
 
+    function updateStarredUI(list) {
+        try {
+            const arr = Array.isArray(list) ? list : [];
+            starredSet = new Set(arr);
+            if (starredSection) {
+                if (arr.length === 0) {
+                    starredSection.style.display = 'none';
+                } else {
+                    starredSection.style.display = 'block';
+                    if (starredCount) starredCount.textContent = String(arr.length);
+                    if (starredList) {
+                        starredList.innerHTML = '';
+                        arr.forEach(function(ph){
+                            const li = document.createElement('li');
+                            li.innerHTML = starBtnHTML(ph) + ' ' + escHtml(ph);
+                            starredList.appendChild(li);
+                        });
+                    }
+                }
+            }
+        } catch (e) { /* ignore */ }
+    }
+
     function render(p) {
         statusEl.textContent = p.status;
         const groupsArr = Array.isArray(p.groups) ? p.groups : [];
+        // Update starred UI/state early so phrase star buttons reflect it
+        updateStarredUI(p.starred || []);
         // Hide patterns searched row when completed; show otherwise
         if (pattRow) {
             const isCompleted = String(p.status || '').toLowerCase() === 'completed';

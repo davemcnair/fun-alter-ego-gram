@@ -160,6 +160,28 @@ class SourceNameController extends Controller
         return response()->json(['ok' => true] + $this->progressPayload($source_name));
     }
 
+    public function star(SourceName $source_name, Request $request)
+    {
+        $data = $request->validate([
+            'phrase' => ['required','string'],
+        ]);
+        AlterEgo::where('source_name_id', $source_name->id)
+            ->where('phrase', $data['phrase'])
+            ->update(['starred' => true]);
+        return response()->json(['ok' => true] + $this->progressPayload($source_name->fresh())) ;
+    }
+
+    public function unstar(SourceName $source_name, Request $request)
+    {
+        $data = $request->validate([
+            'phrase' => ['required','string'],
+        ]);
+        AlterEgo::where('source_name_id', $source_name->id)
+            ->where('phrase', $data['phrase'])
+            ->update(['starred' => false]);
+        return response()->json(['ok' => true] + $this->progressPayload($source_name->fresh())) ;
+    }
+
     public function previewPatterns(Request $request, PatternQueryService $patterns)
     {
         $data = $request->validate([
@@ -268,7 +290,7 @@ class SourceNameController extends Controller
             ->get(['id','pattern_template','popularity_rank']);
         $alterEgos = AlterEgo::where('source_name_id', $s->id)
             ->orderBy('id')
-            ->get(['source_name_pattern_id','phrase']);
+            ->get(['source_name_pattern_id','phrase','starred']);
         $byPatternId = [];
         foreach ($alterEgos as $ae) {
             $byPatternId[$ae->source_name_pattern_id ?? 0][] = $ae->phrase;
@@ -284,6 +306,11 @@ class SourceNameController extends Controller
                 ];
             }
         }
+        $starred = AlterEgo::where('source_name_id', $s->id)
+            ->where('starred', true)
+            ->orderBy('id')
+            ->pluck('phrase')
+            ->all();
         return [
             'id' => $s->id,
             'status' => $s->status,
@@ -296,6 +323,7 @@ class SourceNameController extends Controller
             'alterEgos' => AlterEgo::where('source_name_id', $s->id)->orderByDesc('id')->pluck('phrase'),
             // New grouped payload
             'groups' => $groups,
+            'starred' => $starred,
         ];
     }
 

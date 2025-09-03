@@ -35,4 +35,84 @@ class Pattern extends Model
             Token::TOKEN_NAME_HONORIFIC => $this->has_honorific,
         };
     }
+
+    // Returns a human-friendly example string for this pattern's template using PhraseBuilderService
+    public function getExampleAttribute(): string
+    {
+        $tpl = (string)($this->template ?? '');
+        if ($tpl === '') return '';
+
+        // Build slot order from template tokens
+        $slotOrder = [];
+        if (preg_match_all('/\{([a-z]+)(?::(\d+))?\}/i', $tpl, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $m) {
+                $name = strtolower($m[1]);
+                $count = isset($m[2]) && (int)$m[2] > 0 ? (int)$m[2] : 1;
+                for ($i = 0; $i < $count; $i++) {
+                    $slotOrder[] = ['name' => $name, 'pos' => count($slotOrder)];
+                }
+            }
+        }
+        if (empty($slotOrder)) return '';
+
+        // Prepare sample words by token according to requirement
+        $forenameSamples = ['Hughie', 'Louis'];
+        // Surname should be five distinct tokens, used in order for surname:n (up to 5)
+        $surnamePieces = ['moist', 'wipe', 'with', 'no', 'additives'];
+        $words = [];
+        $fnIdx = 0;
+        $prevName = '';
+        $surnameRunIdx = 0; // index within the current consecutive surname run
+        foreach ($slotOrder as $slot) {
+            $name = $slot['name'];
+            switch ($name) {
+                case 'title':
+                    $words[] = 'Dr';
+                    $surnameRunIdx = 0; // reset when leaving surname run
+                    break;
+                case 'forename':
+                    $words[] = $forenameSamples[$fnIdx % count($forenameSamples)];
+                    $fnIdx++;
+                    $surnameRunIdx = 0;
+                    break;
+                case 'initials':
+                    $words[] = 'R.';
+                    $surnameRunIdx = 0;
+                    break;
+                case 'prefix':
+                    $words[] = 'Mc';
+                    $surnameRunIdx = 0;
+                    break;
+                case 'surname':
+                    // If starting a new consecutive surname block, ensure index is at 0
+                    if ($prevName !== 'surname') {
+                        $surnameRunIdx = 0;
+                    }
+                    $words[] = $surnamePieces[$surnameRunIdx % count($surnamePieces)];
+                    $surnameRunIdx++;
+                    break;
+                case 'suffix':
+                    $words[] = '-tastic';
+                    $surnameRunIdx = 0;
+                    break;
+                case 'honorific':
+                    $words[] = 'OBE';
+                    $surnameRunIdx = 0;
+                    break;
+                default:
+                    $words[] = '';
+                    $surnameRunIdx = 0;
+                    break;
+            }
+            $prevName = $name;
+        }
+
+        try {
+            $builder = app(\App\Services\PhraseBuilderService::class);
+            return $builder->formatPhraseBySlots($words, $slotOrder, false);
+        } catch (\Throwable $e) {
+            // Fallback: simple join
+            return trim(implode(' ', array_filter($words, fn($w) => $w !== '')));
+        }
+    }
 }

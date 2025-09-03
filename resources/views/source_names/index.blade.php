@@ -40,26 +40,7 @@
             </div>
         </div>
         <div class="row" style="gap:12px; align-items:center;">
-            <button type="button" id="previewBtn" style="background:#6b7280;">Find matching templates</button>
             <button type="submit">Create</button>
-        </div>
-        <div id="templatesBox" style="display:none; margin-top:12px;">
-            <div style="margin-bottom:8px; display:flex; gap:8px; align-items:center;">
-                <label><input type="checkbox" id="selectAllTemplates"> Select all</label>
-                <span class="tag" id="tplCount">0</span>
-            </div>
-            <div style="max-height:220px; overflow:auto; border:1px solid #e5e7eb; border-radius:6px;">
-                <table style="width:100%; border-collapse: collapse;">
-                    <thead>
-                    <tr>
-                        <th style="text-align:left; padding:8px; background:#f3f4f6; width:36px;"></th>
-                        <th style="text-align:left; padding:8px; background:#f3f4f6;">Rank</th>
-                        <th style="text-align:left; padding:8px; background:#f3f4f6;">Pattern</th>
-                    </tr>
-                    </thead>
-                    <tbody id="tplRows"></tbody>
-                </table>
-            </div>
         </div>
     </form>
 
@@ -145,63 +126,6 @@
             form.submit();
         } catch (e) { /* ignore */ }
     };
-    // Preview patterns list
-    (function(){
-        var btn = document.getElementById('previewBtn');
-        var box = document.getElementById('templatesBox');
-        var rows = document.getElementById('tplRows');
-        var selectAll = document.getElementById('selectAllTemplates');
-        var countEl = document.getElementById('tplCount');
-        function renderTemplates(list){
-            rows.innerHTML = '';
-            var c = 0;
-            (list.rows || []).forEach(function(r){
-                var tr = document.createElement('tr');
-                tr.style.borderBottom = '1px solid #e5e7eb';
-                var td0 = document.createElement('td'); td0.style.padding='8px';
-                var cb = document.createElement('input'); cb.type='checkbox'; cb.className='tplCheck'; cb.value=r.template; cb.checked = (parseInt(r.popularity_rank, 10) <= 100);
-                // Hidden field on submit
-                cb.addEventListener('change', syncHiddenInputs);
-                td0.appendChild(cb);
-                var td1 = document.createElement('td'); td1.style.padding='8px'; td1.textContent = r.popularity_rank;
-                var td2 = document.createElement('td'); td2.style.padding='8px'; td2.textContent = r.template;
-                tr.appendChild(td0); tr.appendChild(td1); tr.appendChild(td2);
-                rows.appendChild(tr); c++;
-            });
-            countEl.textContent = c + ' templates';
-            syncHiddenInputs();
-            box.style.display = 'block';
-        }
-        function syncHiddenInputs(){
-            // Remove previous hidden inputs
-            document.querySelectorAll('input[name="templates[]"]').forEach(function(n){ n.parentNode.removeChild(n); });
-            // Create hidden inputs for checked templates
-            var form = document.querySelector('form[action*="source-names"]');
-            if (!form) return;
-            var chosen = Array.from(document.querySelectorAll('.tplCheck:checked')).map(function(cb){ return cb.value; });
-            chosen.forEach(function(t){
-                var h = document.createElement('input'); h.type='hidden'; h.name='templates[]'; h.value=t; form.appendChild(h);
-            });
-        }
-        if (selectAll) {
-            selectAll.addEventListener('change', function(){
-                document.querySelectorAll('.tplCheck').forEach(function(c){ c.checked = selectAll.checked; });
-                syncHiddenInputs();
-            });
-        }
-        if (btn) {
-            btn.addEventListener('click', function(){
-                try {
-                    var name = document.getElementById('name').value || '';
-                    if (name.replace(/[^a-z]/ig,'').length < 5) { alert('Please enter at least 5 letters.'); return; }
-                    fetch("{{ route('patterns.preview') }}?" + new URLSearchParams({name: name}), {headers:{'X-Requested-With':'XMLHttpRequest'}})
-                        .then(function(r){ return r.json(); })
-                        .then(function(j){ if (j && j.rows) renderTemplates(j); })
-                        .catch(function(){});
-                } catch (e) {}
-            });
-        }
-    })();
   })();
   </script>
   </body>

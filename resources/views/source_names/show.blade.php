@@ -25,6 +25,12 @@
         .filter-pill button { background:none; color:#0e7490; border:0; cursor:pointer; padding:0; }
         .star-btn { background: none; border: 0; font-size: 16px; cursor: pointer; color: #9ca3af; padding:0 4px; }
         .star-btn.starred { color: #f59e0b; }
+        .dragging-word { opacity: 0.6; }
+        .drop-target { outline: 2px dashed #93c5fd; }
+        .ph-block { display: inline-flex; align-items: center; gap: 4px; }
+        .ph-part { display: inline-block; padding: 0 2px; cursor: grab; }
+        .ph-part.dragging-word { opacity: 0.7; }
+        .ph-sep { opacity: 0.6; user-select: none; }
     </style>
 </head>
 <body>
@@ -497,91 +503,35 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
             const blocks = parseBlocks(String(template || ''));
             const out = [];
             let ti = 0;
-            let hasMulti = false;
             for (let b of blocks) {
                 const c = Math.max(1, parseInt(b.count || 1, 10));
-                if (b.type === 'surname') {
-                    const parts = [];
+                if (b.type === 'surname' || b.name === 'forename') {
+                    // PhraseBuilder hyphen-joins consecutive runs of the same token into one token.
+                    // Consume a single token and, if it contains hyphens, render its parts as draggable.
+                    const tok = tokens[ti++] || '';
+                    const parts = String(tok).split('-').filter(x => x.length > 0);
+                    if (parts.length > 1) {
+                        const tname = b.type === 'surname' ? 'surname' : 'forename';
+                        const inner = parts.map(function(p){
+                            const html = highlightToken(p, tname);
+                            // Wrap each part; draggable will be enabled by JS enhancer
+                            return '<span class="ph-part" data-token="'+tname+'" data-word="'+escAttr(p)+'" draggable="true">'+html+'</span>';
+                        }).join('<span class="ph-sep">-</span>');
+                        out.push('<span class="ph-block" data-token="'+tname+'">'+inner+'</span>');
+                    } else {
+                        // Single part: just highlight normally
+                        const tname = b.type === 'surname' ? 'surname' : 'forename';
+                        out.push(highlightToken(tok, tname));
+                    }
+                } else {
                     for (let k = 0; k < c; k++) {
                         const tok = tokens[ti++] || '';
-                        parts.push(highlightToken(tok, 'surname'));
-                    }
-                    if (c > 1) { hasMulti = true; }
-                    out.push(parts.join(' '));
-                } else {
-                    if (b.name === 'forename') {
-                        const parts = [];
-                        for (let k = 0; k < c; k++) {
-                            const tok = tokens[ti++] || '';
-                            parts.push(highlightToken(tok, 'forename'));
-                        }
-                        if (c > 1) { hasMulti = true; }
-                        out.push(parts.join(' '));
-                    } else {
-                        for (let k = 0; k < c; k++) {
-                            const tok = tokens[ti++] || '';
-                            out.push(highlightToken(tok, b.name));
-                        }
+                        out.push(highlightToken(tok, b.name));
                     }
                 }
             }
             const baseHtml = out.join(' ');
-            if (!hasMulti) return baseHtml;
-            // Build all variants
-            const { variants } = computePhraseVariants(phrase, template);
-            // Unique and stable order; ensure original phrase first
-            const seen = new Set();
-            const list = [];
-            const original = String(phrase);
-            const origLower = original.toLowerCase();
-            list.push(original);
-            seen.add(origLower);
-            variants.forEach(v => { const low = String(v).toLowerCase(); if (!seen.has(low)) { seen.add(low); list.push(v); } });
-            const total = list.length;
-            const pid = (++__phraseIdSeq);
-            const sid = 'ph-sample-' + pid;
-            const aid = 'ph-all-' + pid;
-            // Build expanded list with highlighting
-            const expanded = list.map(function(v){
-                // Re-highlight each variant
-                const toks = v.split(' ').filter(t => t.length > 0);
-                const blocks2 = parseBlocks(String(template || ''));
-                const out2 = [];
-                let ti2 = 0;
-                for (let b2 of blocks2) {
-                    const c2 = Math.max(1, parseInt(b2.count || 1, 10));
-                    if (b2.type === 'surname') {
-                        const parts = [];
-                        for (let kk = 0; kk < c2; kk++) {
-                            parts.push(highlightToken(toks[ti2++] || '', 'surname'));
-                        }
-                        out2.push(parts.join(' '));
-                    } else {
-                        if (b2.name === 'forename') {
-                            const parts = [];
-                            for (let kk = 0; kk < c2; kk++) {
-                                parts.push(highlightToken(toks[ti2++] || '', 'forename'));
-                            }
-                            out2.push(parts.join(' '));
-                        } else {
-                            for (let kk = 0; kk < c2; kk++) {
-                                out2.push(highlightToken(toks[ti2++] || '', b2.name));
-                            }
-                        }
-                    }
-                }
-                return '<div>' + out2.join(' ') + '</div>';
-            }).join('');
-            return (
-                '<div id="' + sid + '" style="display:block;">' +
-                    baseHtml +
-                    (total > 1 ? ' <button type="button" class="link" style="border:0;background:none;color:#2563eb;cursor:pointer;padding:0;" onclick="togglePhraseVariants(\'' + pid + '\', true)">expand (' + total + ')</button>' : '') +
-                '</div>' +
-                '<div id="' + aid + '" style="display:none; max-height:160px; overflow:auto;">' +
-                    expanded +
-                    (total > 1 ? '<div><button type="button" class="link" style="border:0;background:none;color:#2563eb;cursor:pointer;padding:0;" onclick="togglePhraseVariants(\'' + pid + '\', false)">show less</button></div>' : '') +
-                '</div>'
-            );
+            return baseHtml;
         } catch (e) {
             return phrase;
         }
@@ -988,11 +938,20 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
         resumeBtn.style.display = (paused && !completed) ? 'inline-block' : 'none';
     }
 
+    const FORCE_SYNC = {!! json_encode((bool) config('search.force_sync_steps')) !!};
+
     async function stepLoop() {
         if (paused || completed) return;
         try {
-            const p = await call("{{ route('source-names.progress', $item) }}", 'GET');
-            render(p);
+            if (FORCE_SYNC) {
+                // Synchronous fallback: advance one step server-side and return progress
+                const p = await call("{{ route('source-names.run-step', $item) }}", 'POST');
+                render(p);
+            } else {
+                // Async mode (preferred): just poll progress; background workers should process jobs
+                const p = await call("{{ route('source-names.progress', $item) }}", 'GET');
+                render(p);
+            }
         } catch (e) { /* ignore */ }
         if (!paused && !completed) {
             setTimeout(stepLoop, 300);
@@ -1104,6 +1063,199 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
             return origError.apply(console, arguments);
         };
     } catch (e) { /* ignore */ }
+})();
+
+// Enable drag-and-drop reordering for multi-part tokens within phrases (forename/surname hyphen chains)
+(function(){
+  try {
+    function enableBlockDnD(block){
+      if (!block) return;
+      let dragging = null;
+      block.addEventListener('dragstart', function(e){
+        const el = e.target && e.target.closest ? e.target.closest('.ph-part') : null;
+        if (!el) return;
+        dragging = el;
+        el.classList.add('dragging-word');
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      block.addEventListener('dragend', function(){
+        if (dragging) dragging.classList.remove('dragging-word');
+        dragging = null;
+      });
+      block.addEventListener('dragover', function(e){
+        if (!dragging) return;
+        e.preventDefault();
+        const after = getAfter(block, e.clientX, e.clientY);
+        if (!after) {
+          block.appendChild(dragging);
+          // keep separators consistent
+        } else {
+          // Insert before the target or before its preceding separator
+          const ref = after;
+          block.insertBefore(dragging, ref);
+        }
+        // Normalize separators between parts
+        normalizeSeparators(block);
+      });
+      // initial cleanup
+      normalizeSeparators(block);
+    }
+    function normalizeSeparators(block){
+      // Ensure there is a hyphen separator between each .ph-part
+      const children = Array.from(block.childNodes);
+      const rebuilt = [];
+      children.forEach(function(ch){ if (ch.nodeType === 1) rebuilt.push(ch); });
+      // Remove all separators
+      Array.from(block.querySelectorAll('.ph-sep')).forEach(function(n){ n.remove(); });
+      // Reinsert hyphen separators between parts
+      const parts = Array.from(block.querySelectorAll('.ph-part'));
+      for (let i = 0; i < parts.length; i++) {
+        if (i > 0) {
+          const sep = document.createElement('span');
+          sep.className = 'ph-sep';
+          sep.textContent = '-';
+          block.insertBefore(sep, parts[i]);
+        }
+      }
+    }
+    function getAfter(container, x, y){
+      const els = Array.from(container.querySelectorAll('.ph-part:not(.dragging-word)'));
+      let closest = {offset: Number.NEGATIVE_INFINITY, element: null};
+      els.forEach(function(child){
+        const box = child.getBoundingClientRect();
+        const offset = y - (box.top + box.height/2);
+        if (offset < 0 && offset > closest.offset) {
+          closest = {offset: offset, element: child};
+        }
+      });
+      return closest.element;
+    }
+    // Attach to any existing blocks now and also when content is updated
+    function initAll(){
+      document.querySelectorAll('.ph-block').forEach(enableBlockDnD);
+    }
+    // Run now and re-run after renders that replace groups
+    initAll();
+    // Observe changes within #alterEgoGroups to re-enable DnD after rerender
+    const groupsEl = document.getElementById('alterEgoGroups');
+    if (groupsEl && 'MutationObserver' in window) {
+      const mo = new MutationObserver(function(){
+        try {
+          // Avoid feedback loop: disconnect while initializing, then reconnect
+          mo.disconnect();
+          // Debounce to next tick to batch multiple mutations
+          setTimeout(function(){
+            initAll();
+            mo.observe(groupsEl, { childList: true, subtree: true });
+          }, 0);
+        } catch (e) {
+          // Best effort fallback
+          try { mo.observe(groupsEl, { childList: true, subtree: true }); } catch (e2) {}
+        }
+      });
+      mo.observe(groupsEl, { childList: true, subtree: true });
+    }
+  } catch (e) { /* ignore */ }
+})();
+
+// Enable drag-and-drop reordering for token matches when token can appear multiple times (forename/surname)
+(function(){
+  try {
+    const rows = document.querySelectorAll('tr[data-rowid][data-token][data-list]');
+    rows.forEach(function(row){
+      const token = String(row.getAttribute('data-token') || '').toLowerCase();
+      const listType = String(row.getAttribute('data-list') || '').toLowerCase();
+      if (!(token === 'forename' || token === 'surname')) return; // only tokens with n:>1
+      const rowId = String(row.getAttribute('data-rowid'));
+      const container = document.getElementById('all-' + rowId);
+      if (!container) return;
+      // Wrap each word and its optional adjacent action button into a draggable group
+      Array.from(container.querySelectorAll('.tok-word')).forEach(function(wordEl){
+        const wrap = document.createElement('span');
+        wrap.className = 'tok-item';
+        wrap.style.display = 'inline-block';
+        wrap.style.marginRight = '6px';
+        wordEl.parentNode.insertBefore(wrap, wordEl);
+        wrap.appendChild(wordEl);
+        // If the next sibling is the action button (link), move it into the wrapper
+        if (wrap.nextSibling && wrap.nextSibling.tagName === 'BUTTON') {
+          wrap.appendChild(wrap.nextSibling);
+        }
+      });
+      // Apply saved order if available
+      const key = 'order:' + token + ':' + listType;
+      try {
+        const saved = JSON.parse(localStorage.getItem(key) || '[]');
+        if (Array.isArray(saved) && saved.length) {
+          const byWord = {};
+          Array.from(container.querySelectorAll('.tok-item')).forEach(function(el){
+            const wEl = el.querySelector('.tok-word');
+            const w = wEl ? String(wEl.getAttribute('data-word') || '').toLowerCase() : '';
+            if (!w) return;
+            byWord[w] = byWord[w] || [];
+            byWord[w].push(el);
+          });
+          container.innerHTML = '';
+          saved.forEach(function(w){
+            const low = String(w || '').toLowerCase();
+            const arr = byWord[low] || [];
+            if (arr.length) { container.appendChild(arr.shift()); }
+          });
+          // Append any remaining not in saved
+          Object.keys(byWord).forEach(function(k){ byWord[k].forEach(function(el){ container.appendChild(el); }); });
+        }
+      } catch (e) {}
+
+      let dragging = null;
+      container.addEventListener('dragstart', function(e){
+        const target = e.target;
+        const el = target && target.classList && target.classList.contains('tok-item') ? target : (target && target.closest ? target.closest('.tok-item') : null);
+        if (!el) return;
+        dragging = el;
+        el.classList.add('dragging-word');
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      container.addEventListener('dragend', function(e){
+        if (dragging) dragging.classList.remove('dragging-word');
+        dragging = null;
+        // Save new order
+        try {
+          const order = Array.from(container.querySelectorAll('.tok-item')).map(function(el){
+            const wEl = el.querySelector('.tok-word');
+            return wEl ? String(wEl.getAttribute('data-word') || '') : '';
+          }).filter(Boolean);
+          localStorage.setItem(key, JSON.stringify(order));
+        } catch (e) {}
+        // Clean visuals
+        Array.from(container.children).forEach(function(ch){ ch.classList.remove('drop-target'); });
+      });
+      container.addEventListener('dragover', function(e){
+        if (!dragging) return;
+        e.preventDefault();
+        const after = getAfterElement(container, e.clientX, e.clientY);
+        if (!after) {
+          container.appendChild(dragging);
+        } else {
+          container.insertBefore(dragging, after);
+        }
+      });
+      // Make tokens draggable
+      Array.from(container.querySelectorAll('.tok-item')).forEach(function(el){ el.setAttribute('draggable', 'true'); });
+
+      function getAfterElement(container, x, y) {
+        const els = Array.from(container.querySelectorAll('.tok-item:not(.dragging-word)'));
+        let closest = {offset: Number.NEGATIVE_INFINITY, element: null};
+        els.forEach(function(child){
+          const box = child.getBoundingClientRect();
+          const offset = y - (box.top + box.height / 2);
+          if (offset < 0 && offset > closest.offset) {
+            closest = {offset: offset, element: child};
+          }
+        });
+        return closest.element;
+      }
+    });
+  } catch (e) { /* ignore */ }
 })();
 </script>
 </body>

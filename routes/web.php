@@ -13,6 +13,10 @@ Route::post('/source-names/bulk-destroy', [SourceNameController::class, 'bulkDes
 Route::resource('patterns', PatternController::class)->except(['show']);
 // Inline update for pattern type
 Route::post('/patterns/{pattern}/type', [PatternController::class, 'updateType'])->name('patterns.update-type');
+// Reorder patterns
+Route::post('/patterns/reorder', [PatternController::class, 'reorder'])->name('patterns.reorder');
+// Export patterns to resources
+Route::post('/patterns/export', [PatternController::class, 'export'])->name('patterns.export');
 
 // Word CRUD
 Route::resource('words', WordController::class)->except(['show']);

@@ -11,6 +11,7 @@ use App\Services\Anagrammer;
 use App\Traits\HelpsMatchWords;
 use Illuminate\Http\Request;
 use App\Jobs\ProcessPatternJob;
+use Illuminate\Support\Facades\DB;
 
 class SourceNameController extends Controller
 {
@@ -40,29 +41,42 @@ class SourceNameController extends Controller
         }
 
         $includeBoring = (bool)($data['allow_boring'] ?? false);
-        $list = $patterns->listForSource($name, $includeBoring);
+        $rows = $patterns->listForSource($name, $includeBoring);
+
+        // Restrict to standard patterns only for new searches
+        try {
+            $standardTemplates = \DB::table('patterns')
+                ->where('pattern_type', 'standard')
+                ->pluck('template')
+                ->toArray();
+        } catch (\Throwable $e) {
+            $standardTemplates = [];
+        }
+        if (!empty($standardTemplates)) {
+            $rows = array_values(array_filter($rows, function($r) use ($standardTemplates) {
+                $tpl = is_array($r) ? ($r['template'] ?? '') : ($r->template ?? '');
+                return in_array($tpl, $standardTemplates, true);
+            }));
+        }
 
         $source = SourceName::create([
             'name' => $name,
             'signature' => $signature,
             'status' => 'idle',
-            'patterns_total' => (int)($list['meta']['count'] ?? 0),
+            'patterns_total' => count($rows),
         ]);
 
-        $selected = array_values(array_unique(array_map('strval', (array)$request->input('templates', []))));
-        $sel = array_flip($selected);
-        $rows = $list['rows'] ?? [];
         $bulk = [];
         $now = now();
-        $maxRank = SourceNamePattern::DEFAULT_MAX_RANK;
         foreach ($rows as $r) {
-            $tpl = $r['template'];
-            $rank = (int)$r['popularity_rank'];
+            $tpl = is_array($r) ? ($r['template'] ?? '') : ($r->template ?? '');
+            $rank = (int)(is_array($r) ? ($r['popularity_rank'] ?? 0) : ($r->popularity_rank ?? 0));
+            if ($tpl === '' || $rank <= 0) continue;
             $bulk[] = [
                 'source_name_id' => $source->id,
                 'pattern_template' => $tpl,
                 'popularity_rank' => $rank,
-                'status' => (empty($selected) ? ($rank <= $maxRank ? 'pending' : 'deselected') : (isset($sel[$tpl]) ? 'pending' : 'deselected')),
+                'status' => 'pending',
                 'created_at' => $now,
                 'updated_at' => $now,
             ];
@@ -85,12 +99,7 @@ class SourceNameController extends Controller
                 }
             }
         }
-        // Update total to selected count if provided, otherwise to the number initially pending (<=$maxRank)
-        if (!empty($selected)) {
-            $source->patterns_total = count($selected);
-        } else {
-            $source->patterns_total = collect($rows)->filter(fn($r) => (int)$r['popularity_rank'] <= $maxRank)->count();
-        }
+        // patterns_total already set to total rows initially
         $source->save();
 
         return redirect()->route('source-names.show', $source);
@@ -121,10 +130,91 @@ class SourceNameController extends Controller
         ]);
     }
 
-    // Background-mode: no-op step, return progress only for backward compatibility
-    public function runStep(SourceName $source_name)
+    // Step: process one pending pattern synchronously (fallback when no queue worker), then return progress
+    public function runStep(SourceName $source_name, WordMatchService $wordMatchService)
     {
-        return response()->json(['ok' => true] + $this->progressPayload($source_name->fresh()));
+        $source = $source_name->fresh();
+        if (in_array($source->status, ['paused', 'completed'], true)) {
+            return response()->json(['ok' => true] + $this->progressPayload($source));
+        }
+        // Find next pending pattern by rank
+        $pattern = SourceNamePattern::where('source_name_id', $source->id)
+            ->where('status', 'pending')
+            ->orderBy('popularity_rank')
+            ->first();
+        if ($pattern) {
+            // Atomically claim pattern
+            $updated = DB::table('source_name_patterns')
+                ->where('id', $pattern->id)
+                ->where('status', 'pending')
+                ->update(['status' => 'processing', 'updated_at' => now()]);
+            if ($updated > 0 || $pattern->status === 'processing') {
+                // Proceed with processing
+                $source->current_pattern = $pattern->pattern_template;
+                $source->save();
+
+                $slots = $this->parsePatternSlots($pattern->pattern_template);
+
+                // Include boring lists during generation so phrases can be complete
+                $matchesPayload = $wordMatchService->findMatches($source->signature, [
+                    'include_boring' => true,
+                ]);
+                $candidatesByToken = $this->flattenMatchesByToken($matchesPayload['groups'] ?? []);
+
+                $anagrammer = new Anagrammer($candidatesByToken);
+                $phrasesMade = 0;
+                foreach ($anagrammer->generate($source->name, $slots) as $phrase) {
+                    $created = AlterEgo::firstOrCreate(
+                        ['source_name_id' => $source->id, 'phrase' => $phrase],
+                        ['source_name_pattern_id' => $pattern->id]
+                    );
+                    if ($created->wasRecentlyCreated) {
+                        $source->increment('alteregos_found');
+                        $phrasesMade++;
+                    }
+                    $cap = (int) config('search.phrases_per_step_cap', 0);
+                    if ($cap > 0 && $phrasesMade >= $cap) {
+                        break;
+                    }
+                }
+
+                // Mark pattern done and update counters
+                $pattern->status = 'done';
+                $pattern->save();
+                $source->increment('patterns_searched');
+
+                // Update elapsed seconds
+                $startedAt = $source->started_at ?? now();
+                $totalElapsed = now()->diffInSeconds($startedAt, false);
+                if ($totalElapsed < 0) { $totalElapsed = 0; }
+                $source->elapsed_seconds = (int) $totalElapsed;
+
+                // Check if more pending remain
+                $pendingLeft = SourceNamePattern::where('source_name_id', $source->id)
+                    ->where('status', 'pending')
+                    ->count();
+                if ($pendingLeft === 0) {
+                    $source->status = 'completed';
+                    $source->completed_at = now();
+                    $source->current_pattern = null;
+                } else {
+                    $source->current_pattern = null; // clear current between patterns
+                }
+                $source->save();
+            }
+        } else {
+            // No pending patterns: ensure completed state if appropriate
+            $pendingLeft = SourceNamePattern::where('source_name_id', $source->id)
+                ->where('status', 'pending')
+                ->count();
+            if ($pendingLeft === 0 && $source->status !== 'completed') {
+                $source->status = 'completed';
+                $source->completed_at = now();
+                $source->current_pattern = null;
+                $source->save();
+            }
+        }
+        return response()->json(['ok' => true] + $this->progressPayload($source->fresh()));
     }
 
     public function pause(SourceName $source_name)
@@ -190,8 +280,8 @@ class SourceNameController extends Controller
         ]);
         $name = trim($data['name']);
         $includeBoring = (bool)($data['allow_boring'] ?? false);
-        $list = $patterns->listForSource($name, $includeBoring);
-        return response()->json(['ok' => true] + $list);
+        $rows = $patterns->listForSource($name, $includeBoring);
+        return response()->json(['ok' => true, 'count' => count($rows), 'rows' => $rows]);
     }
 
     public function enablePattern(SourceName $source_name, SourceNamePattern $pattern)

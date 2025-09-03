@@ -55,33 +55,9 @@ final class Anagrammer
         }
         if ($emitted) return;
 
-        // Fallback: brute-force Cartesian product to avoid any missed valid combinations
-        // Build candidate lists per slot
-        $perSlot = [];
-        foreach ($slots as $slot) {
-            $list = $this->candidates[$slot['name']] ?? [];
-            $perSlot[] = array_values(array_map(fn($e) => $e['name'], $list));
-        }
-        // Recursive product
-        $stack = [[]];
-        foreach ($perSlot as $list) {
-            $next = [];
-            foreach ($stack as $prefix) {
-                foreach ($list as $word) { $next[] = array_merge($prefix, [$word]); }
-            }
-            $stack = $next;
-        }
-        foreach ($stack as $combo) {
-            // Enforce non-decreasing ordering within consecutive identical-token runs to prune permutations
-            if (!$this->isNonDecreasingByBlocks($combo, $slots)) {
-                continue;
-            }
-            // Exact check: the phrase must have exactly the same letter histogram as the source
-            $formatted = $this->phraseBuilder->formatPhraseBySlots($combo, $slots);
-            if ($this->hist($formatted) === $need) {
-                yield $formatted;
-            }
-        }
+        // Fallback: memory-safe brute-force enumeration without materializing the Cartesian product
+        // Iterate over full candidate lists per slot, only pruning with safe checks (run-order and canCover)
+        yield from $this->bruteStream($slots, $slots, 0, $need, []);
     }
 
     /** Precompute histograms, letter→candidate index, and per-slot letter maxima */
@@ -162,6 +138,41 @@ final class Anagrammer
             $nextChosen = $chosen;
             $nextChosen[$slot['pos']] = $cand['name'];
             yield from $this->dfs($remainingSlots, $nextNeed, $nextChosen, $slotOrder);
+        }
+    }
+
+    /**
+     * Fallback enumerator: stream all combinations using full candidate lists per slot.
+     * Only prunes with safe checks (run-order within identical-token runs and canCover on remaining need).
+     * @param array<int, array{name:string,pos:int}> $slots
+     * @param array<int, array{name:string,pos:int}> $slotOrder
+     * @param int $idx
+     * @param array<string,int> $need
+     * @param array<int,string> $chosen map: pos => word
+     */
+    private function bruteStream(array $slots, array $slotOrder, int $idx, array $need, array $chosen): \Generator
+    {
+        $n = count($slots);
+        if ($idx >= $n) {
+            if (empty($need)) {
+                ksort($chosen);
+                $words = array_values($chosen);
+                yield $this->phraseBuilder->formatPhraseBySlots($words, $slotOrder);
+            }
+            return;
+        }
+        $slot = $slots[$idx];
+        $list = $this->candidates[$slot['name']] ?? [];
+        if (empty($list)) return;
+        foreach ($list as $cand) {
+            // Enforce non-decreasing order within runs of identical slot names
+            if ($this->violatesRunOrder($slot, $slotOrder, $chosen, (string)$cand['name'])) continue;
+            // Quick feasibility: candidate must fit within remaining need
+            if (!$this->canCover($need, $cand['hist'])) continue;
+            $nextNeed = $this->subtract($need, $cand['hist']);
+            $nextChosen = $chosen;
+            $nextChosen[$slot['pos']] = (string)$cand['name'];
+            yield from $this->bruteStream($slots, $slotOrder, $idx + 1, $nextNeed, $nextChosen);
         }
     }
 

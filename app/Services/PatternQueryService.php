@@ -69,7 +69,9 @@ class PatternQueryService
 
         $wordsQuery = DB::table('words')->select('id', 'token_type', 'signature');
 
-        if (!$includeBoring) $wordsQuery->where('list_type', '!=', 'boring');
+        if (!$includeBoring) {
+            $wordsQuery->where('list_type', '!=', 'boring');
+        }
         $actualMins = Token::query()->pluck('min_length', 'name')->toArray();
         // can be larger
         $effectiveMins = [];
@@ -96,7 +98,7 @@ class PatternQueryService
         // If we found no matching words for any token at all, fall back to static filtering only
         $foundAnyWords = !empty($anyWordsFound);
 
-        $rows = $allRows->filter(function ($row) use ($actualMins, $effectiveMins, $anyWordsFound, $sourceLength, $foundAnyWords) {
+        $filtered = $allRows->filter(function ($row) use ($actualMins, $effectiveMins, $anyWordsFound, $sourceLength, $foundAnyWords) {
             if (!$foundAnyWords) {
                 // Static prefilter (min_total_length) was already applied in the query; accept row
                 return true;
@@ -136,22 +138,30 @@ class PatternQueryService
                 }
             }
 
+            // Attach markers on the row for later mapping
+            $row->dyn_min_marker = $minLengthUnchanged ? null : $dynMin;
+            $row->min_unchanged_marker = $minLengthUnchanged;
+
             return $minLengthUnchanged || $dynMin <= $sourceLength;
         })->values();
-        $presentRows=[];
-        foreach ($rows as $row) {
-            $presentRows[] = [
-                'popularity_rank' => (int)$row->popularity_rank,
-                'template' => (string)$row->template,
-                'min' => $row->min_total_length
-            ];
-        }
-        $meta = [
-            'count' => count($presentRows),
-            'source_len' => $sourceLength,
-        ];
-        if (!$includeBoring) $meta['boring'] = 'excluded';
 
-        return ['meta' => $meta, 'rows' => $presentRows];
+        // Map to plain associative arrays as the public API for downstream code
+        $out = [];
+        foreach ($filtered as $r) {
+            $item = [
+                'popularity_rank' => (int)$r->popularity_rank,
+                'template' => (string)$r->template,
+                'min' => (int)($r->min_total_length ?? 0),
+            ];
+            if (isset($r->dyn_min_marker) && $r->dyn_min_marker !== null) {
+                $item['dyn_min'] = (int)$r->dyn_min_marker;
+            } else {
+                // if unchanged but we want to signal availability, include avail flag
+                $item['avail'] = true;
+            }
+            $out[] = $item;
+        }
+
+        return $out;
     }
 }

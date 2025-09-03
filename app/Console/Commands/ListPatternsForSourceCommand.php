@@ -21,16 +21,7 @@ class ListPatternsForSourceCommand extends Command
             return self::FAILURE;
         }
 
-        $res = $svc->listForSource($source, (bool)$this->option('include-boring'));
-        $meta = $res['meta'];
-        $rows = $res['rows'];
-
-        // Simplified header: no pagination/limit details
-        $mode = isset($meta['mode']) ? ' ('.$meta['mode'].')' : '';
-        $header = 'Total: '.$meta['total'].' | source_len='.$meta['source_len'].$mode;
-        if (isset($meta['list'])) $header .= ' | list='.$meta['list'];
-        elseif (($meta['boring'] ?? '') === 'excluded') $header .= ' | boring=excluded';
-        $this->line($header);
+        $rows= $svc->listForSource($source, (bool)$this->option('include-boring'));
 
         foreach ($rows as $row) {
             if (isset($row['dyn_min'])) {

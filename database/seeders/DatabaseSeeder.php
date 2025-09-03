@@ -19,5 +19,8 @@ class DatabaseSeeder extends Seeder
             'name' => 'Test User',
             'email' => 'test@example.com',
         ]);
+
+        // Seed patterns from resources if available
+        $this->call(PatternsFromResourcesSeeder::class);
     }
 }

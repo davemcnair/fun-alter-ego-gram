@@ -17,6 +17,8 @@
         th { background: #f3f4f6; color: #374151; font-weight: 600; }
         .tag { background: #eef2ff; color: #3730a3; padding: 2px 8px; border-radius: 9999px; font-size: 12px; }
         .row-actions { display:flex; gap:6px; }
+            .drag-over { outline: 2px dashed #93c5fd; }
+        .dragging { opacity: 0.6; }
     </style>
 </head>
 <body>
@@ -28,7 +30,11 @@
 <div class="container">
     <div style="display:flex; justify-content:space-between; align-items:center; gap: 10px; flex-wrap:wrap;">
         <h1>Patterns</h1>
-        <div></div>
+        <div style="display:flex; gap:8px; align-items:center;">
+            <button type="button" onclick="exportPatterns()" title="Save current order and settings to resources/patterns">
+                Save to resources
+            </button>
+        </div>
     </div>
 
     @if(session('status'))
@@ -50,16 +56,19 @@
     <table>
         <thead>
         <tr>
+            <th style="width:36px;"></th>
             <th>Rank</th>
             <th>Type</th>
             <th>Template</th>
+            <th>Example</th>
             <th>Min len</th>
         </tr>
         </thead>
-        <tbody>
+        <tbody id="pattern-tbody">
         @forelse($items as $p)
-            <tr>
-                <td>{{ $p->popularity_rank }}</td>
+            <tr draggable="true" data-id="{{ $p->id }}">
+                <td style="cursor:grab;">⋮⋮</td>
+                <td class="rank-cell">{{ $p->popularity_rank }}</td>
                 <td>
                     <select onchange="setType({{ $p->id }}, this.value, this)" data-prev="{{ $p->pattern_type }}" style="padding:6px 8px; border:1px solid #d1d5db; border-radius:6px;">
                         @foreach(['standard','longer','exotic'] as $opt)
@@ -68,10 +77,11 @@
                     </select>
                 </td>
                 <td>{{ $p->template }}</td>
+                <td>{{ $p->example }}</td>
                 <td>{{ $p->min_total_length }}</td>
             </tr>
         @empty
-            <tr><td colspan="7">No patterns found.</td></tr>
+            <tr><td colspan="6">No patterns found.</td></tr>
         @endforelse
         </tbody>
     </table>
@@ -115,6 +125,79 @@
             alert('Error updating type: ' + (e && e.message ? e.message : 'Unknown error'));
         } finally {
             sel.disabled = false;
+        }
+    }
+
+    // Drag & drop reordering
+    const tbody = document.getElementById('pattern-tbody');
+    if (tbody) {
+        let dragEl = null;
+        tbody.addEventListener('dragstart', function(e){
+            const tr = e.target.closest('tr');
+            if (!tr) return;
+            dragEl = tr;
+            tr.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+        });
+        tbody.addEventListener('dragend', function(e){
+            const tr = e.target.closest('tr');
+            if (tr) tr.classList.remove('dragging');
+            tbody.querySelectorAll('tr').forEach(function(r){ r.classList.remove('drag-over'); });
+            dragEl = null;
+            renumberRanks();
+            submitOrder();
+        });
+        tbody.addEventListener('dragover', function(e){
+            e.preventDefault();
+            const afterEl = getDragAfterElement(tbody, e.clientY);
+            const dragging = tbody.querySelector('tr.dragging');
+            if (!dragging) return;
+            if (afterEl == null) {
+                tbody.appendChild(dragging);
+            } else {
+                tbody.insertBefore(dragging, afterEl);
+            }
+        });
+        function getDragAfterElement(container, y) {
+            const els = [...container.querySelectorAll('tr:not(.dragging)')];
+            return els.reduce((closest, child) => {
+                const box = child.getBoundingClientRect();
+                const offset = y - box.top - box.height / 2;
+                if (offset < 0 && offset > closest.offset) {
+                    return { offset: offset, element: child };
+                } else {
+                    return closest;
+                }
+            }, { offset: Number.NEGATIVE_INFINITY }).element;
+        }
+        function renumberRanks() {
+            let i = 1;
+            tbody.querySelectorAll('tr').forEach(function(tr){
+                const cell = tr.querySelector('.rank-cell');
+                if (cell) cell.textContent = i++;
+            });
+        }
+        async function submitOrder() {
+            const ids = Array.from(tbody.querySelectorAll('tr')).map(function(tr){ return parseInt(tr.getAttribute('data-id') || '0', 10); }).filter(Boolean);
+            try {
+                await post('{{ route('patterns.reorder') }}', { ids: ids });
+            } catch (e) {
+                alert('Failed to save order: ' + (e && e.message ? e.message : 'Unknown error'));
+            }
+        }
+    }
+
+    // Export button
+    window.exportPatterns = async function() {
+        try {
+            const resp = await post('{{ route('patterns.export') }}', {});
+            if (resp && resp.ok) {
+                alert('Saved ' + resp.count + ' patterns to ' + resp.file);
+            } else {
+                alert('Export failed.');
+            }
+        } catch (e) {
+            alert('Export failed: ' + (e && e.message ? e.message : 'Unknown error'));
         }
     }
 })();

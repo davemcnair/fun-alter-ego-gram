@@ -25,7 +25,7 @@ class WordMatchService
 
         $srcLen = strlen($sourceSignature);
 
-        $query = DB::table('words')->select('id', 'word', 'token_type', 'list_type', 'signature');
+        $query = DB::table('words')->select('id', 'word', 'token_type', 'list_type', 'signature')->where('use_for_search', 1);
         if ($filterToken !== '') $query->where('token_type', $filterToken);
         if ($filterList !== '') {
             $query->where('list_type', $filterList);

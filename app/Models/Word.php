@@ -15,6 +15,7 @@ class Word extends Model
         'word',
         'token_type',
         'list_type',
+        'use_for_search',
         'signature',
         'anagram_group_id',
     ];

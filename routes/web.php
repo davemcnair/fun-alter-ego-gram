@@ -22,6 +22,8 @@ Route::post('/patterns/export', [PatternController::class, 'export'])->name('pat
 Route::resource('words', WordController::class)->except(['show']);
 // Promote a word to fun (AJAX)
 Route::post('/words/{word}/promote', [WordController::class, 'promote'])->name('words.promote');
+// Toggle use_for_search for a word within its anagram set (AJAX)
+Route::post('/words/{word}/toggle-search', [WordController::class, 'toggleSearch'])->name('words.toggle-search');
 
 // Pattern preview for create page
 Route::get('/patterns/preview', [SourceNameController::class, 'previewPatterns'])->name('patterns.preview');
@@ -35,5 +37,7 @@ Route::post('/source-names/{source_name}/start', [SourceNameController::class, '
 // Star / Unstar phrase for this source
 Route::post('/source-names/{source_name}/star', [SourceNameController::class, 'star'])->name('source-names.star');
 Route::post('/source-names/{source_name}/unstar', [SourceNameController::class, 'unstar'])->name('source-names.unstar');
+// Persist a reordered phrase variant
+Route::post('/source-names/{source_name}/rephrase', [SourceNameController::class, 'rephrase'])->name('source-names.rephrase');
 // Enable (re-enable) a deselected pattern
 Route::post('/source-names/{source_name}/patterns/{pattern}/enable', [SourceNameController::class, 'enablePattern'])->name('source-names.patterns.enable');

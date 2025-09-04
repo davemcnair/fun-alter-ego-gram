@@ -63,9 +63,14 @@
         <div class="card">
             <h3 style="margin-top:0; display:flex; align-items:center; gap:10px;">
                 Alter Egos
-                <label style="margin-left:auto; font-weight:normal; display:flex; align-items:center; gap:6px; font-size:14px;">
-                    <input type="checkbox" id="onlyFunToggle"> Only fun
-                </label>
+                <span style="margin-left:auto; display:flex; align-items:center; gap:12px; font-weight:normal; font-size:14px;">
+                    <label style="display:flex; align-items:center; gap:6px;">
+                        <input type="checkbox" id="onlyStarredToggle"> Favourites only
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px;">
+                        <input type="checkbox" id="onlyFunToggle"> Only fun
+                    </label>
+                </span>
             </h3>
             <div id="wordFilterStatus" class="muted" style="margin:4px 0 8px 0; font-size:14px;"></div>
             <div id="starredSection" style="margin-bottom:10px; display:none;">
@@ -274,6 +279,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
     const pauseBtn = document.getElementById('pauseBtn');
     const resumeBtn = document.getElementById('resumeBtn');
     const onlyFunToggle = document.getElementById('onlyFunToggle');
+    const onlyStarredToggle = document.getElementById('onlyStarredToggle');
     const onlyUsedToggle = document.getElementById('onlyUsedToggle');
     const starredSection = document.getElementById('starredSection');
     const starredList = document.getElementById('starredList');
@@ -281,6 +287,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
     const URL_STAR = "{{ route('source-names.star', $item) }}";
     const URL_UNSTAR = "{{ route('source-names.unstar', $item) }}";
     let onlyFun = false;
+    let onlyStarred = false;
     let onlyUsed = true;
     let renderedOnce = false;
     let wordFilter = { word: null, token: null };
@@ -295,6 +302,18 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
                 onlyFun = !!onlyFunToggle.checked;
                 try { localStorage.setItem('onlyFunToggle', onlyFun ? '1' : '0'); } catch (e) {}
                 // Re-render using last known progress if available
+                call("{{ route('source-names.progress', $item) }}", 'GET').then(render).catch(function(){});
+            });
+        } catch (e) { /* ignore */ }
+    }
+
+    if (onlyStarredToggle) {
+        try {
+            const savedS = localStorage.getItem('onlyStarredToggle');
+            if (savedS === '1') { onlyStarred = true; onlyStarredToggle.checked = true; }
+            onlyStarredToggle.addEventListener('change', function(){
+                onlyStarred = !!onlyStarredToggle.checked;
+                try { localStorage.setItem('onlyStarredToggle', onlyStarred ? '1' : '0'); } catch (e) {}
                 call("{{ route('source-names.progress', $item) }}", 'GET').then(render).catch(function(){});
             });
         } catch (e) { /* ignore */ }
@@ -575,10 +594,15 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
         try {
             const isStar = starredSet.has(phrase);
             const url = isStar ? URL_UNSTAR : URL_STAR;
-            await callJson(url, { phrase: phrase });
-            const p = await call("{{ route('source-names.progress', $item) }}", 'GET');
-            render(p);
-        } catch (e) { /* ignore */ }
+            const res = await callJson(url, { phrase: phrase });
+            if (res && res.ok) {
+                render(res);
+            } else {
+                alert('Failed to update favourite.');
+            }
+        } catch (e) {
+            alert('Error updating favourite.');
+        }
     }
 
     async function promoteOkWord(id, word) {
@@ -629,7 +653,8 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
     function appendGroupToDom(g) {
         const all = Array.isArray(g.phrases) ? g.phrases.slice() : [];
         const list1 = onlyFun ? all.filter(function(ph){ return hasAnyFunToken(ph, g.pattern); }) : all;
-        const list = (wordFilter.word ? list1.filter(function(ph){ return phraseContainsWord(ph, g.pattern, wordFilter.word, wordFilter.token); }) : list1);
+        const list1b = onlyStarred ? list1.filter(function(ph){ return starredSet.has(ph); }) : list1;
+        const list = (wordFilter.word ? list1b.filter(function(ph){ return phraseContainsWord(ph, g.pattern, wordFilter.word, wordFilter.token); }) : list1b);
         if (list.length === 0) return false; // nothing to append when filtered
         // Remove empty message if present
         if (groupsEl && groupsEl.firstChild && groupsEl.firstChild.classList && groupsEl.firstChild.classList.contains('muted')) {
@@ -651,7 +676,9 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
         ul.style.marginTop = '6px';
         list.forEach(function (ph) {
             const li = document.createElement('li');
-            li.innerHTML = starBtnHTML(ph) + ' ' + highlightPhraseDisplay(ph, g.pattern);
+            li.setAttribute('data-phrase', ph);
+            li.setAttribute('data-pattern', g.pattern);
+            li.innerHTML = starBtnHTML(ph) + ' ' + '<span class="phrase-text">' + highlightPhraseDisplay(ph, g.pattern) + '</span>' + ' <button type="button" class="link save-order-btn" style="border:0;background:none;color:#2563eb;cursor:pointer;padding:0; display:none;" title="Save this order">save</button>';
             ul.appendChild(li);
         });
         wrap.appendChild(ul);
@@ -699,7 +726,8 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
                 const allPhrases = Array.isArray(g.phrases) ? g.phrases : [];
                 // Apply same filtering as display list
                 const filtered1 = onlyFun ? allPhrases.filter(function(ph){ return hasAnyFunToken(ph, g.pattern); }) : allPhrases;
-                const filtered = (wordFilter.word ? filtered1.filter(function(ph){ return phraseContainsWord(ph, g.pattern, wordFilter.word, wordFilter.token); }) : filtered1);
+                const filtered1b = onlyStarred ? filtered1.filter(function(ph){ return starredSet.has(ph); }) : filtered1;
+                const filtered = (wordFilter.word ? filtered1b.filter(function(ph){ return phraseContainsWord(ph, g.pattern, wordFilter.word, wordFilter.token); }) : filtered1b);
                 const blocks = parseBlocks(String(g.pattern || ''));
                 filtered.forEach(function(ph){
                     const tokens = String(ph).split(' ').filter(t => t.length > 0);
@@ -1069,6 +1097,11 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
 (function(){
   try {
     function enableBlockDnD(block){
+      // Attach a change detector for showing the save button when phrase order differs
+      const li = block.closest && block.closest('li');
+      const phraseSpan = li ? li.querySelector('.phrase-text') : null;
+      const saveBtn = li ? li.querySelector('.save-order-btn') : null;
+      const orig = li ? (li.getAttribute('data-phrase') || '') : '';
       if (!block) return;
       let dragging = null;
       block.addEventListener('dragstart', function(e){
@@ -1081,6 +1114,28 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
       block.addEventListener('dragend', function(){
         if (dragging) dragging.classList.remove('dragging-word');
         dragging = null;
+        try {
+          if (li && phraseSpan) {
+            const current = phraseSpan.textContent.trim();
+            if (current && current !== orig) {
+              // Auto-persist the reorder without requiring a separate save click
+              callJson("{{ route('source-names.rephrase', $item) }}", { from: orig, to: current })
+                .then(function(res){
+                  if (res && res.ok) {
+                    render(res);
+                  } else {
+                    alert('Failed to save phrase order.');
+                    // Revert UI back to original phrase for clarity
+                    phraseSpan.textContent = orig;
+                  }
+                })
+                .catch(function(){
+                  alert('Error saving phrase order.');
+                  phraseSpan.textContent = orig;
+                });
+            }
+          }
+        } catch (e) { /* ignore */ }
       });
       block.addEventListener('dragover', function(e){
         if (!dragging) return;

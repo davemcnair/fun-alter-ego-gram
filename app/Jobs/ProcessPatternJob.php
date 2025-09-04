@@ -66,7 +66,10 @@ class ProcessPatternJob implements ShouldQueue
         $matchesPayload = $wordMatchService->findMatches($source->signature, [
             'include_boring' => true,
         ]);
-        $candidatesByToken = $this->flattenMatchesByToken($matchesPayload['groups'] ?? []);
+        // Expand related anagrams for used search words before generation (efficient: based on signatures present)
+        $groups = $matchesPayload['groups'] ?? [];
+        $this->expandAnagramsInGroups($groups, includeBoring: true);
+        $candidatesByToken = $this->flattenMatchesByToken($groups);
 
         $anagrammer = new Anagrammer($candidatesByToken);
 
@@ -136,6 +139,54 @@ class ProcessPatternJob implements ShouldQueue
      * @param array<string,array<string,array<int,array{word:string}>>> $groups
      * @return array<string,string[]>
      */
+    /**
+     * Expand groups by adding all anagram siblings for the signatures present per token.
+     * @param array<string,array<string,array<int,array{id:int,word:string,signature:string}>>> $groups
+     */
+    private function expandAnagramsInGroups(array &$groups, bool $includeBoring = true): void
+    {
+        foreach ($groups as $token => &$byList) {
+            // Collect unique signatures present in any list for this token
+            $sigs = [];
+            foreach ($byList as $listType => $items) {
+                foreach ($items as $it) {
+                    $sig = (string)($it['signature'] ?? '');
+                    if ($sig !== '') $sigs[$sig] = true;
+                }
+            }
+            $sigList = array_keys($sigs);
+            if (empty($sigList)) continue;
+            // Fetch all words matching these signatures for this token
+            $q = \DB::table('words')
+                ->select('id','word','list_type','signature')
+                ->where('token_type', $token)
+                ->whereIn('signature', $sigList)
+                ->orderBy('id');
+            if (!$includeBoring) {
+                $q->where('list_type', '!=', 'boring');
+            }
+            $rows = $q->get();
+            foreach ($rows as $r) {
+                $lt = (string)$r->list_type;
+                $byList[$lt] = $byList[$lt] ?? [];
+                $byList[$lt][] = ['id'=>(int)$r->id, 'word'=>(string)$r->word, 'signature'=>(string)$r->signature];
+            }
+            // Optional: dedupe per list by word
+            foreach ($byList as $lt => &$items) {
+                $seen = [];
+                $uniq = [];
+                foreach ($items as $it) {
+                    $w = (string)($it['word'] ?? '');
+                    if ($w === '' || isset($seen[$w])) continue;
+                    $seen[$w] = true; $uniq[] = $it;
+                }
+                $items = $uniq;
+            }
+            unset($items);
+        }
+        unset($byList);
+    }
+
     private function flattenMatchesByToken(array $groups): array
     {
         $out = [];

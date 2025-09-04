@@ -18,6 +18,7 @@
         .row-actions { display:flex; gap:6px; }
         nav.top { background:#111827; color:#fff; padding:8px 12px; }
         nav.top a { color:#fff; margin-right:10px; text-decoration:none; }
+        .tag { background:#eef2ff; color:#3730a3; padding: 2px 8px; border-radius: 9999px; font-size: 12px; }
     </style>
 </head>
 <body>
@@ -39,10 +40,26 @@
     @endif
 
     <form class="tools" method="get" action="{{ route('words.index') }}">
-        <div>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
             <input type="text" name="q" value="{{ $q }}" placeholder="Search word...">
-            <input type="text" name="token" value="{{ $token }}" placeholder="Token type (e.g., forename)">
-            <input type="text" name="list" value="{{ $list }}" placeholder="List type (e.g., boring)">
+            <label style="display:flex; align-items:center; gap:6px;">
+                <input type="checkbox" name="exact" value="1" {{ !empty($exact) ? 'checked' : '' }}> Exact
+            </label>
+            <select name="token" style="padding:10px 12px; border:1px solid #d1d5db; border-radius:6px; min-width: 160px;">
+                <option value="">All tokens</option>
+                @foreach(($tokenOptions ?? []) as $opt)
+                    <option value="{{ $opt }}" {{ ($token === $opt) ? 'selected' : '' }}>{{ ucfirst($opt) }}</option>
+                @endforeach
+            </select>
+            <select name="list" style="padding:10px 12px; border:1px solid #d1d5db; border-radius:6px; min-width: 160px;">
+                <option value="">All lists</option>
+                @foreach(($listOptions ?? []) as $opt)
+                    <option value="{{ $opt }}" {{ ($list === $opt) ? 'selected' : '' }}>{{ ucfirst($opt) }}</option>
+                @endforeach
+            </select>
+            <label style="display:flex; align-items:center; gap:6px;">
+                <input type="checkbox" name="has_anags" value="1" {{ !empty($hasAnags) ? 'checked' : '' }}> Only with anagrams
+            </label>
             <button type="submit">Filter</button>
         </div>
     </form>
@@ -50,22 +67,41 @@
     <table>
         <thead>
         <tr>
-            <th>ID</th>
             <th>Word</th>
             <th>Token</th>
             <th>List</th>
-            <th>Signature</th>
+            <th>Has anags</th>
             <th></th>
         </tr>
         </thead>
         <tbody>
         @forelse($items as $w)
+            @php $has = (bool) (($hasAnagsMap[$w->id] ?? false)); $anags = $anagsListMap[$w->id] ?? []; $rowId = 'row-'.$w->id; @endphp
             <tr>
-                <td>{{ $w->id }}</td>
-                <td>{{ $w->word }}</td>
+                <td>
+                    {{ $w->word }}
+                    @php $has = (bool) (($hasAnagsMap[$w->id] ?? false)); @endphp
+                    @if($has)
+                        @if(!empty($w->use_for_search))
+                            <span class="tag" style="margin-left:6px; background:#e0f2fe; color:#0369a1;">Search</span>
+                        @else
+                            <span class="tag" style="margin-left:6px; background:#fef3c7; color:#92400e;">Build</span>
+                        @endif
+                    @endif
+                </td>
                 <td>{{ $w->token_type }}</td>
                 <td>{{ $w->list_type }}</td>
-                <td>{{ $w->signature }}</td>
+                <td>
+                    @if($has)
+                        <span class="tag" style="background:#dcfce7; color:#065f46;">Yes</span>
+                        @if(empty($w->use_for_search))
+                            <button type="button" class="link" style="border:0;background:none;color:#2563eb;cursor:pointer;padding:0; margin-left:8px;" onclick="makeSearch({{ $w->id }})">make search</button>
+                        @endif
+                        <button type="button" class="link" style="border:0;background:none;color:#2563eb;cursor:pointer;padding:0; margin-left:8px;" onclick="toggleAnags('{{ $rowId }}', true)">show</button>
+                    @else
+                        <span class="tag" style="background:#fee2e2; color:#991b1b;">No</span>
+                    @endif
+                </td>
                 <td class="row-actions">
                     <a class="btn" href="{{ route('words.edit', $w) }}">Edit</a>
                     <form method="post" action="{{ route('words.destroy', $w) }}" onsubmit="return confirm('Delete this word?');">
@@ -75,12 +111,38 @@
                     </form>
                 </td>
             </tr>
+            @if($has)
+                <tr id="{{ $rowId }}" style="display:none; background:#f9fafb;">
+                    <td colspan="5">
+                        <div><strong>Anagrams:</strong> <button type="button" class="link" style="border:0;background:none;color:#2563eb;cursor:pointer;padding:0;" onclick="toggleAnags('{{ $rowId }}', false)">hide</button></div>
+                        <div style="margin-top:6px; display:flex; gap:8px; flex-wrap:wrap;">
+                            @foreach($anags as $a)
+                                <span class="tag">{{ $a['word'] }}</span>
+                            @endforeach
+                        </div>
+                    </td>
+                </tr>
+            @endif
         @empty
-            <tr><td colspan="6">No words found.</td></tr>
+            <tr><td colspan="5">No words found.</td></tr>
         @endforelse
         </tbody>
     </table>
     <div style="margin-top: 12px;">{{ $items->links() }}</div>
+
+    <script>
+        function toggleAnags(id, show){
+            try{ var el = document.getElementById(id); if(!el) return; el.style.display = show ? 'table-row' : 'none'; } catch(e){}
+        }
+        async function makeSearch(id){
+            try{
+                const res = await fetch("" + id + "/toggle-search".replace(/^/, '/words/'), { method:'POST', headers:{'X-Requested-With':'XMLHttpRequest','X-CSRF-TOKEN':'{{ csrf_token() }}'} });
+                const j = await res.json();
+                if (j && j.ok) { window.location.reload(); }
+                else { alert('Failed to update search representative' + (j && j.error ? (': ' + j.error) : '')); }
+            }catch(e){ alert('Error updating search representative.'); }
+        }
+    </script>
 </div>
 </body>
 </html>

@@ -272,6 +272,39 @@ class SourceNameController extends Controller
         return response()->json(['ok' => true] + $this->progressPayload($source_name->fresh())) ;
     }
 
+    public function rephrase(SourceName $source_name, Request $request)
+    {
+        $data = $request->validate([
+            'from' => ['required','string'],
+            'to' => ['required','string','different:from'],
+        ]);
+        $from = (string)$data['from'];
+        $to = trim((string)$data['to']);
+        if ($to === '') {
+            return response()->json(['ok' => false, 'error' => 'Empty phrase'], 422);
+        }
+        // Try update; if target already exists, delete the source and star the existing
+        $existing = AlterEgo::where('source_name_id', $source_name->id)->where('phrase', $to)->first();
+        if ($existing) {
+            AlterEgo::where('source_name_id', $source_name->id)->where('phrase', $from)->delete();
+            $existing->starred = true; $existing->save();
+        } else {
+            // Update the phrase; if row not found, return 404-ish JSON
+            $row = AlterEgo::where('source_name_id', $source_name->id)->where('phrase', $from)->first();
+            if (!$row) {
+                return response()->json(['ok' => false, 'error' => 'Original phrase not found'], 404);
+            }
+            $row->phrase = $to;
+            $row->starred = true; // star the saved variant by default
+            try {
+                $row->save();
+            } catch (\Throwable $e) {
+                return response()->json(['ok' => false, 'error' => 'Failed to save phrase'], 500);
+            }
+        }
+        return response()->json(['ok' => true] + $this->progressPayload($source_name->fresh()));
+    }
+
     public function previewPatterns(Request $request, PatternQueryService $patterns)
     {
         $data = $request->validate([

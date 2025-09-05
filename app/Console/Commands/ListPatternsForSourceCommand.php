@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Services\PatternQueryService;
+use App\Services\ListPatternsService;
 use Illuminate\Console\Attributes\AsCommand;
 use Illuminate\Console\Command;
 
@@ -11,7 +11,7 @@ class ListPatternsForSourceCommand extends Command
 {
     protected $signature = 'patterns:list:source {source*} {--list=} {--include-boring}';
 
-    public function handle(PatternQueryService $svc): int
+    public function handle(ListPatternsService $svc): int
     {
         // Accept source as one or more words without needing quotes
         $sourceParts = (array) $this->argument('source');

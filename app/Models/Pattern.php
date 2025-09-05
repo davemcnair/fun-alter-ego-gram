@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\PhraseBuilderService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -108,7 +109,7 @@ class Pattern extends Model
         }
 
         try {
-            $builder = app(\App\Services\PhraseBuilderService::class);
+            $builder = app(PhraseBuilderService::class);
             return $builder->formatPhraseBySlots($words, $slotOrder, false);
         } catch (\Throwable $e) {
             // Fallback: simple join

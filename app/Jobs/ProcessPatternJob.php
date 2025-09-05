@@ -13,32 +13,53 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class ProcessPatternJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $sourceId;
-    public int $patternId;
+    /**
+     * Maximum seconds a worker may allow this job to run before timing out.
+     */
     public int $timeout = 300; // seconds
 
-    public function __construct(int $sourceId, int $patternId)
+    /**
+     * How many times the job may be attempted.
+     */
+    public int $tries = 3;
+
+
+    public function __construct(public int $sourceNamePatternId)
     {
-        $this->sourceId = $sourceId;
-        $this->patternId = $patternId;
+    }
+
+    /**
+     * Backoff (in seconds) between retries.
+     * @return int|array<int,int>
+     */
+    public function backoff(): int|array
+    {
+        return 2;
+    }
+
+    /**
+     * Tags for Horizon/queue monitoring.
+     * @return array<int,string>
+     */
+    public function tags(): array
+    {
+        return ['process-pattern', 'source-name-pattern:'.$this->sourceNamePatternId];
     }
 
     public function handle(WordMatchService $wordMatchService): void
     {
-        $pattern = SourceNamePattern::find($this->patternId);
-        if (!$pattern || (int)$pattern->source_name_id !== (int)$this->sourceId) {
-            return; // nothing to do
-        }
-        $source = SourceName::find($this->sourceId);
-        if (!$source) return;
+        $t0 = microtime(true);
+        $sourceNamePattern = SourceNamePattern::with('sourceName')->find($this->sourceNamePatternId);
+        $source = $sourceNamePattern->sourceName;
 
         // If already done, skip
-        if ($pattern->status === 'done') return;
+        if ($sourceNamePattern->status === 'done') return;
 
         // If paused/completed at dispatch time, skip starting new work
         if (in_array($source->status, ['paused', 'completed'], true)) {
@@ -46,38 +67,27 @@ class ProcessPatternJob implements ShouldQueue
         }
 
         // Atomically claim the pattern if it's pending
-        $updated = DB::table('source_name_patterns')
-            ->where('id', $pattern->id)
-            ->where('status', 'pending')
-            ->update(['status' => 'processing', 'updated_at' => now()]);
-        if ($pattern->status === 'processing' || $updated > 0) {
-            // Claimed or already processing: proceed
-        } else {
-            // Another worker may have handled it already or it's not pending; skip
-            return;
-        }
-
-        $source->current_pattern = $pattern->pattern_template;
+        $sourceNamePattern->status = 'processing';
+        $sourceNamePattern->save();
+        $source->current_pattern = $sourceNamePattern->pattern_template;
         $source->save();
 
-        $slots = $this->parsePatternSlots($pattern->pattern_template);
+        $slots = $this->parsePatternSlots($sourceNamePattern->pattern_template);
 
-        // Include boring lists during generation to allow complete phrases
-        $matchesPayload = $wordMatchService->findMatches($source->signature, [
-            'include_boring' => true,
-        ]);
+        $matchesPayload = $wordMatchService->findMatches($source->signature);
         // Expand related anagrams for used search words before generation (efficient: based on signatures present)
-        $groups = $matchesPayload['groups'] ?? [];
-        $this->expandAnagramsInGroups($groups, includeBoring: true);
+        $groups = is_array($matchesPayload) ? $matchesPayload : [];
+        $this->expandAnagramsInGroups($groups);
         $candidatesByToken = $this->flattenMatchesByToken($groups);
 
         $anagrammer = new Anagrammer($candidatesByToken);
 
         $phrasesMade = 0;
+        $budgetMs = (int) config('search.slice_ms_budget', 0);
         foreach ($anagrammer->generate($source->name, $slots) as $phrase) {
             $created = AlterEgo::firstOrCreate(
                 ['source_name_id' => $source->id, 'phrase' => $phrase],
-                ['source_name_pattern_id' => $pattern->id]
+                ['source_name_pattern_id' => $sourceNamePattern->id]
             );
             if ($created->wasRecentlyCreated) {
                 $source->increment('alteregos_found');
@@ -85,14 +95,39 @@ class ProcessPatternJob implements ShouldQueue
             }
             $cap = (int) config('search.phrases_per_step_cap', 0);
             if ($cap > 0 && $phrasesMade >= $cap) {
+                // slice reached by count cap
                 break;
+            }
+            if ($budgetMs > 0) {
+                $elapsedMs = (int) round((microtime(true) - $t0) * 1000);
+                if ($elapsedMs >= $budgetMs && $phrasesMade > 0) {
+                    // time slice budget reached and we made some progress
+                    break;
+                }
             }
         }
 
-        // Mark pattern done
-        $pattern->status = 'done';
-        $pattern->save();
-        $source->increment('patterns_searched');
+        // If we stopped early due to budget or cap but likely have more work, re-dispatch self and keep status as processing
+        $elapsedMsAfter = (int) round((microtime(true) - $t0) * 1000);
+        $cap = (int) config('search.phrases_per_step_cap', 0);
+        $stoppedByCountCap = ($cap > 0 && $phrasesMade >= $cap);
+        $stoppedByTime = ($budgetMs > 0 && $elapsedMsAfter >= $budgetMs && $phrasesMade > 0);
+        if ($stoppedByCountCap || $stoppedByTime) {
+            // keep processing state and schedule another slice
+            try {
+                $dispatch = self::dispatch($this->sourceId, $this->sourceNamePatternId);
+                $queue = config('search.queue');
+                if (!empty($queue)) { $dispatch->onQueue($queue); }
+            } catch (\Throwable $e) {
+                // best-effort; logging only
+                try { Log::warning('Re-dispatch ProcessPatternJob failed', ['source_id'=>$this->sourceId,'pattern_id'=>$this->sourceNamePatternId,'err'=>$e->getMessage()]); } catch (\Throwable $ee) {}
+            }
+        } else {
+            // Mark pattern done (no more progress or fully exhausted)
+            $sourceNamePattern->status = 'done';
+            $sourceNamePattern->save();
+            $source->increment('patterns_searched');
+        }
 
         // Update elapsed and possibly complete the source
         $startedAt = $source->started_at ?? now();
@@ -100,18 +135,38 @@ class ProcessPatternJob implements ShouldQueue
         if ($totalElapsed < 0) { $totalElapsed = 0; }
         $source->elapsed_seconds = (int)$totalElapsed;
 
-        // If no more pending patterns, complete the source
-        $pendingLeft = SourceNamePattern::where('source_name_id', $source->id)
-            ->where('status', 'pending')
+        // If no more pending/processing patterns, complete the source
+        $left = SourceNamePattern::where('source_name_id', $source->id)
+            ->whereIn('status', ['pending','processing'])
             ->count();
-        if ($pendingLeft === 0) {
+        if ($left === 0) {
             $source->status = 'completed';
             $source->completed_at = now();
             $source->current_pattern = null;
         } else {
-            $source->current_pattern = null; // clear current pointer between patterns
+            // Keep showing the current pattern while it is still being processed in slices
+            if ($stoppedByCountCap || $stoppedByTime) {
+                $source->current_pattern = $sourceNamePattern->pattern_template;
+            } else {
+                // Between fully completed patterns, clear the pointer
+                $source->current_pattern = null;
+            }
         }
         $source->save();
+
+        // Log timing and basic counters
+        try {
+            $dt = max(0, (int) round((microtime(true) - $t0) * 1000));
+            Log::info('ProcessPatternJob completed', [
+                'source_id' => $this->sourceId,
+                'pattern_id' => $this->sourceNamePatternId,
+                'phrases_found' => (int)($phrasesMade ?? 0),
+                'elapsed_ms' => $dt,
+                'attempt' => method_exists($this, 'attempts') ? $this->attempts() : null,
+            ]);
+        } catch (\Throwable $e) {
+            // swallow logging errors
+        }
     }
 
     /**
@@ -143,24 +198,20 @@ class ProcessPatternJob implements ShouldQueue
      * Expand groups by adding all anagram siblings for the signatures present per token.
      * @param array<string,array<string,array<int,array{id:int,word:string,signature:string}>>> $groups
      */
-    private function expandAnagramsInGroups(array &$groups, bool $includeBoring = true): void
+    private function expandAnagramsInGroups(array &$groups, bool $includeBoring = false): void
     {
-        foreach ($groups as $token => &$byList) {
+        foreach ($groups as $token => &$byListType) {
             // Collect unique signatures present in any list for this token
-            $sigs = [];
-            foreach ($byList as $listType => $items) {
-                foreach ($items as $it) {
-                    $sig = (string)($it['signature'] ?? '');
-                    if ($sig !== '') $sigs[$sig] = true;
-                }
+            $signatures = [];
+            foreach ($byListType as $items) {
+                $signatures  = array_merge($signatures, array_column($items, 'signature'));
             }
-            $sigList = array_keys($sigs);
-            if (empty($sigList)) continue;
+            if (empty($signatures)) continue;
             // Fetch all words matching these signatures for this token
             $q = \DB::table('words')
                 ->select('id','word','list_type','signature')
                 ->where('token_type', $token)
-                ->whereIn('signature', $sigList)
+                ->whereIn('signature', $signatures)
                 ->orderBy('id');
             if (!$includeBoring) {
                 $q->where('list_type', '!=', 'boring');
@@ -168,11 +219,11 @@ class ProcessPatternJob implements ShouldQueue
             $rows = $q->get();
             foreach ($rows as $r) {
                 $lt = (string)$r->list_type;
-                $byList[$lt] = $byList[$lt] ?? [];
-                $byList[$lt][] = ['id'=>(int)$r->id, 'word'=>(string)$r->word, 'signature'=>(string)$r->signature];
+                $byListType[$lt] = $byListType[$lt] ?? [];
+                $byListType[$lt][] = ['id'=>(int)$r->id, 'word'=>(string)$r->word, 'signature'=>(string)$r->signature];
             }
             // Optional: dedupe per list by word
-            foreach ($byList as $lt => &$items) {
+            foreach ($byListType as $lt => &$items) {
                 $seen = [];
                 $uniq = [];
                 foreach ($items as $it) {
@@ -184,7 +235,7 @@ class ProcessPatternJob implements ShouldQueue
             }
             unset($items);
         }
-        unset($byList);
+        unset($byListType);
     }
 
     private function flattenMatchesByToken(array $groups): array

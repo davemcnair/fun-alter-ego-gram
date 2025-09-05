@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Services\PatternQueryService;
+use App\Services\ListPatternsService;
 use Illuminate\Console\Attributes\AsCommand;
 use Illuminate\Console\Command;
 
@@ -11,7 +11,7 @@ class ListPatternsCommand extends Command
 {
     protected $signature = 'patterns:list {--limit=20} {--page=1} {--like=}';
 
-    public function handle(PatternQueryService $svc): int
+    public function handle(ListPatternsService $svc): int
     {
         $opts = [
             'limit' => (int)$this->option('limit'),

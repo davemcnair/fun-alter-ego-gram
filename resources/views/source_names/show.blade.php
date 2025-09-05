@@ -106,7 +106,7 @@
                     </label>
                 </h3>
                 @php
-                    $groups = $matches['groups'] ?? [];
+                    $groups = is_array($matches) ? $matches : [];
                     if (!empty($groups)) {
                         uksort($groups, function($a, $b){
                             if ($a === 'surname' && $b !== 'surname') return -1;
@@ -230,7 +230,7 @@
     $funForename = [];
     $allSurname = [];
     $allForename = [];
-    $groupsForFun = $matches['groups'] ?? [];
+    $groupsForFun = is_array($matches) ? $matches : [];
     // collect fun
     if (isset($groupsForFun['surname']['fun'])) {
         foreach ($groupsForFun['surname']['fun'] as $it) {
@@ -268,6 +268,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
     const statusEl = document.getElementById('status');
     const wordFilterStatus = document.getElementById('wordFilterStatus');
     const pattRow = document.getElementById('patternsRow');
+    const showPatternSelectionLink = document.getElementById('showPatternSelection');
     const pattS = document.getElementById('patternsSearched');
     const pattT = document.getElementById('patternsTotal');
     const aeFound = document.getElementById('alterEgosFound');
@@ -525,23 +526,16 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
             for (let b of blocks) {
                 const c = Math.max(1, parseInt(b.count || 1, 10));
                 if (b.type === 'surname' || b.name === 'forename') {
-                    // PhraseBuilder hyphen-joins consecutive runs of the same token into one token.
-                    // Consume a single token and, if it contains hyphens, render its parts as draggable.
-                    const tok = tokens[ti++] || '';
-                    const parts = String(tok).split('-').filter(x => x.length > 0);
-                    if (parts.length > 1) {
-                        const tname = b.type === 'surname' ? 'surname' : 'forename';
-                        const inner = parts.map(function(p){
-                            const html = highlightToken(p, tname);
-                            // Wrap each part; draggable will be enabled by JS enhancer
-                            return '<span class="ph-part" data-token="'+tname+'" data-word="'+escAttr(p)+'" draggable="true">'+html+'</span>';
-                        }).join('<span class="ph-sep">-</span>');
-                        out.push('<span class="ph-block" data-token="'+tname+'">'+inner+'</span>');
-                    } else {
-                        // Single part: just highlight normally
-                        const tname = b.type === 'surname' ? 'surname' : 'forename';
-                        out.push(highlightToken(tok, tname));
-                    }
+                    // For multi-token blocks (e.g., surname:2), render each token as a draggable part separated by spaces
+                    const tname = b.type === 'surname' ? 'surname' : 'forename';
+                    const slice = [];
+                    for (let k = 0; k < c; k++) { slice.push(tokens[ti++] || ''); }
+                    // Build inner HTML: each token is a .ph-part; keep token text as-is (including any hyphens inside)
+                    const inner = slice.map(function(tok){
+                        const html = highlightToken(tok, tname);
+                        return '<span class="ph-part" data-token="'+tname+'" data-word="'+escAttr(tok)+'" draggable="true">'+html+'</span>';
+                    }).join('<span class="ph-sep"> </span>');
+                    out.push('<span class="ph-block" data-token="'+tname+'">'+inner+'</span>');
                 } else {
                     for (let k = 0; k < c; k++) {
                         const tok = tokens[ti++] || '';
@@ -834,11 +828,17 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
                     words.forEach(function(n){
                         const wordLower = String(n.getAttribute('data-word') || '').toLowerCase();
                         const shouldShow = showWord(wordLower);
-                        n.style.display = shouldShow ? '' : 'none';
-                        // hide/show adjacent inline filter button (only present for ok forename/surname items)
-                        const sib = n.nextElementSibling;
-                        if (sib && sib.tagName === 'BUTTON' && sib.classList.contains('link')) {
-                            sib.style.display = shouldShow ? '' : 'none';
+                        // Prefer hiding the wrapper (.tok-item) if present to avoid whitespace gaps
+                        const wrapper = (n.closest ? n.closest('.tok-item') : null);
+                        if (wrapper) {
+                            wrapper.style.display = shouldShow ? '' : 'none';
+                        } else {
+                            // Fallback: hide/show the word and its adjacent action button
+                            n.style.display = shouldShow ? '' : 'none';
+                            const sib = n.nextElementSibling;
+                            if (sib && sib.tagName === 'BUTTON' && sib.classList.contains('link')) {
+                                sib.style.display = shouldShow ? '' : 'none';
+                            }
                         }
                         if (container === allContainer && shouldShow) {
                             visibleCount++;
@@ -877,6 +877,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
             }
         } catch (e) { /* ignore */ }
     }
+
 
     function render(p) {
         statusEl.textContent = p.status;
@@ -968,6 +969,11 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
 
     const FORCE_SYNC = {!! json_encode((bool) config('search.force_sync_steps')) !!};
 
+    // Fixed poll delay (1s)
+    function getPollDelay() {
+        return 1000;
+    }
+
     async function stepLoop() {
         if (paused || completed) return;
         try {
@@ -982,7 +988,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
             }
         } catch (e) { /* ignore */ }
         if (!paused && !completed) {
-            setTimeout(stepLoop, 300);
+            setTimeout(stepLoop, getPollDelay());
         }
     }
 
@@ -1049,6 +1055,13 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
                     paused = false; completed = false;
                     stepLoop();
                 } catch (e) { /* ignore */ }
+            });
+        }
+        if (showPatternSelectionLink && selCard) {
+            showPatternSelectionLink.addEventListener('click', function(ev){
+                ev.preventDefault();
+                selCard.style.display = 'block';
+                window.scrollTo({top: selCard.offsetTop - 20, behavior: 'smooth'});
             });
         }
     })();
@@ -1156,19 +1169,15 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
       normalizeSeparators(block);
     }
     function normalizeSeparators(block){
-      // Ensure there is a hyphen separator between each .ph-part
-      const children = Array.from(block.childNodes);
-      const rebuilt = [];
-      children.forEach(function(ch){ if (ch.nodeType === 1) rebuilt.push(ch); });
-      // Remove all separators
+      // Ensure there is a single space separator between each .ph-part
+      // Remove existing explicit separators first
       Array.from(block.querySelectorAll('.ph-sep')).forEach(function(n){ n.remove(); });
-      // Reinsert hyphen separators between parts
       const parts = Array.from(block.querySelectorAll('.ph-part'));
       for (let i = 0; i < parts.length; i++) {
         if (i > 0) {
           const sep = document.createElement('span');
           sep.className = 'ph-sep';
-          sep.textContent = '-';
+          sep.textContent = ' ';
           block.insertBefore(sep, parts[i]);
         }
       }

@@ -23,7 +23,7 @@ class WordsMatchesCommand extends Command
             return self::FAILURE;
         }
         $sourceSignature = $this->makeSignature($sourceName);
-        $payload = $svc->findMatches($sourceSignature, [
+        $groupedWordsByTokenAndListType = $svc->findMatches($sourceSignature, [
             'token' => (string)$this->option('token'),
             'list' => (string)$this->option('list'),
             'include_boring' => (bool)$this->option('include-boring'),
@@ -31,22 +31,13 @@ class WordsMatchesCommand extends Command
 
         $asJson = (bool)$this->option('json');
         if ($asJson) {
-            $this->line(json_encode([
-                'source' => $payload['source'],
-                'signature' => $payload['signature'],
-                'total_matches' => $payload['total'],
-                'groups' => $payload['groups'],
-            ], JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));
+            $this->line(json_encode($groupedWordsByTokenAndListType, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));
             return self::SUCCESS;
         }
 
-        $this->info('Source: ' . $payload['source'] . ' | signature=' . $payload['signature'] . ' | total matches=' . $payload['total']);
-        if ($payload['total'] === 0) return self::SUCCESS;
-
-        $grouped = $payload['groups'];
         $sampleLimit = 10;
-        ksort($grouped, SORT_STRING);
-        foreach ($grouped as $token => $byList) {
+        ksort($groupedWordsByTokenAndListType, SORT_STRING);
+        foreach ($groupedWordsByTokenAndListType as $token => $byList) {
             $this->line('[' . $token . ']');
             ksort($byList, SORT_STRING);
             foreach ($byList as $listType => $items) {

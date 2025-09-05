@@ -6,7 +6,7 @@ use App\Models\Token;
 use App\Traits\HelpsMatchWords;
 use Illuminate\Support\Facades\DB;
 
-class PatternQueryService
+class ListPatternsService
 {
     use HelpsMatchWords;
 

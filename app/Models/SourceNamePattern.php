@@ -11,8 +11,6 @@ class SourceNamePattern extends Model
 {
     use HasFactory;
 
-    public const DEFAULT_MAX_RANK = 100;
-
     protected $fillable = [
         'source_name_id', 'pattern_template', 'popularity_rank', 'status'
     ];

@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\SourceName;
 use App\Models\SourceNamePattern;
 use App\Models\AlterEgo;
-use App\Services\PatternQueryService;
+use App\Services\ListPatternsService;
 use App\Services\WordMatchService;
 use App\Services\Anagrammer;
 use App\Traits\HelpsMatchWords;
@@ -19,8 +19,16 @@ class SourceNameController extends Controller
 
     public function index()
     {
-        $items = SourceName::withCount('alterEgos')->orderByDesc('id')->paginate(15);
-        return view('source_names.index', compact('items'));
+        try {
+            $items = SourceName::withCount('alterEgos')->orderByDesc('id')->paginate(15);
+            return view('source_names.index', compact('items'));
+        } catch (\Throwable $e) {
+            // If database is not ready or any issue occurs, show a lightweight welcome/setup page
+            $details = config('app.debug') ? (string) $e->getMessage() : null;
+            return response()->view('welcome_min', [
+                'error' => $details,
+            ], 200);
+        }
     }
 
     public function create()
@@ -28,7 +36,7 @@ class SourceNameController extends Controller
         return view('source_names.create');
     }
 
-    public function store(Request $request, PatternQueryService $patterns)
+    public function store(Request $request, ListPatternsService $patterns)
     {
         $data = $request->validate([
             'name' => ['required','string','min:5','max:25'],
@@ -159,7 +167,7 @@ class SourceNameController extends Controller
                 $matchesPayload = $wordMatchService->findMatches($source->signature, [
                     'include_boring' => true,
                 ]);
-                $candidatesByToken = $this->flattenMatchesByToken($matchesPayload['groups'] ?? []);
+                $candidatesByToken = $this->flattenMatchesByToken(is_array($matchesPayload) ? $matchesPayload : []);
 
                 $anagrammer = new Anagrammer($candidatesByToken);
                 $phrasesMade = 0;
@@ -239,7 +247,9 @@ class SourceNameController extends Controller
             ->orderBy('popularity_rank')
             ->pluck('id');
         foreach ($pending as $pid) {
-            ProcessPatternJob::dispatch($source->id, (int)$pid);
+            $dispatch = ProcessPatternJob::dispatch($source->id, (int)$pid);
+            $queue = config('search.queue');
+            if (!empty($queue)) { $dispatch->onQueue($queue); }
         }
 
         return response()->json(['ok' => true] + $this->progressPayload($source));
@@ -305,7 +315,7 @@ class SourceNameController extends Controller
         return response()->json(['ok' => true] + $this->progressPayload($source_name->fresh()));
     }
 
-    public function previewPatterns(Request $request, PatternQueryService $patterns)
+    public function previewPatterns(Request $request, ListPatternsService $patterns)
     {
         $data = $request->validate([
             'name' => ['required','string','min:5','max:25'],
@@ -335,7 +345,9 @@ class SourceNameController extends Controller
 
             // If running, enqueue this pattern for background processing
             if ($source_name->status === 'running') {
-                ProcessPatternJob::dispatch($source_name->id, $pattern->id);
+                $dispatch = ProcessPatternJob::dispatch($source_name->id, $pattern->id);
+                $queue = config('search.queue');
+                if (!empty($queue)) { $dispatch->onQueue($queue); }
             }
         }
         return response()->json(['ok' => true] + $this->progressPayload($source_name->fresh()));
@@ -344,40 +356,20 @@ class SourceNameController extends Controller
     public function start(SourceName $source_name, Request $request)
     {
         $source = $source_name;
-        $data = $request->validate([
-            'templates' => ['array'],
-            'templates.*' => ['string'],
-        ]);
-        $selected = array_values(array_unique(array_map('strval', $data['templates'] ?? [])));
 
-        $patterns = SourceNamePattern::where('source_name_id', $source->id)
+        // Select all patterns for this source;
+        // filtering to standard types was already applied at creation time.
+        $sourcePatterns = SourceNamePattern::where('source_name_id', $source->id)
             ->orderBy('popularity_rank')
             ->get();
 
         $wasIdle = $source->status === 'idle';
 
-        if (!empty($selected)) {
-            $sel = array_flip($selected);
-            foreach ($patterns as $p) {
-                $p->status = isset($sel[$p->pattern_template]) ? 'pending' : 'deselected';
-                try {
-                    $p->save();
-                } catch (\Illuminate\Database\QueryException $e) {
-                    // Fallback for environments without 'deselected' in enum/check
-                    if ($p->status === 'deselected') {
-                        $p->status = 'done';
-                        $p->save();
-                    } else {
-                        throw $e;
-                    }
-                }
-            }
-            $source->patterns_total = count($selected);
-        } else {
-            // No explicit selection provided: default to all patterns
-            foreach ($patterns as $p) { $p->status = 'pending'; $p->save(); }
-            $source->patterns_total = $patterns->count();
+        foreach ($sourcePatterns as $p) {
+            $p->status = 'pending';
+            $p->save();
         }
+        $source->patterns_total = $sourcePatterns->count();
 
         if ($wasIdle) {
             // Reset counters only on first start
@@ -394,12 +386,11 @@ class SourceNameController extends Controller
         $source->save();
 
         // Enqueue all pending patterns for background processing
-        $pending = SourceNamePattern::where('source_name_id', $source->id)
-            ->where('status', 'pending')
-            ->orderBy('popularity_rank')
-            ->pluck('id');
-        foreach ($pending as $pid) {
-            ProcessPatternJob::dispatch($source->id, (int)$pid);
+        $pendingIds = $sourcePatterns->pluck('id');
+        $queue = config('search.queue');
+        foreach ($pendingIds as $pid) {
+            $dispatch = ProcessPatternJob::dispatch($source->id, (int)$pid);
+            if (!empty($queue)) { $dispatch->onQueue($queue); }
         }
 
         return response()->json(['ok' => true] + $this->progressPayload($source->fresh()));
@@ -442,9 +433,7 @@ class SourceNameController extends Controller
             'patternsSearched' => (int)$s->patterns_searched,
             'alterEgosFound' => (int)$s->alteregos_found,
             'timeElapsed' => (int)$s->elapsed_seconds,
-            // Back-compat flat list
-            'alterEgos' => AlterEgo::where('source_name_id', $s->id)->orderByDesc('id')->pluck('phrase'),
-            // New grouped payload
+//            'alterEgos' => AlterEgo::where('source_name_id', $s->id)->orderByDesc('id')->pluck('phrase'),
             'groups' => $groups,
             'starred' => $starred,
         ];

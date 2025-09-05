@@ -41,3 +41,6 @@ Route::post('/source-names/{source_name}/unstar', [SourceNameController::class, 
 Route::post('/source-names/{source_name}/rephrase', [SourceNameController::class, 'rephrase'])->name('source-names.rephrase');
 // Enable (re-enable) a deselected pattern
 Route::post('/source-names/{source_name}/patterns/{pattern}/enable', [SourceNameController::class, 'enablePattern'])->name('source-names.patterns.enable');
+
+// Docs: progress choices (static view)
+Route::view('/docs/progress_choices', 'docs.progress_choices')->name('docs.progress_choices');

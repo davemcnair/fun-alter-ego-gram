@@ -45,4 +45,36 @@ class HelpsMatchWordsTest extends TestCase
         $small = $this->helper->makeSignature('zzz');
         $this->assertFalse($this->helper->isSubset($small, $big));
     }
+
+    public function test_letter_counts_and_subtract(): void
+    {
+        $sig = $this->helper->makeSignature('Vinci'); // ciinv
+        $counts = $this->helper->letterCountsFromSignature($sig);
+        $this->assertSame(['c'=>1,'i'=>2,'n'=>1,'v'=>1], $counts);
+        $need = ['a'=>1,'c'=>1,'i'=>2,'n'=>1,'v'=>1];
+        $remaining = $this->helper->subtract($need, $counts);
+        $this->assertSame(['a'=>1], $remaining);
+    }
+
+    public function test_candidate_letters_exceed_needed_counts(): void
+    {
+        $need = ['a'=>1,'d'=>1,'n'=>1];
+        $candOk = ['a'=>1];
+        $candBad = ['a'=>2];
+        $this->assertFalse($this->helper->candidateLettersExceedNeededCounts($need, $candOk));
+        $this->assertTrue($this->helper->candidateLettersExceedNeededCounts($need, $candBad));
+    }
+
+    public function test_union_can_fill_slot_aware_upper_bound(): void
+    {
+        // token precomputed maxes (e.g., from DfsService/SignatureFillService)
+        $tokenPrecomputed = [
+            'forename' => ['maxLetterCounts' => ['a'=>2,'d'=>1,'n'=>1]],
+            'surname'  => ['maxLetterCounts' => ['c'=>1,'i'=>2,'n'=>1,'v'=>1]],
+        ];
+        $need = ['a'=>1,'c'=>1,'i'=>2,'n'=>1,'v'=>1]; // Adam + Vinci
+        $this->assertTrue($this->helper->unionCanFill($tokenPrecomputed, $need));
+        $needTooMuch = ['a'=>3,'c'=>1,'i'=>2,'n'=>1,'v'=>1];
+        $this->assertFalse($this->helper->unionCanFill($tokenPrecomputed, $needTooMuch));
+    }
 }

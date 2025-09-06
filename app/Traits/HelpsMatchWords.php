@@ -69,7 +69,11 @@ trait HelpsMatchWords
         return $a;
     }
 
-    /** Quick upper-bound feasibility for remaining slots */
+    /**
+     * Quick upper-bound feasibility for remaining slots
+     *
+     * Slot-aware upper bound union: sum per-letter maxima per remaining slot (handles repeated tokens)
+     */
     public function unionCanFill(array $tokenPrecomputed, array $signatureLetterCounts): bool
     {
         $supply = [];

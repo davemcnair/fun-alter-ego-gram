@@ -39,18 +39,35 @@ final class DfsService
         $candidates = $candidateSignaturesByToken[$token] ?? [];
         if (empty($candidates)) return; // dead end
 
-        foreach ($candidates['signatures'] as $candidate) {
-            $signature = $candidate['signature'];
-            $letterCounts = $this->letterCountsFromSignature($signature);
-            if ($this->candidateLettersExceedNeededCounts($remainingSourceLetterCountsNeeded, $letterCounts)) continue;
-            $nextNeed = $this->subtract($remainingSourceLetterCountsNeeded, $letterCounts);
-            // could remainingCandidateSignaturesByToken be calculated here for multi-slot tokens?
-            // Additional pruning after choosing this candidate
-            if (!$this->unionCanFill($candidateSignaturesByToken, $nextNeed)) continue;
-            $nextChosenSigs = $chosenSignatures;
-            $nextChosenSigs[$pos] = $signature;
-            $nextChosenTokens = $chosenTokens;
-            $nextChosenTokens[$pos] = $token;
+        // Narrow by remaining-need letters using letter index (union of candidates containing any needed letter)
+        $viableIndices = [];
+        $idxByLetter = (array)($candidates['letterIndices'] ?? []);
+        foreach ($remainingSourceLetterCountsNeeded as $ch => $n) {
+            if (isset($idxByLetter[$ch])) {
+                foreach ($idxByLetter[$ch] as $i) { $viableIndices[$i] = true; }
+            }
+        }
+        $viableIndices = array_keys($viableIndices);
+        if (empty($viableIndices)) return; // no candidate contains any needed letter
+
+        // Optional: sort viable indices by candidate length then signature for determinism
+        usort($viableIndices, function($a, $b) use ($candidates){
+            $A = $candidates['signatures'][$a] ?? null; $B = $candidates['signatures'][$b] ?? null;
+            if ($A === null || $B === null) return 0;
+            if ($A['len'] === $B['len']) return $A['signature'] <=> $B['signature'];
+            return $A['len'] <=> $B['len'];
+        });
+
+        foreach ($viableIndices as $i) {
+            $candidate = $candidates['signatures'][$i] ?? null;
+            if ($candidate === null) continue;
+            $hist = (array)($candidate['hist'] ?? []);
+            if ($this->candidateLettersExceedNeededCounts($remainingSourceLetterCountsNeeded, $hist)) continue;
+            $nextNeed = $this->subtract($remainingSourceLetterCountsNeeded, $hist);
+            // Additional pruning after choosing this candidate using slot-aware union (accounts for repeated tokens)
+            if (!$this->unionCanFill($patternTokenPositions, $nextNeed, $candidateSignaturesByToken)) continue;
+            $nextChosenSigs = $chosenSignatures; $nextChosenSigs[$pos] = (string)$candidate['signature'];
+            $nextChosenTokens = $chosenTokens; $nextChosenTokens[$pos] = $token;
             yield from $this->dfs($patternTokenPositions, $nextNeed, $candidateSignaturesByToken, $nextChosenSigs, $nextChosenTokens);
         }
     }

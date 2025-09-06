@@ -37,11 +37,14 @@ class Pattern extends Model
         };
     }
 
-
     /**
-     * Convert a template like "{title}{forename}{surname:2}" into token slots array.
+     * Convert a pattern template like "{title}{forename}{surname:2}" into an array of slot descriptors
+     * that Anagrammer expects. A suffix like :2 means the token may appear twice (e.g., two surnames).
+     * Example:
+     *   Input:  "{title}{forename}{surname:2}"
+     *
      * @return string[]
-     */
+*/
     public static function parsePatternTokenSlotPositions(string $template): array
     {
         $patternTokenPositions = [];

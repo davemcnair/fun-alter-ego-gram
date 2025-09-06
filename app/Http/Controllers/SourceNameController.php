@@ -12,7 +12,7 @@ use App\Services\SignatureFillService;
 use App\Models\SignaturedPattern;
 use App\Traits\HelpsMatchWords;
 use Illuminate\Http\Request;
-use App\Jobs\ProcessPatternJob;
+use App\Jobs\FillPatternSignaturesJob;
 use Illuminate\Support\Facades\DB;
 
 class SourceNameController extends Controller
@@ -269,7 +269,7 @@ class SourceNameController extends Controller
             ->orderBy('popularity_rank')
             ->pluck('id');
         foreach ($pending as $pid) {
-            $dispatch = ProcessPatternJob::dispatch($source->id, (int)$pid);
+            $dispatch = FillPatternSignaturesJob::dispatch($source->id, (int)$pid);
             $queue = config('search.queue');
             if (!empty($queue)) { $dispatch->onQueue($queue); }
         }
@@ -367,7 +367,7 @@ class SourceNameController extends Controller
 
             // If running, enqueue this pattern for background processing
             if ($source_name->status === 'running') {
-                $dispatch = ProcessPatternJob::dispatch($source_name->id, $pattern->id);
+                $dispatch = FillPatternSignaturesJob::dispatch($source_name->id, $pattern->id);
                 $queue = config('search.queue');
                 if (!empty($queue)) { $dispatch->onQueue($queue); }
             }
@@ -375,23 +375,21 @@ class SourceNameController extends Controller
         return response()->json(['ok' => true] + $this->progressPayload($source_name->fresh()));
     }
 
-    public function start(SourceName $source_name, Request $request)
+    public function start(SourceName $source)
     {
-        $source = $source_name;
-
         // Select all patterns for this source;
         // filtering to standard types was already applied at creation time.
-        $sourcePatterns = SourceNamePattern::where('source_name_id', $source->id)
+        $sourceNamePatterns = SourceNamePattern::where('source_name_id', $source->id)
             ->orderBy('popularity_rank')
             ->get();
 
         $wasIdle = $source->status === 'idle';
 
-        foreach ($sourcePatterns as $p) {
+        foreach ($sourceNamePatterns as $p) {
             $p->status = 'pending';
             $p->save();
         }
-        $source->patterns_total = $sourcePatterns->count();
+        $source->patterns_total = $sourceNamePatterns->count();
 
         if ($wasIdle) {
             // Reset counters only on first start
@@ -408,10 +406,10 @@ class SourceNameController extends Controller
         $source->save();
 
         // Enqueue all pending patterns for background processing
-        $pendingIds = $sourcePatterns->pluck('id');
+        $pendingIds = $sourceNamePatterns->pluck('id');
         $queue = config('search.queue');
         foreach ($pendingIds as $pid) {
-            $dispatch = ProcessPatternJob::dispatch($source->id, (int)$pid);
+            $dispatch = FillPatternSignaturesJob::dispatch($pid);
             if (!empty($queue)) { $dispatch->onQueue($queue); }
         }
 

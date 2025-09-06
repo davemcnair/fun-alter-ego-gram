@@ -20,6 +20,11 @@ class SourceNamePattern extends Model
         return $this->belongsTo(SourceName::class);
     }
 
+    public function signaturedPatterns(): HasMany
+    {
+        return $this->hasMany(SignaturedPattern::class);
+    }
+
     public function alterEgos(): HasMany
     {
         return $this->hasMany(AlterEgo::class);

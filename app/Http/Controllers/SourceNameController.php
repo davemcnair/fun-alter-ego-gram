@@ -8,6 +8,8 @@ use App\Models\AlterEgo;
 use App\Services\ListPatternsService;
 use App\Services\WordMatchService;
 use App\Services\Anagrammer;
+use App\Services\SignatureFillService;
+use App\Models\SignaturedPattern;
 use App\Traits\HelpsMatchWords;
 use Illuminate\Http\Request;
 use App\Jobs\ProcessPatternJob;
@@ -36,7 +38,7 @@ class SourceNameController extends Controller
         return view('source_names.create');
     }
 
-    public function store(Request $request, ListPatternsService $patterns)
+    public function store(Request $request, ListPatternsService $patternsService)
     {
         $data = $request->validate([
             'name' => ['required','string','min:5','max:25'],
@@ -49,7 +51,7 @@ class SourceNameController extends Controller
         }
 
         $includeBoring = (bool)($data['allow_boring'] ?? false);
-        $rows = $patterns->listForSource($name, $includeBoring);
+        $patterns = $patternsService->listForSource($name, $includeBoring);
 
         // Restrict to standard patterns only for new searches
         try {
@@ -161,17 +163,37 @@ class SourceNameController extends Controller
                 $source->current_pattern = $pattern->pattern_template;
                 $source->save();
 
-                $slots = $this->parsePatternSlots($pattern->pattern_template);
+                $patternTokenPositions = $this->parsePatternSlots($pattern->pattern_template);
 
                 // Include boring lists during generation so phrases can be complete
                 $matchesPayload = $wordMatchService->findMatches($source->signature, [
                     'include_boring' => true,
                 ]);
-                $candidatesByToken = $this->flattenMatchesByToken(is_array($matchesPayload) ? $matchesPayload : []);
+                $candidatesByToken = $this->flattenMatchesByTokenWithSignatures(is_array($matchesPayload) ? $matchesPayload : []);
+
+                // Also persist signature-only fills for this pattern (best-effort)
+                try {
+                    $sigFill = new SignatureFillService();
+                    foreach ($sigFill->generateSignaturePatterns($source->signature, $patternTokenPositions, array_reduce(array_keys($candidatesByToken), function($acc, $tok) use ($candidatesByToken){
+                        // Convert list of {word,signature} entries to [word => sig]
+                        $map = [];
+                        foreach ($candidatesByToken[$tok] as $pair) {
+                            $w = (string)($pair['word'] ?? ''); $s = (string)($pair['signature'] ?? '');
+                            if ($w !== '' && $s !== '') $map[$w] = $s;
+                        }
+                        $acc[$tok] = $map;
+                        return $acc;
+                    }, [])) as $sigPattern) {
+                        SignaturedPattern::firstOrCreate([
+                            'source_name_pattern_id' => $pattern->id,
+                            'signatured_pattern' => $sigPattern,
+                        ]);
+                    }
+                } catch (\Throwable $e) { /* ignore */ }
 
                 $anagrammer = new Anagrammer($candidatesByToken);
                 $phrasesMade = 0;
-                foreach ($anagrammer->generate($source->name, $slots) as $phrase) {
+                foreach ($anagrammer->generate($source->name, $patternTokenPositions) as $phrase) {
                     $created = AlterEgo::firstOrCreate(
                         ['source_name_id' => $source->id, 'phrase' => $phrase],
                         ['source_name_pattern_id' => $pattern->id]
@@ -439,44 +461,27 @@ class SourceNameController extends Controller
         ];
     }
 
-    /**
-     * Convert a template like "{title}{forename}{surname:2}" into token slots array.
-     * @return string[]
-     */
-    private function parsePatternSlots(string $template): array
-    {
-        $slots = [];
-        $pos = 0;
-        if (preg_match_all('/\{([a-z]+)(?::(\d+))?\}/i', $template, $m, PREG_SET_ORDER)) {
-            foreach ($m as $match) {
-                $name = strtolower($match[1]);
-                $count = isset($match[2]) && ctype_digit($match[2]) ? max(1, (int)$match[2]) : 1;
-                for ($i = 0; $i < $count; $i++) {
-                    $slots[] = ['name' => $name, 'pos' => $pos++];
-                }
-            }
-        }
-        return $slots;
-    }
 
     /**
-     * Flatten WordMatchService groups to token=>[words]
-     * @param array<string,array<string,array<int,array{word:string}>>> $groups
-     * @return array<string,string[]>
+     * Flatten WordMatchService groups to token => list of {word, signature} for Anagrammer.
+     * @param array<string,array<string,array<int,array{word:string,signature:string}>>> $groups
+     * @return array<string,array<int,array{word:string,signature:string}>>
      */
-    private function flattenMatchesByToken(array $groups): array
+    private function flattenMatchesByTokenWithSignatures(array $groups): array
     {
         $out = [];
         foreach ($groups as $token => $byList) {
             $bucket = [];
-            foreach ($byList as $listType => $items) {
+            foreach ($byList as $items) {
                 // groups already exclude boring by service unless include_boring option is set
                 foreach ($items as $it) {
                     $w = (string)($it['word'] ?? '');
-                    if ($w !== '') $bucket[$w] = true; // dedupe
+                    $sig = (string)($it['signature'] ?? '');
+                    if ($w === '' || $sig === '') continue;
+                    $bucket[$w] = $sig; // dedupe by word
                 }
             }
-            $out[$token] = array_keys($bucket);
+            $out[$token] = array_map(function($w) use ($bucket){ return ['word'=>$w, 'signature'=>$bucket[$w]]; }, array_keys($bucket));
         }
         return $out;
     }

@@ -11,12 +11,12 @@ class PhraseBuilderServiceTest extends TestCase
     {
         $svc = new PhraseBuilderService();
         $words = ['Dr', 'Adam', 'vinci'];
-        $slots = [
+        $patternTokenPositions = [
             ['name' => 'title', 'pos' => 0],
             ['name' => 'forename', 'pos' => 1],
             ['name' => 'surname', 'pos' => 2],
         ];
-        $phrase = $svc->formatPhraseBySlots($words, $slots);
+        $phrase = $svc->formatPhraseBySlots($words, $patternTokenPositions);
         $this->assertSame('Dr Adam Vinci', $phrase);
     }
 
@@ -24,13 +24,13 @@ class PhraseBuilderServiceTest extends TestCase
     {
         $svc = new PhraseBuilderService();
         $words = ['Vicar', 'Dan', 'dim', 'vinci'];
-        $slots = [
+        $patternTokenPositions = [
             ['name' => 'title', 'pos' => 0],
             ['name' => 'forename', 'pos' => 1],
             ['name' => 'surname', 'pos' => 2],
             ['name' => 'surname', 'pos' => 3],
         ];
-        $phrase = $svc->formatPhraseBySlots($words, $slots);
+        $phrase = $svc->formatPhraseBySlots($words, $patternTokenPositions);
         $this->assertSame('Vicar Dan Dim-Vinci', $phrase);
     }
 
@@ -38,13 +38,13 @@ class PhraseBuilderServiceTest extends TestCase
     {
         $svc = new PhraseBuilderService();
         $words = ['Vicar', 'Dan', 'dim', 'vinci'];
-        $slots = [
+        $patternTokenPositions = [
             ['name' => 'title', 'pos' => 0],
             ['name' => 'forename', 'pos' => 1],
             ['name' => 'surname', 'pos' => 2],
             ['name' => 'surname', 'pos' => 3],
         ];
-        $phrase = $svc->formatPhraseBySlots($words, $slots, true);
+        $phrase = $svc->formatPhraseBySlots($words, $patternTokenPositions, true);
         $this->assertSame('Vicar Dan Dim-Vinci, Vinci-Dim', $phrase);
     }
 
@@ -52,14 +52,14 @@ class PhraseBuilderServiceTest extends TestCase
     {
         $svc = new PhraseBuilderService();
         $words = ['Sir', 'adam', 'dim', 'vinci', 'mongrel'];
-        $slots = [
+        $patternTokenPositions = [
             ['name' => 'title', 'pos' => 0],
             ['name' => 'forename', 'pos' => 1],
             ['name' => 'surname', 'pos' => 2],
             ['name' => 'surname', 'pos' => 3],
             ['name' => 'surname', 'pos' => 4],
         ];
-        $phrase = $svc->formatPhraseBySlots($words, $slots, true);
+        $phrase = $svc->formatPhraseBySlots($words, $patternTokenPositions, true);
         $this->assertSame('Sir Adam Dim-Vinci-Mongrel', $phrase);
     }
 }

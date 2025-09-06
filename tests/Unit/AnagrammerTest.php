@@ -20,8 +20,8 @@ class AnagrammerTest extends TestCase
             'surname' => ['vinci'],
         ];
         $anagrammer = new Anagrammer($matches);
-        $slots = [['name' => 'title', 'pos' => 0], ['name' => 'forename', 'pos' => 1], ['name' => 'surname', 'pos' => 2]];
-        $phrases = iterator_to_array($anagrammer->generate($source, $slots));
+        $patternTokenPositions = [['name' => 'title', 'pos' => 0], ['name' => 'forename', 'pos' => 1], ['name' => 'surname', 'pos' => 2]];
+        $phrases = iterator_to_array($anagrammer->generate($source, $patternTokenPositions));
         $lower = array_map('strtolower', $phrases);
         $this->assertContains('dr adam vinci', $lower);
     }
@@ -39,8 +39,8 @@ class AnagrammerTest extends TestCase
             'surname' => ['dim'],
         ];
         $anagrammer = new Anagrammer($matches);
-        $slots = [['name' => 'title', 'pos' => 0], ['name' => 'forename', 'pos' => 1], ['name' => 'surname', 'pos' => 2]];
-        $phrases = iterator_to_array($anagrammer->generate($source, $slots));
+        $patternTokenPositions = [['name' => 'title', 'pos' => 0], ['name' => 'forename', 'pos' => 1], ['name' => 'surname', 'pos' => 2]];
+        $phrases = iterator_to_array($anagrammer->generate($source, $patternTokenPositions));
         $lower = array_map('strtolower', $phrases);
         $this->assertContains('vicar dan dim', $lower);
     }
@@ -58,12 +58,12 @@ class AnagrammerTest extends TestCase
             'surname' => ['dim', 'vinci'],
         ];
         $anagrammer = new Anagrammer($matches);
-        $slots = [
+        $patternTokenPositions = [
             ['name' => 'title', 'pos' => 0],
             ['name' => 'forename', 'pos' => 1],
             ['name' => 'surname', 'pos' => 2],
         ];
-        $phrases = iterator_to_array($anagrammer->generate($source, $slots));
+        $phrases = iterator_to_array($anagrammer->generate($source, $patternTokenPositions));
         $lower = array_map('strtolower', $phrases);
         $this->assertContains('dr adam vinci', $lower, 'Expected to generate: Dr Adam vinci');
         $this->assertContains('vicar dan dim', $lower, 'Expected to generate: Vicar Dan dim');
@@ -81,12 +81,12 @@ class AnagrammerTest extends TestCase
             'surname' => ['Mad', 'Drain'],
         ];
         $anagrammer = new Anagrammer($matches);
-        $slots = [
+        $patternTokenPositions = [
             ['name' => 'forename', 'pos' => 0],
             ['name' => 'surname', 'pos' => 1],
             ['name' => 'surname', 'pos' => 2],
         ];
-        $phrases = iterator_to_array($anagrammer->generate($source, $slots));
+        $phrases = iterator_to_array($anagrammer->generate($source, $patternTokenPositions));
         // Only one phrase should be emitted; it must include both surname parts in some hyphen order
         $this->assertCount(1, $phrases, 'Expected only one phrase (permutation-pruned)');
         $lower = strtolower($phrases[0]);

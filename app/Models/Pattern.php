@@ -37,6 +37,27 @@ class Pattern extends Model
         };
     }
 
+
+    /**
+     * Convert a template like "{title}{forename}{surname:2}" into token slots array.
+     * @return string[]
+     */
+    public static function parsePatternTokenSlotPositions(string $template): array
+    {
+        $patternTokenPositions = [];
+        $pos = 0;
+        if (preg_match_all('/\{([a-z]+)(?::(\d+))?\}/i', $template, $m, PREG_SET_ORDER)) {
+            foreach ($m as $match) {
+                $name = strtolower($match[1]);
+                $count = isset($match[2]) && ctype_digit($match[2]) ? max(1, (int)$match[2]) : 1;
+                for ($i = 0; $i < $count; $i++) {
+                    $patternTokenPositions[$pos++] = $name;
+                }
+            }
+        }
+        return $patternTokenPositions;
+    }
+
     // Returns a human-friendly example string for this pattern's template using PhraseBuilderService
     public function getExampleAttribute(): string
     {

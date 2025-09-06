@@ -11,12 +11,12 @@ class PhraseBuilderApostropheTest extends TestCase
     {
         $svc = new PhraseBuilderService();
         $words = ['Mr', 'Uriah', "O'Yak"];
-        $slots = [
+        $patternTokenPositions = [
             ['name' => 'title', 'pos' => 0],
             ['name' => 'forename', 'pos' => 1],
             ['name' => 'surname', 'pos' => 2],
         ];
-        $phrase = $svc->formatPhraseBySlots($words, $slots);
+        $phrase = $svc->formatPhraseBySlots($words, $patternTokenPositions);
         $this->assertSame("Mr Uriah O'Yak", $phrase);
     }
 }

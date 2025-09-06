@@ -19,12 +19,12 @@ class AnagrammerValidationTest extends TestCase
             'forename' => ['Victorian'],
             'surname'  => ['Chandler'],
         ];
-        $slots = [
+        $patternTokenPositions = [
             ['name' => 'forename', 'pos' => 0],
             ['name' => 'surname',  'pos' => 1],
         ];
         $anagrammer = new Anagrammer($matches);
-        $phrases = iterator_to_array($anagrammer->generate($source, $slots));
+        $phrases = iterator_to_array($anagrammer->generate($source, $patternTokenPositions));
         $this->assertSame([], $phrases, 'Anagrammer should not emit mismatched overlength phrase.');
     }
 
@@ -39,12 +39,12 @@ class AnagrammerValidationTest extends TestCase
             'title' => ['I.M.'],
             'surname' => ['-am'],
         ];
-        $slots = [
+        $patternTokenPositions = [
             ['name' => 'title', 'pos' => 0],
             ['name' => 'surname', 'pos' => 1],
         ];
         $anagrammer = new Anagrammer($matches);
-        $phrases = iterator_to_array($anagrammer->generate($source, $slots));
+        $phrases = iterator_to_array($anagrammer->generate($source, $patternTokenPositions));
         $this->assertSame([], $phrases, 'Anagrammer should ignore punctuation candidates and emit nothing.');
     }
 }

@@ -16,12 +16,12 @@ class AnagrammerApostropheTest extends TestCase
             'surname' => ["O'Yak"],
         ];
         $anagrammer = new Anagrammer($matches);
-        $slots = [
+        $patternTokenPositions = [
             ['name' => 'title', 'pos' => 0],
             ['name' => 'forename', 'pos' => 1],
             ['name' => 'surname', 'pos' => 2],
         ];
-        $phrases = iterator_to_array($anagrammer->generate($source, $slots));
+        $phrases = iterator_to_array($anagrammer->generate($source, $patternTokenPositions));
         $this->assertNotEmpty($phrases);
         $lower = array_map('strtolower', $phrases);
         $this->assertContains("mr uriah o'yak", $lower);

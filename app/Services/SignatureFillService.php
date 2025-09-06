@@ -60,10 +60,7 @@ final class SignatureFillService
 
         $candidatesSignaturesByToken = $this->precomputeCandidateSignaturesByToken($matchingSignaturesByToken);
 
-        // Quick upper-bound check: if union of per-slot maxima can’t cover required letters, bail
-        if (!$this->unionCanFill($candidatesSignaturesByToken, $sourceLetterCountsNeeded)) {
-            return;
-        }
+        // unionCanFill here causes false negatives on multi-token sigs
         $dfs = new DfsService();
         yield from $dfs->dfs($patternTokenPositions, $sourceLetterCountsNeeded, $candidatesSignaturesByToken, [], []);
     }

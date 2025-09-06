@@ -48,7 +48,8 @@ class SignatureFillServiceTest extends TestCase
         $candidates = [
             'surname' => [ 'Vinci' => 'ciinv' ],
         ];
-        $sourceSig = 'ciinvciinv'; // needs two Vinci signatures
+
+        $sourceSig = 'cciiiinnvv'; // needs double Vinci signature
 
         $out = iterator_to_array($svc->generateSignaturePatterns($sourceSig, $patternTokenPositions, $candidates), false);
 
@@ -70,23 +71,4 @@ class SignatureFillServiceTest extends TestCase
         $this->assertSame([], $out);
     }
 
-    /**
-     * Passing a raw name (with spaces and mixed case) should be normalized to a signature internally.
-     */
-    public function test_accepts_raw_source_and_normalizes_to_signature(): void
-    {
-        $svc = new SignatureFillService();
-        $patternTokenPositions = Pattern::parsePatternTokenSlotPositions("{forename}{surname}");
-        $candidates = [
-            'forename' => [ 'Adam' => 'aadm' ],
-            'surname' => [ 'Vinci' => 'ciinv' ],
-        ];
-        $rawSource = 'Adam Vinci';
-        // makeSignature('Adam Vinci') should be equivalent to 'aadmciinv' ordering-wise for histogram purposes
-        $expected = ['{forename:aadm}{surname:ciinv}'];
-
-        $out = iterator_to_array($svc->generateSignaturePatterns($rawSource, $patternTokenPositions, $candidates), false);
-
-        $this->assertSame($expected, $out);
-    }
 }

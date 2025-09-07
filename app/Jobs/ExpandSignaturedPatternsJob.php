@@ -2,11 +2,10 @@
 
 namespace App\Jobs;
 
-use App\Models\Pattern;
-use App\Models\SignaturedPattern;
 use App\Models\SourceName;
+use App\Models\Word;
+use App\Models\AlterEgo;
 use App\Services\PhraseBuilderService;
-use App\Services\SignatureFillService;
 use App\Models\SourceNamePattern;
 use App\Services\WordMatchService;
 use Illuminate\Bus\Queueable;
@@ -90,43 +89,119 @@ class ExpandSignaturedPatternsJob implements ShouldQueue
         PhraseBuilderService $phraseBuilderService
     ): void
     {
-        $sourceNamePattern = SourceNamePattern::with('signaturedPatterns')
+        // Load SNP with parent SourceName and signatured patterns
+        $sourceNamePattern = SourceNamePattern::with(['sourceName','signaturedPatterns'])
             ->find($this->sourceNamePatternId);
+        if (!$sourceNamePattern) return;
+        /** @var SourceName $source */
+        $source = $sourceNamePattern->sourceName;
 
         // If already done, skip
         if ($sourceNamePattern->status === 'done') return;
 
-        // Atomically claim the pattern if it's pending
+        // Claim the pattern for expansion
         $sourceNamePattern->status = 'expanding';
         $sourceNamePattern->save();
 
-        $tokenWordsByListTYpe = $wordMatchService->findMatches($source->signature);
+        // Precompute a deterministic word picker for (token, signature)
+        $wordCache = [];
+        $pick = function(string $token, string $signature) use (&$wordCache) : ?string {
+            $key = strtolower($token).'|'.strtolower($signature);
+            if (array_key_exists($key, $wordCache)) return $wordCache[$key];
+            // Deterministic preference: fun > ok > boring; then alphabetically
+            $rows = Word::query()
+                ->where('token_type', $token)
+                ->where('signature', $signature)
+                ->orderByRaw("CASE list_type WHEN 'fun' THEN 1 WHEN 'ok' THEN 2 ELSE 3 END")
+                ->orderBy('word')
+                ->limit(1)
+                ->get(['word']);
+            $chosen = $rows->first()->word ?? null;
+            $wordCache[$key] = $chosen ? (string)$chosen : null;
+            return $wordCache[$key];
+        };
 
-        $candidateWordSignaturesByToken = $this->flattenTokenWordsToWordSignatures($tokenWordsByListTYpe);
+        // Build slot order from the pattern template for formatting
+        $slotOrder = $this->buildSlotOrderFromTemplate((string)$sourceNamePattern->pattern_template);
 
-        $signatureWords = [];
-        $alterEgos = [];
-        $count = 0;
-        foreach ($sourceNamePattern->signaturedPatterns as $signaturedPattern) {
+        $createdCount = 0;
+        foreach ($sourceNamePattern->signaturedPatterns as $sigRow) {
+            $pairs = $this->parseSignaturedPattern((string)$sigRow->signatured_pattern);
+            if (empty($pairs)) continue;
 
+            // Resolve words deterministically for each slot
+            $words = [];
+            $ok = true;
+            foreach ($pairs as $idx => $pair) {
+                $tok = (string)($pair['token'] ?? '');
+                $sig = (string)($pair['signature'] ?? '');
+                if ($tok === '' || $sig === '') { $ok = false; break; }
+                $w = $pick($tok, $sig);
+                if ($w === null || $w === '') { $ok = false; break; }
+                $words[] = $w;
+            }
+            if (!$ok) continue;
+
+            // Format phrase with proper surname hyphenation/casing
+            try {
+                $phrase = $phraseBuilderService->formatPhraseBySlots($words, $slotOrder, false);
+            } catch (\Throwable $e) {
+                // Fallback: simple join
+                $phrase = trim(implode(' ', array_filter($words, fn($w) => $w !== '')));
+            }
+            if ($phrase === '') continue;
+
+            // Persist as AlterEgo (idempotent)
+            AlterEgo::firstOrCreate(
+                ['source_name_id' => $source->id, 'phrase' => $phrase],
+                ['source_name_pattern_id' => $sourceNamePattern->id]
+            );
+            $createdCount++;
         }
+
+        // Mark as done after expansion (Stage 1 minimal state update)
+        $sourceNamePattern->status = 'done';
+        $sourceNamePattern->save();
+
+        // Optional log
+        try { Log::info('Expanded signatured patterns for SNP '.$sourceNamePattern->id.' => '.$createdCount.' phrase(s).'); } catch (\Throwable $e) {}
     }
 
     /**
-     * Flatten the grouped matches structure into token => list of {word, signature}.
+     * Parse a signaturedPattern string like "{forename:aadm}{surname:ciinv}" into an ordered list of
+     * [ ['token'=>'forename','signature'=>'aadm'], ... ]
+     * @return array<int,array{token:string,signature:string}>
      */
-    private function flattenTokenWordsToWordSignatures(array $groups): array
+    private function parseSignaturedPattern(string $s): array
     {
         $out = [];
-        foreach ($groups as $token => $byList) {
-            $bucket = [];
-            foreach ($byList as $items) {
-                foreach ($items as $item) {
-                    $bucket[$item['word']] = $item['signature']; // dedupe by word, prefer first signature (should be identical per word)
-                }
+        if (preg_match_all('/\{([a-z]+):([a-z]+)\}/i', $s, $m, PREG_SET_ORDER)) {
+            foreach ($m as $match) {
+                $out[] = [ 'token' => strtolower($match[1]), 'signature' => strtolower($match[2]) ];
             }
-            $out[$token] = $bucket;
         }
         return $out;
+    }
+
+    /**
+     * Build a slot order array from a pattern template, suitable for PhraseBuilderService.
+     * Example input: "{title}{forename}{surname:2}" ->
+     *   [ ['name'=>'title','pos'=>0], ['name'=>'forename','pos'=>1], ['name'=>'surname','pos'=>2], ['name'=>'surname','pos'=>3] ]
+     * @return array<int,array{name:string,pos:int}>
+     */
+    private function buildSlotOrderFromTemplate(string $template): array
+    {
+        $slotOrder = [];
+        $pos = 0;
+        if (preg_match_all('/\{([a-z]+)(?::(\d+))?\}/i', $template, $m, PREG_SET_ORDER)) {
+            foreach ($m as $match) {
+                $name = strtolower($match[1]);
+                $count = isset($match[2]) && ctype_digit($match[2]) ? max(1, (int)$match[2]) : 1;
+                for ($i = 0; $i < $count; $i++) {
+                    $slotOrder[] = ['name' => $name, 'pos' => $pos++];
+                }
+            }
+        }
+        return $slotOrder;
     }
 }

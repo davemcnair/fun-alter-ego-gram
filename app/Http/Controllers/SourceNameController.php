@@ -63,7 +63,7 @@ class SourceNameController extends Controller
             $standardTemplates = [];
         }
         if (!empty($standardTemplates)) {
-            $rows = array_values(array_filter($rows, function($r) use ($standardTemplates) {
+            $rows = array_values(array_filter($patterns, function($r) use ($standardTemplates) {
                 $tpl = is_array($r) ? ($r['template'] ?? '') : ($r->template ?? '');
                 return in_array($tpl, $standardTemplates, true);
             }));

@@ -99,8 +99,8 @@ class ExpandSignaturedPatternsJob implements ShouldQueue
         // If already done, skip
         if ($sourceNamePattern->status === 'done') return;
 
-        // Claim the pattern for expansion
-        $sourceNamePattern->status = 'expanding';
+        // Claim the pattern for expansion (reuse existing allowed status)
+        $sourceNamePattern->status = 'processing';
         $sourceNamePattern->save();
 
         // Precompute a deterministic word picker for (token, signature)

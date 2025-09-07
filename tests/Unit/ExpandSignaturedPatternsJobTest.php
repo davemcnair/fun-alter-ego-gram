@@ -51,8 +51,9 @@ class ExpandSignaturedPatternsJobTest extends TestCase
 
         // Words: forename 'Adam' (fun) matches aadm; surname: prefer fun over ok for the same signature
         $this->addWord('Adam', 'forename', 'fun', 'aadm');
-        $this->addWord('Vinci', 'surname', 'ok', 'ciinv');
-        $this->addWord('InVic', 'surname', 'fun', 'ciinv'); // fun preferred and then alphabetically ("InVic" vs "Vinci")
+        // Only one representative row is allowed per (token_type, signature) due to a partial unique index.
+        // So we provide a single FUN representative for the surname signature.
+        $this->addWord('InVic', 'surname', 'fun', 'ciinv');
 
         // Act: run job
         $job = new ExpandSignaturedPatternsJob($snp->id);

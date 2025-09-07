@@ -257,7 +257,7 @@ class SourceNameController extends Controller
 
 
     /**
-     * Flatten WordMatchService groups to token => list of {word, signature} for Anagrammer.
+     * Flatten WordMatchService groups to token => list of {word, signature}.
      * @param array<string,array<string,array<int,array{word:string,signature:string}>>> $groups
      * @return array<string,array<int,array{word:string,signature:string}>>
      */

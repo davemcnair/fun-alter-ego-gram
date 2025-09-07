@@ -41,7 +41,7 @@ use Illuminate\Support\Facades\Log;
  *
  * Notes:
  *  - Word candidates are grouped by token_type/list_type from WordMatchService and flattened to
- *    token => [word,...] for generation. Actual phrase generation is delegated to Anagrammer.
+ *    token => [word,...] for generation.
  *  - Logging is best-effort; any logging failures are swallowed to avoid failing the job.
  */
 class FillPatternSignaturesJob implements ShouldQueue

@@ -39,15 +39,21 @@ final class DfsService
         $candidates = $candidateSignaturesByToken[$token] ?? [];
         if (empty($candidates)) return; // dead end
 
-        // Narrow by remaining-need letters using letter index (union of candidates containing any needed letter)
+        // Build viable indices by scanning candidates: must contain at least one needed letter and be able to fit
         $viableIndices = [];
-        $idxByLetter = (array)($candidates['letterIndices'] ?? []);
-        foreach ($remainingSourceLetterCountsNeeded as $ch => $n) {
-            if (isset($idxByLetter[$ch])) {
-                foreach ($idxByLetter[$ch] as $i) { $viableIndices[$i] = true; }
+        $all = (array)($candidates['signatures'] ?? []);
+        foreach ($all as $i => $cand) {
+            $hist = (array)($cand['hist'] ?? []);
+            // Must share at least one needed letter
+            $shares = false;
+            foreach ($remainingSourceLetterCountsNeeded as $ch => $n) {
+                if (isset($hist[$ch])) { $shares = true; break; }
             }
+            if (!$shares) continue;
+            // Must not exceed needed counts
+            if ($this->candidateLettersExceedNeededCounts($remainingSourceLetterCountsNeeded, $hist)) continue;
+            $viableIndices[] = $i;
         }
-        $viableIndices = array_keys($viableIndices);
         if (empty($viableIndices)) return; // no candidate contains any needed letter
 
         // Optional: sort viable indices by candidate length then signature for determinism

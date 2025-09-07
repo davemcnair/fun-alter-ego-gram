@@ -38,8 +38,8 @@ class Pattern extends Model
     }
 
     /**
-     * Convert a pattern template like "{title}{forename}{surname:2}" into an array of slot descriptors
-     * that Anagrammer expects. A suffix like :2 means the token may appear twice (e.g., two surnames).
+     * Convert a pattern template like "{title}{forename}{surname:2}" into an array of slot descriptors.
+     * A suffix like :2 means the token may appear twice (e.g., two surnames).
      * Example:
      *   Input:  "{title}{forename}{surname:2}"
      *

@@ -120,12 +120,18 @@ class FillPatternSignaturesJob implements ShouldQueue
             ];
             $count++;
             if ($count % 1000 == 0) {
-                Log::info($source->name . '/' . $sourceNamePattern->template . ' :' . $count . ' filled');
+                try { Log::info($source->name . '/' . $sourceNamePattern->template . ' :' . $count . ' filled'); } catch (\Throwable $e) {}
                 SignaturedPattern::insert($signaturePatterns);
                 $signaturePatterns = [];
             }
         }
-        Log::info($source->name . '/' . $sourceNamePattern->template . ' :' . $count . ' fills completed');
+        // Flush any remaining batched rows
+        if (!empty($signaturePatterns)) {
+            SignaturedPattern::insert($signaturePatterns);
+        }
+        try { Log::info($source->name . '/' . $sourceNamePattern->template . ' :' . $count . ' fills completed'); } catch (\Throwable $e) {}
+        // Dispatch expansion on the configured queue if any
+        $queue = config('search.queue');
         $dispatch = ExpandSignaturedPatternsJob::dispatch($sourceNamePattern->id);
         if (!empty($queue)) {
             $dispatch->onQueue($queue);

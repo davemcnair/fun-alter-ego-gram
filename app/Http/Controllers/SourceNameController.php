@@ -269,7 +269,8 @@ class SourceNameController extends Controller
             ->orderBy('popularity_rank')
             ->pluck('id');
         foreach ($pending as $pid) {
-            $dispatch = FillPatternSignaturesJob::dispatch($source->id, (int)$pid);
+            // Job expects only the SourceNamePattern ID
+            $dispatch = FillPatternSignaturesJob::dispatch((int)$pid);
             $queue = config('search.queue');
             if (!empty($queue)) { $dispatch->onQueue($queue); }
         }
@@ -377,6 +378,10 @@ class SourceNameController extends Controller
 
     public function start(SourceName $source)
     {
+        // Always operate on a fresh, persisted instance to avoid accidental inserts
+        $source = SourceName::find($source->id);
+        if (!$source) abort(404);
+
         // Select all patterns for this source;
         // filtering to standard types was already applied at creation time.
         $sourceNamePatterns = SourceNamePattern::where('source_name_id', $source->id)

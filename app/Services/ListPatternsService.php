@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Models\Pattern;
 use App\Models\Token;
 use App\Traits\HelpsMatchWords;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class ListPatternsService
@@ -54,19 +56,22 @@ class ListPatternsService
         return ['meta' => $meta, 'rows' => $presentRows];
     }
 
-    /**
-     * List patterns for a given source with dynamic/availability filtering options.
-     *
-     * @return array{
-     *   meta: array{total:int, page:int, pages:int, count:int, source_len:int, mode?:string, list?:string, boring?:string},
-     *   rows: array<int, array{popularity_rank:int, template:string, dyn_min?:int, avail?:bool, min?:int}>
-     * }
-     */
-    public function listForSource(string $source, bool $includeBoring = false): array
+    public function listWithinMinLength(string $totalLength, ?string $patternType = null): Collection
     {
-        $sourceSignature = $this->makeSignature($source);
-        $sourceLength = strlen($sourceSignature);
+        $query = Pattern::where('min_total_length', '<=', $totalLength)
+            ->orderBy('popularity_rank');
+        if ($patternType !== null) {
+            $query->where('pattern_type', $patternType);
+        }
+        return $query->get();
+    }
 
+    /**
+     * Filter patterns for a given source by effective word match minimums.
+     */
+    public function filterForSource(string $sourceSignature, Collection $patterns, bool $includeBoring = false): Collection
+    {
+        $sourceLength = strlen($sourceSignature);
         $wordsQuery = DB::table('words')->select('id', 'token_type', 'signature');
 
         if (!$includeBoring) {
@@ -90,36 +95,23 @@ class ListPatternsService
             }
         }, 'id');
 
-        $allRows = DB::table('patterns')
-            ->where('min_total_length', '<=', $sourceLength)
-            ->orderBy('popularity_rank')
-            ->get();
-
-        // If we found no matching words for any token at all, fall back to static filtering only
-        $foundAnyWords = !empty($anyWordsFound);
-
-        $filtered = $allRows->filter(function ($row) use ($actualMins, $effectiveMins, $anyWordsFound, $sourceLength, $foundAnyWords) {
-            if (!$foundAnyWords) {
-                // Static prefilter (min_total_length) was already applied in the query; accept row
-                return true;
-            }
-
+        return $patterns->filter(function ($row) use ($actualMins, $effectiveMins, $anyWordsFound, $sourceLength) {
             // Determine if the pattern row includes a given token type using stored columns
             $hasToken = function ($row, string $name): bool {
                 return match ($name) {
-                    Token::TOKEN_NAME_TITLE => (bool)($row->has_title ?? false),
-                    Token::TOKEN_NAME_FORENAME => (int)($row->forename_count ?? 0) > 0,
-                    Token::TOKEN_NAME_INITIALS => (bool)($row->has_initials ?? false),
-                    Token::TOKEN_NAME_PREFIX => (bool)($row->has_prefix ?? false),
-                    Token::TOKEN_NAME_SURNAME => (int)($row->surname_count ?? 0) > 0,
-                    Token::TOKEN_NAME_SUFFIX => (bool)($row->has_suffix ?? false),
-                    Token::TOKEN_NAME_HONORIFIC => (bool)($row->has_honorific ?? false),
+                    Token::TOKEN_NAME_TITLE => $row->has_title ?? false,
+                    Token::TOKEN_NAME_FORENAME => ($row->forename_count ?? 0) > 0,
+                    Token::TOKEN_NAME_INITIALS => $row->has_initials ?? false,
+                    Token::TOKEN_NAME_PREFIX => $row->has_prefix ?? false,
+                    Token::TOKEN_NAME_SURNAME => ($row->surname_count ?? 0) > 0,
+                    Token::TOKEN_NAME_SUFFIX => $row->has_suffix ?? false,
+                    Token::TOKEN_NAME_HONORIFIC => $row->has_honorific ?? false,
                     default => false,
                 };
             };
 
             $minLengthUnchanged = true;
-            $dynMin = 0;
+            $dynamicMin = 0;
             foreach (Token::NAMES as $name) {
                 if ($hasToken($row, $name)) {
                     // If this pattern requires a token for which no words were found, reject
@@ -134,34 +126,11 @@ class ListPatternsService
                         Token::TOKEN_NAME_SURNAME => (int)($row->surname_count ?? 0),
                         default => 1,
                     };
-                    $dynMin += (int)($effectiveMins[$name] ?? 0) * max(1, $count);
+                    $dynamicMin += (int)($effectiveMins[$name] ?? 0) * max(1, $count);
                 }
             }
 
-            // Attach markers on the row for later mapping
-            $row->dyn_min_marker = $minLengthUnchanged ? null : $dynMin;
-            $row->min_unchanged_marker = $minLengthUnchanged;
-
-            return $minLengthUnchanged || $dynMin <= $sourceLength;
-        })->values();
-
-        // Map to plain associative arrays as the public API for downstream code
-        $out = [];
-        foreach ($filtered as $r) {
-            $item = [
-                'popularity_rank' => (int)$r->popularity_rank,
-                'template' => (string)$r->template,
-                'min' => (int)($r->min_total_length ?? 0),
-            ];
-            if (isset($r->dyn_min_marker) && $r->dyn_min_marker !== null) {
-                $item['dyn_min'] = (int)$r->dyn_min_marker;
-            } else {
-                // if unchanged but we want to signal availability, include avail flag
-                $item['avail'] = true;
-            }
-            $out[] = $item;
-        }
-
-        return $out;
+            return $minLengthUnchanged || $dynamicMin <= $sourceLength;
+        });
     }
 }

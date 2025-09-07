@@ -25,22 +25,16 @@ Route::post('/words/{word}/promote', [WordController::class, 'promote'])->name('
 // Toggle use_for_search for a word within its anagram set (AJAX)
 Route::post('/words/{word}/toggle-search', [WordController::class, 'toggleSearch'])->name('words.toggle-search');
 
-// Pattern preview for create page
-Route::get('/patterns/preview', [SourceNameController::class, 'previewPatterns'])->name('patterns.preview');
-
 // Search control endpoints (pause/resume/progress/run-step/start)
 Route::post('/source-names/{source_name}/pause', [SourceNameController::class, 'pause'])->name('source-names.pause');
 Route::post('/source-names/{source_name}/resume', [SourceNameController::class, 'resume'])->name('source-names.resume');
 Route::get('/source-names/{source_name}/progress', [SourceNameController::class, 'progress'])->name('source-names.progress');
-Route::post('/source-names/{source_name}/run-step', [SourceNameController::class, 'runStep'])->name('source-names.run-step');
 Route::post('/source-names/{source_name}/start', [SourceNameController::class, 'start'])->name('source-names.start');
 // Star / Unstar phrase for this source
 Route::post('/source-names/{source_name}/star', [SourceNameController::class, 'star'])->name('source-names.star');
 Route::post('/source-names/{source_name}/unstar', [SourceNameController::class, 'unstar'])->name('source-names.unstar');
 // Persist a reordered phrase variant
 Route::post('/source-names/{source_name}/rephrase', [SourceNameController::class, 'rephrase'])->name('source-names.rephrase');
-// Enable (re-enable) a deselected pattern
-Route::post('/source-names/{source_name}/patterns/{pattern}/enable', [SourceNameController::class, 'enablePattern'])->name('source-names.patterns.enable');
 
 // Docs: progress choices (static view)
 Route::view('/docs/progress_choices', 'docs.progress_choices')->name('docs.progress_choices');

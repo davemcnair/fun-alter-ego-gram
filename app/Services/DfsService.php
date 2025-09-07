@@ -65,7 +65,13 @@ final class DfsService
             if ($this->candidateLettersExceedNeededCounts($remainingSourceLetterCountsNeeded, $hist)) continue;
             $nextNeed = $this->subtract($remainingSourceLetterCountsNeeded, $hist);
             // Additional pruning after choosing this candidate using slot-aware union (accounts for repeated tokens)
-            if (!$this->unionCanFill($patternTokenPositions, $nextNeed, $candidateSignaturesByToken)) continue;
+            $slotPrecomputed = [];
+            foreach ($patternTokenPositions as $remPos => $remToken) {
+                if (isset($candidateSignaturesByToken[$remToken])) {
+                    $slotPrecomputed[] = $candidateSignaturesByToken[$remToken];
+                }
+            }
+            if (!$this->unionCanFill($slotPrecomputed, $nextNeed)) continue;
             $nextChosenSigs = $chosenSignatures; $nextChosenSigs[$pos] = (string)$candidate['signature'];
             $nextChosenTokens = $chosenTokens; $nextChosenTokens[$pos] = $token;
             yield from $this->dfs($patternTokenPositions, $nextNeed, $candidateSignaturesByToken, $nextChosenSigs, $nextChosenTokens);

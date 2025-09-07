@@ -12,9 +12,4 @@ return [
     // Queue to use for background processing. If null/empty, dispatches use the default queue.
     // Configure via SEARCH_QUEUE in .env, e.g., SEARCH_QUEUE=search
     'queue' => env('SEARCH_QUEUE', null),
-
-    // When true, the UI will call the synchronous run-step endpoint each poll to advance work on the request thread.
-    // When false (default), the UI will only poll progress and expect a background queue worker to process jobs.
-    // Configure via FORCE_SYNC_STEPS in .env
-    'force_sync_steps' => (bool) env('FORCE_SYNC_STEPS', false),
 ];

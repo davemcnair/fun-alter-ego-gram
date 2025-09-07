@@ -29,7 +29,6 @@
           <div class="muted" style="margin-top:6px;">
             Tips:
             <ul>
-              <li>Set <code>FORCE_SYNC_STEPS=true</code> in <code>.env</code> to process on the request thread (handy for quick local testing).</li>
               <li>If using the database queue, create tables first: <code>php artisan queue:table && php artisan migrate</code>.</li>
               <li>To use a named queue, set <code>SEARCH_QUEUE=search</code> (and then run <code>php artisan queue:work --queue=search</code>).</li>
             </ul>

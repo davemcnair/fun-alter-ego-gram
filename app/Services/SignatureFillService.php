@@ -42,37 +42,41 @@ final class SignatureFillService
     /** Build per-token candidates: signatures with precomputed histograms, per-letter maxima, and a letter index */
     private function precomputeCandidateSignaturesByToken(array $matchingSignaturesByToken): array
     {
-        $candidatesSignaturesByToken = [];
-        foreach ($matchingSignaturesByToken as $token => $signatures) {
-            $maxLetterCountsForToken = [];
-            $letterIndicesForToken = [];
-            foreach ($signatures as $i => $signature) {
-                $signatureLetterCounts = $this->letterCountsFromSignature($signature);
-                foreach ($signatureLetterCounts as $ch => $n) {
-                    $prev = $maxLetterCountsForToken[$ch] ?? 0;
-                    if ($n > $prev) $maxLetterCountsForToken[$ch] = $n;
-                    // build letter index: letter => [candidate indices]
-                    // todo: before or after usort?
-                    $letterIndex[$ch] = $letterIndex[$ch] ?? [];
-                    $letterIndex[$ch][] = $i;
-                }
-                $candidatesSignaturesByToken[$token]['signatures'][] = [
+        $candidateSignaturesByToken = [];
+        foreach ($matchingSignaturesByToken as $token => $signaturesByWord) {
+            // Step 1: build candidate list with per-candidate histograms
+            $candidates = [];
+            foreach ($signaturesByWord as $signature) {
+                $candidates[] = [
                     'signature' => $signature,
                     'len' => strlen($signature),
+                    'hist' => $this->letterCountsFromSignature($signature),
                 ];
             }
-            $candidatesSignaturesByToken[$token]['maxLetterCounts'] = $maxLetterCountsForToken;
-            $candidatesSignaturesByToken[$token]['letterIndices'] = $letterIndicesForToken;
-            // sort for deterministic ordering: shorter signatures first, then signature alphabetically
-            usort($candidatesSignaturesByToken[$token]['signatures'], function($a, $b){
-                if ($a['len'] === $b['len']){
+            // Sort deterministically (shorter first, then signature)
+            usort($candidates, function($a, $b){
+                if ($a['len'] === $b['len']) {
                     return $a['signature'] <=> $b['signature'];
                 }
-                return $a['len'] <=> $b['len'];
+                return $a['len'] < $b['len'] ? -1 : 1;
             });
-
+            // Step 2: rebuild letter indices and per-letter maxima on sorted candidates
+            $letterIndices = [];
+            $maxLetterCounts = [];
+            foreach ($candidates as $i => $candidate) {
+                foreach ($candidate['hist'] as $ch => $n) {
+                    $maxLetterCounts[$ch] = max($maxLetterCounts[$ch] ?? 0, (int)$n);
+                    $letterIndices[$ch] = $letterIndices[$ch] ?? [];
+                    $letterIndices[$ch][] = $i;
+                }
+            }
+            $candidateSignaturesByToken[$token] = [
+                'signatures' => $candidates,
+                'maxLetterCounts' => $maxLetterCounts,
+                'letterIndices' => $letterIndices,
+            ];
         }
-        return $candidatesSignaturesByToken;
+        return $candidateSignaturesByToken;
     }
 
 }

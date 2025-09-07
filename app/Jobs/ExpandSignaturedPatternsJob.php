@@ -159,9 +159,24 @@ class ExpandSignaturedPatternsJob implements ShouldQueue
             $createdCount++;
         }
 
-        // Mark as done after expansion (Stage 1 minimal state update)
+        // Mark as done after expansion
         $sourceNamePattern->status = 'done';
         $sourceNamePattern->save();
+
+        // Update parent SourceName status only (completed when no pending/processing remain)
+        try {
+            $remaining = SourceNamePattern::where('source_name_id', $source->id)
+                ->whereIn('status', ['pending', 'processing'])
+                ->count();
+            if ($remaining === 0) {
+                $source->status = 'completed';
+            } else if ($source->status !== 'paused') {
+                $source->status = 'running';
+            }
+            $source->save();
+        } catch (\Throwable $e) {
+            try { Log::warning('Failed to update SourceName status for '.$source->id.': '.$e->getMessage()); } catch (\Throwable $e2) {}
+        }
 
         // Optional log
         try { Log::info('Expanded signatured patterns for SNP '.$sourceNamePattern->id.' => '.$createdCount.' phrase(s).'); } catch (\Throwable $e) {}

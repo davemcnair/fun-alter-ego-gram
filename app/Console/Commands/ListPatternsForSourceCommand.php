@@ -3,12 +3,15 @@
 namespace App\Console\Commands;
 
 use App\Services\ListPatternsService;
+use App\Traits\HelpsMatchWords;
 use Illuminate\Console\Attributes\AsCommand;
 use Illuminate\Console\Command;
 
 #[AsCommand(name: 'patterns:list:source', description: 'List stored patterns for a given source (always dynamic; no pagination or like filter)')]
 class ListPatternsForSourceCommand extends Command
 {
+    use HelpsMatchWords;
+
     protected $signature = 'patterns:list:source {source*} {--list=} {--include-boring}';
 
     public function handle(ListPatternsService $svc): int
@@ -21,17 +24,12 @@ class ListPatternsForSourceCommand extends Command
             return self::FAILURE;
         }
 
-        $rows= $svc->listForSource($source, (bool)$this->option('include-boring'));
+        $signature = $this->makeSignature($source);
+        $rows= $svc->listWithinMinLength(strlen($signature), 'standard');
+            $rows = $svc->filterForSource($signature, $rows, (bool)$this->option('include-boring'));
 
         foreach ($rows as $row) {
-            if (isset($row['dyn_min'])) {
-                $this->line(sprintf('%5d. %s (dyn_min=%d)', $row['popularity_rank'], $row['template'], $row['dyn_min']));
-            } elseif (($row['avail'] ?? false) === true) {
-                $this->line(sprintf('%5d. %s (avail)', $row['popularity_rank'], $row['template']));
-            } else {
-                // Fallback; normally source route prints dyn_min or avail
-                $this->line(sprintf('%5d. %s', $row['popularity_rank'], $row['template']));
-            }
+            $this->line(sprintf('%5d. %s', $row['popularity_rank'], $row['template']));
         }
         return self::SUCCESS;
     }

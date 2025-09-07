@@ -46,10 +46,9 @@
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items:center;">
             <div>
                 <div>Status: <span id="status" class="tag">{{ $item->status }}</span></div>
-                <div id="patternsRow" style="margin-top:6px;">Patterns searched: <strong id="patternsSearched">{{ $item->patterns_searched }}</strong> / <strong id="patternsTotal">{{ $item->patterns_total }}</strong></div>
-                <div style="margin-top:6px;">Alter egos found: <strong id="alterEgosFound">{{ $item->alteregos_found }}</strong> <span class="muted">in <span id="patternsWithAE">0</span> patterns</span></div>
+                <div id="patternsRow" style="margin-top:6px;">Patterns searched: <strong id="patternsSearched">0</strong> / <strong id="patternsTotal">0</strong></div>
+                <div style="margin-top:6px;">Alter egos found: <strong id="alterEgosFound">0</strong> <span class="muted">in <span id="patternsWithAE">0</span> patterns</span></div>
                 <div style="margin-top:6px;">Fun alter egos found: <strong id="funAlterEgosFound">0</strong> <span class="muted">in <span id="patternsWithFunAE">0</span> patterns</span></div>
-                <div style="margin-top:6px;">Time elapsed: <strong id="timeElapsed">{{ max(0, (int)$item->elapsed_seconds) }}</strong> s</div>
             </div>
             <div style="justify-self:end; display:flex; gap:8px; align-items:center;">
                 <button id="pauseBtn">Pause</button>
@@ -201,9 +200,6 @@
                             <td style="padding:8px;">{{ $p->popularity_rank }}</td>
                             <td style="padding:8px;">
                                 {{ $p->pattern_template }}
-                                @if($item->current_pattern === $p->pattern_template)
-                                    <span class="tag">current</span>
-                                @endif
                             </td>
                             <td style="padding:8px;"><span class="tag">{{ $p->status }}</span></td>
                             <td style="padding:8px;">{{ $countAE }}</td>
@@ -275,7 +271,6 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
     const funAeFound = document.getElementById('funAlterEgosFound');
     const patternsWithAE = document.getElementById('patternsWithAE');
     const patternsWithFunAE = document.getElementById('patternsWithFunAE');
-    const elapsed = document.getElementById('timeElapsed');
     const groupsEl = document.getElementById('alterEgoGroups');
     const pauseBtn = document.getElementById('pauseBtn');
     const resumeBtn = document.getElementById('resumeBtn');
@@ -938,7 +933,6 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
                 }
             } catch (e) { /* ignore */ }
         }
-        elapsed.textContent = Math.max(0, parseInt(p.timeElapsed || 0, 10));
         // Render grouped alter egos by pattern (full re-render each poll to reflect background updates)
         if (groupsEl) {
             groupsEl.innerHTML = '';
@@ -967,28 +961,20 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
         resumeBtn.style.display = (paused && !completed) ? 'inline-block' : 'none';
     }
 
-    const FORCE_SYNC = {!! json_encode((bool) config('search.force_sync_steps')) !!};
-
-    // Fixed poll delay (1s)
-    function getPollDelay() {
-        return 1000;
+    // Fixed poll delay (5s)
+    function getPollDelayMs() {
+        return 5000;
     }
 
     async function stepLoop() {
         if (paused || completed) return;
         try {
-            if (FORCE_SYNC) {
-                // Synchronous fallback: advance one step server-side and return progress
-                const p = await call("{{ route('source-names.run-step', $item) }}", 'POST');
-                render(p);
-            } else {
-                // Async mode (preferred): just poll progress; background workers should process jobs
-                const p = await call("{{ route('source-names.progress', $item) }}", 'GET');
-                render(p);
-            }
+            // Async poll progress; background workers should process jobs
+            const p = await call("{{ route('source-names.progress', $item) }}", 'GET');
+            render(p);
         } catch (e) { /* ignore */ }
         if (!paused && !completed) {
-            setTimeout(stepLoop, getPollDelay());
+            setTimeout(stepLoop, getPollDelayMs());
         }
     }
 

@@ -75,8 +75,9 @@
                     <td>{{ $s->id }}</td>
                     <td>{{ $s->name }}</td>
                     <td><span class="tag">{{ $s->status }}</span></td>
-                    <td>{{ $s->patterns_searched }} / {{ $s->patterns_total }}</td>
-                    <td>{{ $s->alter_egos_count ?? 0 }}</td>
+                    @php $total = $s->patterns()->count(); $done = $s->patterns()->where('status','done')->count(); @endphp
+                    <td>{{ $done }} / {{ $total }}</td>
+                    <td>{{ $s->alterEgos()->count() }}</td>
                     <td style="display:flex; gap:6px; align-items:center;">
                         <a class="btn" href="{{ route('source-names.show', $s) }}">Open</a>
                         <button type="button" onclick="deleteSingle({{ $s->id }})" style="background:#dc2626;">Delete</button>

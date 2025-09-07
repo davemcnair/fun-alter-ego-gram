@@ -13,14 +13,6 @@ return new class extends Migration
             $table->string('name');
             $table->string('signature')->index();
             $table->enum('status', ['idle','running','paused','completed'])->default('idle');
-            $table->unsignedInteger('patterns_total')->default(0);
-            $table->unsignedInteger('patterns_searched')->default(0);
-            $table->unsignedInteger('alteregos_found')->default(0);
-            $table->string('current_pattern')->nullable();
-            $table->unsignedInteger('elapsed_seconds')->default(0);
-            $table->timestamp('started_at')->nullable();
-            $table->timestamp('paused_at')->nullable();
-            $table->timestamp('completed_at')->nullable();
             $table->timestamps();
         });
 
@@ -29,7 +21,7 @@ return new class extends Migration
             $table->foreignId('source_name_id')->constrained('source_names')->onDelete('cascade');
             $table->string('pattern_template');
             $table->unsignedInteger('popularity_rank')->default(0)->index();
-            $table->enum('status', ['pending','processing','done','deselected'])->default('pending');
+            $table->enum('status', ['pending','processing','done'])->default('pending');
             $table->timestamps();
             $table->unique(['source_name_id','pattern_template']);
         });

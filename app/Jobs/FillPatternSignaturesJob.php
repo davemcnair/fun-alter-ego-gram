@@ -3,7 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Pattern;
-use App\Models\SignaturedPattern;
+use App\Models\SignatureIndexedPattern;
 use App\Models\SourceName;
 use App\Services\SignatureFillService;
 use App\Models\SourceNamePattern;
@@ -121,13 +121,13 @@ class FillPatternSignaturesJob implements ShouldQueue
             $count++;
             if ($count % 1000 == 0) {
                 try { Log::info($source->name . '/' . ($sourceNamePattern->pattern_template ?? '') . ' :' . $count . ' filled'); } catch (\Throwable $e) {}
-                SignaturedPattern::insert($signaturePatterns);
+                SignatureIndexedPattern::insert($signaturePatterns);
                 $signaturePatterns = [];
             }
         }
         // Flush any remaining batched rows
         if (!empty($signaturePatterns)) {
-            SignaturedPattern::insert($signaturePatterns);
+            SignatureIndexedPattern::insert($signaturePatterns);
         }
         try { Log::info($source->name . '/' . ($sourceNamePattern->pattern_template ?? '') . ' :' . $count . ' fills completed'); } catch (\Throwable $e) {}
         // Dispatch expansion on the configured queue if any

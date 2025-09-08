@@ -10,10 +10,9 @@ use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 class SourceNamePattern extends Model
 {
-    use HasFactory;
 
     protected $fillable = [
-        'source_name_id', 'pattern_template', 'popularity_rank', 'status'
+        'source_name_id', 'pattern_id', 'popularity_rank', 'status'
     ];
 
     public function sourceName(): BelongsTo
@@ -21,13 +20,18 @@ class SourceNamePattern extends Model
         return $this->belongsTo(SourceName::class);
     }
 
-    public function signaturedPatterns(): HasMany
+    public function pattern(): BelongsTo
     {
-        return $this->hasMany(SignaturedPattern::class);
+        return $this->belongsTo(Pattern::class);
+    }
+
+    public function signatureIndexedPatterns(): HasMany
+    {
+        return $this->hasMany(SignatureIndexedPattern::class);
     }
 
     public function alterEgos(): HasManyThrough
     {
-        return $this->hasManyThrough(AlterEgo::class, SignaturedPattern::class);
+        return $this->hasManyThrough(AlterEgo::class, SignatureIndexedPattern::class);
     }
 }

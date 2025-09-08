@@ -12,39 +12,40 @@ return new class extends Migration
             $table->id();
             $table->string('name');
             $table->string('signature')->index();
-            $table->enum('status', ['idle','running','paused','completed'])->default('idle');
+            $table->string('status');
             $table->timestamps();
         });
 
         Schema::create('source_name_patterns', function (Blueprint $table) {
             $table->id();
             $table->foreignId('source_name_id')->constrained('source_names')->onDelete('cascade');
-            $table->string('pattern_template');
+            $table->foreignId('pattern_id')->constrained('patterns')->onDelete('cascade');
             $table->unsignedInteger('popularity_rank')->default(0)->index();
-            $table->enum('status', ['pending','processing','done'])->default('pending');
+            $table->string('status');
             $table->timestamps();
-            $table->unique(['source_name_id','pattern_template']);
+            $table->unique(['source_name_id','pattern_id']);
         });
 
-        Schema::create('signatured_patterns', function (Blueprint $table) {
+        Schema::create('signature_indexed_patterns', function (Blueprint $table) {
             $table->id();
             $table->foreignId('source_name_pattern_id')->constrained('source_name_patterns')->onDelete('cascade');
-            $table->string('signatured_pattern');
+            $table->string('pattern');
             $table->timestamps();
-            $table->unique(['source_name_pattern_id', 'signatured_pattern'], 'sigp_unique');
+            $table->unique(['source_name_pattern_id', 'pattern'], 'sigp_unique');
         });
 
         Schema::create('matched_words', function (Blueprint $table) {
-            $table->foreignId('source_name_id')->constrained('source_name_patterns')->onDelete('cascade');
+            $table->foreignId('source_name_id')->constrained('source_names')->onDelete('cascade');
             $table->foreignId('word_id')->constrained('words')->onDelete('cascade');
             $table->boolean('used');
         });
 
         Schema::create('alter_egos', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('signatured_pattern_id')->nullable()->constrained('signatured_patterns')->onDelete('cascade');
+            $table->foreignId('source_name_id')->constrained('source_names')->onDelete('cascade');
+            $table->foreignId('source_name_pattern_id')->constrained('source_name_patterns')->onDelete('cascade');
             $table->string('phrase');
-            $table->boolean('starred');
+            $table->boolean('starred')->default(false);
             $table->timestamps();
             $table->index('starred');
             $table->unique(['source_name_id','phrase']);
@@ -55,8 +56,8 @@ return new class extends Migration
     {
         Schema::dropIfExists('alter_egos');
         Schema::dropIfExists('matched_words');
-        Schema::dropIfExists('source_name_patterns');
         Schema::dropIfExists('signatured_patterns');
+        Schema::dropIfExists('source_name_patterns');
         Schema::dropIfExists('source_names');
     }
 };

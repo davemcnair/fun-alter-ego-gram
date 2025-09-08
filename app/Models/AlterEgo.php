@@ -8,14 +8,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class AlterEgo extends Model
 {
-    use HasFactory;
 
     protected $fillable = [
-        'signatured_pattern_id', 'phrase', 'starred'
+        'signature_indexed_pattern_id', 'phrase', 'starred'
     ];
 
-    public function signaturedPattern(): BelongsTo
+    public function signatureIndexedPattern(): BelongsTo
     {
-        return $this->belongsTo(SignaturedPattern::class);
+        return $this->belongsTo(SignatureIndexedPattern::class);
     }
 }

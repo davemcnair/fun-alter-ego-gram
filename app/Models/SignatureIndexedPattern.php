@@ -5,19 +5,21 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class SignaturedPattern extends Model
+class SignatureIndexedPattern extends Model
 {
-    use HasFactory;
-
-    protected $table = 'signatured_patterns';
-
     protected $fillable = [
-        'source_name_pattern_id', 'signatured_pattern',
+        'source_name_pattern_id', 'pattern',
     ];
 
     public function sourceNamePattern(): BelongsTo
     {
         return $this->belongsTo(SourceNamePattern::class);
+    }
+
+    public function alterEgos(): HasMany
+    {
+        return $this->hasMany(AlterEgo::class);
     }
 }

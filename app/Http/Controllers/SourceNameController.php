@@ -10,6 +10,7 @@ use App\Services\ListPatternsService;
 use App\Services\WordMatchService;
 
 use App\Traits\HelpsMatchWords;
+use DB;
 use Illuminate\Http\Request;
 use App\Jobs\FillPatternSignaturesJob;
 
@@ -23,11 +24,6 @@ class SourceNameController extends Controller
             ->orderByDesc('id')
             ->paginate(15);
         return view('source_names.index', compact('items'));
-    }
-
-    public function create()
-    {
-        return view('source_names.create');
     }
 
     public function store(Request $request, ListPatternsService $patternsService)
@@ -98,7 +94,7 @@ class SourceNameController extends Controller
         $source = $source_name;
         $source->status = 'paused';
         $source->save();
-        return response()->json(['ok' => true] + $this->progressPayload($source));
+        return response()->json(['ok' => true] + $this->lookupProgressPayload($source));
     }
 
     public function resume(SourceName $source_name)
@@ -119,12 +115,12 @@ class SourceNameController extends Controller
             if (!empty($queue)) { $dispatch->onQueue($queue); }
         }
 
-        return response()->json(['ok' => true] + $this->progressPayload($source));
+        return response()->json(['ok' => true] + $this->lookupProgressPayload($source));
     }
 
     public function progress(SourceName $source_name)
     {
-        return response()->json(['ok' => true] + $this->progressPayload($source_name));
+        return response()->json(['ok' => true] + $this->lookupProgressPayload($source_name));
     }
 
     public function star(SourceName $source_name, Request $request)
@@ -135,7 +131,7 @@ class SourceNameController extends Controller
         AlterEgo::where('source_name_id', $source_name->id)
             ->where('phrase', $data['phrase'])
             ->update(['starred' => true]);
-        return response()->json(['ok' => true] + $this->progressPayload($source_name->fresh())) ;
+        return response()->json(['ok' => true] + $this->lookupProgressPayload($source_name->fresh())) ;
     }
 
     public function unstar(SourceName $source_name, Request $request)
@@ -146,7 +142,7 @@ class SourceNameController extends Controller
         AlterEgo::where('source_name_id', $source_name->id)
             ->where('phrase', $data['phrase'])
             ->update(['starred' => false]);
-        return response()->json(['ok' => true] + $this->progressPayload($source_name->fresh())) ;
+        return response()->json(['ok' => true] + $this->lookupProgressPayload($source_name->fresh())) ;
     }
 
     public function rephrase(SourceName $source_name, Request $request)
@@ -179,7 +175,7 @@ class SourceNameController extends Controller
                 return response()->json(['ok' => false, 'error' => 'Failed to save phrase'], 500);
             }
         }
-        return response()->json(['ok' => true] + $this->progressPayload($source_name->fresh()));
+        return response()->json(['ok' => true] + $this->lookupProgressPayload($source_name->fresh()));
     }
 
     public function start(SourceName $source_name)
@@ -238,7 +234,7 @@ class SourceNameController extends Controller
         return [
             'id' => $pattern->id,
             'status' => $status,
-            'template' => $pattern->template,
+            'template' => $pattern->pattern_template,
             'signaturedPatternsCount' => $signaturedPatterns->count(),
             'alterEgosCount' => $alterEgos->count(),
             'signaturedPatterns' => $signaturedPatterns,
@@ -264,7 +260,7 @@ class SourceNameController extends Controller
         if (empty($ids)) {
             return redirect()->route('source-names.index')->with('status', 'No items selected.');
         }
-        \DB::transaction(function () use ($ids) {
+        DB::transaction(function () use ($ids) {
             // Eagerly load to allow any model events if needed
             $toDelete = SourceName::whereIn('id', $ids)->get();
             foreach ($toDelete as $s) {

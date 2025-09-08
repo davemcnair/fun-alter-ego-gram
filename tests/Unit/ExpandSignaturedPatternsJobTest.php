@@ -4,7 +4,7 @@ namespace Tests\Unit;
 
 use App\Jobs\ExpandSignaturedPatternsJob;
 use App\Models\AlterEgo;
-use App\Models\SignaturedPattern;
+use App\Models\SignatureIndexedPattern;
 use App\Models\SourceName;
 use App\Models\SourceNamePattern;
 use App\Models\Word;
@@ -44,7 +44,7 @@ class ExpandSignaturedPatternsJobTest extends TestCase
             'status' => 'pending',
         ]);
         // Signatured fill to expand: Adam + Vinci
-        SignaturedPattern::create([
+        SignatureIndexedPattern::create([
             'source_name_pattern_id' => $snp->id,
             'signatured_pattern' => '{forename:aadm}{surname:ciinv}',
         ]);
@@ -85,7 +85,7 @@ class ExpandSignaturedPatternsJobTest extends TestCase
             'popularity_rank' => 1,
             'status' => 'pending',
         ]);
-        SignaturedPattern::create([
+        SignatureIndexedPattern::create([
             'source_name_pattern_id' => $snp->id,
             'signatured_pattern' => '{surname:ary}{surname:ciinv}',
         ]);

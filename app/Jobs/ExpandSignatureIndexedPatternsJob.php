@@ -126,7 +126,7 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
 
         $createdCount = 0;
         foreach ($sourceNamePattern->signatureIndexedPatterns as $sigRow) {
-            $pairs = $this->parseSignatureIndexedPattern((string)$sigRow->signatureIndexed_pattern);
+            $pairs = $this->parseSignatureIndexedPattern((string)$sigRow->pattern);
             if (empty($pairs)) continue;
 
             // Resolve words deterministically for each slot

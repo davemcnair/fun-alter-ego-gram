@@ -92,6 +92,9 @@ class FillPatternSignaturesJob implements ShouldQueue
     {
         $sourceNamePattern = SourceNamePattern::with('sourceName')
             ->find($this->sourceNamePatternId);
+        if (!$sourceNamePattern) {
+            return; // Nothing to do
+        }
         /** @var SourceName $source */
         $source = $sourceNamePattern->sourceName;
 
@@ -102,16 +105,16 @@ class FillPatternSignaturesJob implements ShouldQueue
         $sourceNamePattern->status = 'processing';
         $sourceNamePattern->save();
 
-        $patternTokenPositions = Pattern::parsePatternTokenSlotPositions($sourceNamePattern->pattern_template);
+        $patternTokenPositions = Pattern::parsePatternTokenSlotPositions((string)$sourceNamePattern->pattern->template);
 
-        $tokenWordsByListTYpe = $wordMatchService->findMatches($source->signature);
+        $tokenWordsByListType = $wordMatchService->findMatches((string)$source->signature);
 
-        $candidateWordSignaturesByToken = $this->flattenTokenWordsToWordSignatures($tokenWordsByListTYpe);
+        $candidateWordSignaturesByToken = $this->flattenTokenWordsToWordSignatures($tokenWordsByListType);
 
         $signaturePatterns = [];
         $count = 0;
         foreach ($signatureFillService->generateSignaturePatterns(
-            $source->signature,
+            (string)$source->signature,
             $patternTokenPositions,
             $candidateWordSignaturesByToken
         ) as $signaturePattern) {
@@ -120,8 +123,8 @@ class FillPatternSignaturesJob implements ShouldQueue
                 'pattern' => $signaturePattern,
             ];
             $count++;
-            if ($count % 1000 == 0) {
-                try { Log::info($source->name . '/' . ($sourceNamePattern->template ?? '') . ' :' . $count . ' filled'); } catch (Throwable $e) {}
+            if ($count % 1000 === 0) {
+                try { Log::info($source->name . '/' . ((string)$sourceNamePattern->pattern->template) . ' :' . $count . ' filled'); } catch (Throwable $e) {}
                 SignatureIndexedPattern::insert($signaturePatterns);
                 $signaturePatterns = [];
             }
@@ -130,7 +133,7 @@ class FillPatternSignaturesJob implements ShouldQueue
         if (!empty($signaturePatterns)) {
             SignatureIndexedPattern::insert($signaturePatterns);
         }
-        try { Log::info($source->name . '/' . ($sourceNamePattern->template ?? '') . ' :' . $count . ' fills completed'); } catch (Throwable $e) {}
+        try { Log::info($source->name . '/' . ((string)$sourceNamePattern->pattern->template) . ' :' . $count . ' fills completed'); } catch (Throwable $e) {}
         // Dispatch expansion on the configured queue if any
         $queue = config('search.queue');
         $dispatch = ExpandSignatureIndexedPatternsJob::dispatch($sourceNamePattern->id);

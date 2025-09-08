@@ -46,7 +46,7 @@ class ExpandSignatureIndexedPatternsJobTest extends TestCase
         // SignatureIndexed fill to expand: Adam + Vinci
         SignatureIndexedPattern::create([
             'source_name_pattern_id' => $snp->id,
-            'signatureIndexed_pattern' => '{forename:aadm}{surname:ciinv}',
+            'pattern' => '{forename:aadm}{surname:ciinv}',
         ]);
 
         // Words: forename 'Adam' (fun) matches aadm; surname: prefer fun over ok for the same signature
@@ -87,7 +87,7 @@ class ExpandSignatureIndexedPatternsJobTest extends TestCase
         ]);
         SignatureIndexedPattern::create([
             'source_name_pattern_id' => $snp->id,
-            'signatureIndexed_pattern' => '{surname:ary}{surname:ciinv}',
+            'pattern' => '{surname:ary}{surname:ciinv}',
         ]);
 
         // Words for the two signatures

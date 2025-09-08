@@ -56,7 +56,7 @@ return new class extends Migration
     {
         Schema::dropIfExists('alter_egos');
         Schema::dropIfExists('matched_words');
-        Schema::dropIfExists('signatured_patterns');
+        Schema::dropIfExists('signatureIndexed_patterns');
         Schema::dropIfExists('source_name_patterns');
         Schema::dropIfExists('source_names');
     }

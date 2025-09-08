@@ -18,6 +18,11 @@ class SourceName extends Model
         return $this->hasMany(SourceNamePattern::class);
     }
 
+    public function wordMatches(): HasMany
+    {
+        return $this->hasMany(MatchedWord::class);
+    }
+
     public function signatureIndexedPatterns(): HasManyThrough
     {
         return $this->hasManyThrough(SignatureIndexedPattern::class, SourceNamePattern::class);

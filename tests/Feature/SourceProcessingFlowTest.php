@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Jobs\ExpandSignaturedPatternsJob;
+use App\Jobs\ExpandSignatureIndexedPatternsJob;
 use App\Jobs\FillPatternSignaturesJob;
 use App\Models\SourceName;
 use App\Models\SourceNamePattern;
@@ -83,13 +83,13 @@ class SourceProcessingFlowTest extends TestCase
         // Now, run the queued jobs synchronously to completion by executing their handle methods
         // We cannot rely on a separate worker in test; pull the pending pattern id from DB and execute.
 
-        // Process: For each SNP, run FillPatternSignaturesJob then ExpandSignaturedPatternsJob
+        // Process: For each SNP, run FillPatternSignaturesJob then ExpandSignatureIndexedPatternsJob
         foreach (SourceNamePattern::where('source_name_id', $sourceName->id)->get() as $pattern) {
             // Execute fill job
             $fill = new FillPatternSignaturesJob($pattern->id);
             $fill->handle(app(WordMatchService::class), app(\App\Services\SignatureFillService::class));
             // Execute expand job
-            $expand = new ExpandSignaturedPatternsJob($pattern->id);
+            $expand = new ExpandSignatureIndexedPatternsJob($pattern->id);
             $expand->handle(app(WordMatchService::class), app(\App\Services\PhraseBuilderService::class));
         }
 
@@ -145,7 +145,7 @@ class SourceProcessingFlowTest extends TestCase
         // Run through to completion synchronously
         $fill = new FillPatternSignaturesJob($snp->id);
         $fill->handle(app(WordMatchService::class), app(\App\Services\SignatureFillService::class));
-        $expand = new ExpandSignaturedPatternsJob($snp->id);
+        $expand = new ExpandSignatureIndexedPatternsJob($snp->id);
         $expand->handle(app(WordMatchService::class), app(\App\Services\PhraseBuilderService::class));
 
         $progress = $this->getJson('/source-names/'.$source->id.'/progress')->json();

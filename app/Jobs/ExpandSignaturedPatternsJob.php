@@ -44,7 +44,7 @@ use Illuminate\Support\Facades\Log;
  *    token => [word,...] for generation.
  *  - Logging is best-effort; any logging failures are swallowed to avoid failing the job.
  */
-class ExpandSignaturedPatternsJob implements ShouldQueue
+class ExpandSignatureIndexedPatternsJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -78,7 +78,7 @@ class ExpandSignaturedPatternsJob implements ShouldQueue
      */
     public function tags(): array
     {
-        return ['expand-signatured-patterns', 'source-name-pattern:'.$this->sourceNamePatternId];
+        return ['expand-signatureIndexed-patterns', 'source-name-pattern:'.$this->sourceNamePatternId];
     }
 
     /**
@@ -89,8 +89,8 @@ class ExpandSignaturedPatternsJob implements ShouldQueue
         PhraseBuilderService $phraseBuilderService
     ): void
     {
-        // Load SNP with parent SourceName and signatured patterns
-        $sourceNamePattern = SourceNamePattern::with(['sourceName','signaturedPatterns'])
+        // Load SNP with parent SourceName and signatureIndexed patterns
+        $sourceNamePattern = SourceNamePattern::with(['sourceName','signatureIndexedPatterns'])
             ->find($this->sourceNamePatternId);
         if (!$sourceNamePattern) return;
         /** @var SourceName $source */
@@ -125,8 +125,8 @@ class ExpandSignaturedPatternsJob implements ShouldQueue
         $slotOrder = $this->buildSlotOrderFromTemplate((string)$sourceNamePattern->pattern_template);
 
         $createdCount = 0;
-        foreach ($sourceNamePattern->signaturedPatterns as $sigRow) {
-            $pairs = $this->parseSignaturedPattern((string)$sigRow->signatured_pattern);
+        foreach ($sourceNamePattern->signatureIndexedPatterns as $sigRow) {
+            $pairs = $this->parseSignatureIndexedPattern((string)$sigRow->signatureIndexed_pattern);
             if (empty($pairs)) continue;
 
             // Resolve words deterministically for each slot
@@ -179,15 +179,15 @@ class ExpandSignaturedPatternsJob implements ShouldQueue
         }
 
         // Optional log
-        try { Log::info('Expanded signatured patterns for SNP '.$sourceNamePattern->id.' => '.$createdCount.' phrase(s).'); } catch (\Throwable $e) {}
+        try { Log::info('Expanded signatureIndexed patterns for SNP '.$sourceNamePattern->id.' => '.$createdCount.' phrase(s).'); } catch (\Throwable $e) {}
     }
 
     /**
-     * Parse a signaturedPattern string like "{forename:aadm}{surname:ciinv}" into an ordered list of
+     * Parse a signatureIndexedPattern string like "{forename:aadm}{surname:ciinv}" into an ordered list of
      * [ ['token'=>'forename','signature'=>'aadm'], ... ]
      * @return array<int,array{token:string,signature:string}>
      */
-    private function parseSignaturedPattern(string $s): array
+    private function parseSignatureIndexedPattern(string $s): array
     {
         $out = [];
         if (preg_match_all('/\{([a-z]+):([a-z]+)\}/i', $s, $m, PREG_SET_ORDER)) {

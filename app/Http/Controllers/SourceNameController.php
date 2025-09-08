@@ -7,7 +7,6 @@ use App\Models\SourceName;
 use App\Models\SourceNamePattern;
 use App\Models\AlterEgo;
 use App\Services\ListPatternsService;
-use App\Services\WordMatchService;
 
 use App\Traits\HelpsMatchWords;
 use DB;
@@ -36,10 +35,10 @@ class SourceNameController extends Controller
         $signature = $this->makeSignature($name);
 
         $includeBoring = (bool)($data['allow_boring'] ?? false);
-        $standardShortEnoughPatterns = $patternsService->listWithinMinLength(strlen($signature), 'standard');
+
+        $standardShortEnoughPatterns = $patternsService->listWithinMinLength(strlen($signature));
         $filteredPatterns = $patternsService->filterForSource($signature, $standardShortEnoughPatterns, $includeBoring);
 
-        // Restrict to standard patterns for new searches
         $source = SourceName::create([
             'name' => $name,
             'signature' => $signature,
@@ -54,69 +53,61 @@ class SourceNameController extends Controller
                 'source_name_id' => $source->id,
                 'pattern_template' => $pattern->template,
                 'popularity_rank' => $pattern->popularity_rank,
-                'status' => 'pending',
+                // Restrict pending to standard patterns for new searches
+                'status' => $pattern->pattern_type == 'standard' ? 'pending' : 'deferred',
                 'created_at' => $now,
                 'updated_at' => $now,
             ];
         }
         SourceNamePattern::insert($bulk);
 
-        return redirect()->route('source-names.show', $source);
-    }
-
-    public function show(SourceName $source_name, WordMatchService $wordMatchService)
-    {
-        // Search page: auto-start via JS on load
-        $source = $source_name->fresh();
-
-        // Load patterns and eager-load their alter egos for grouping display
-        $patterns = SourceNamePattern::where('source_name_id', $source->id)
-            ->orderBy('popularity_rank')
-            ->with(['alterEgos' => function($q) use ($source) {
-                $q->where('source_name_id', $source->id)->orderBy('id');
-            }])
-            ->get();
-
-        // Compute token word matches grouped by token and list-type using the source signature
-        $matches = $wordMatchService->findMatches($source->signature, [
-            'include_boring' => false,
-        ]);
-
-        return view('source_names.show', [
-            'item' => $source,
-            'patterns' => $patterns,
-            'matches' => $matches,
-        ]);
-    }
-
-    public function pause(SourceName $source_name)
-    {
-        $source = $source_name;
-        $source->status = 'paused';
-        $source->save();
-        return response()->json(['ok' => true] + $this->lookupProgressPayload($source));
-    }
-
-    public function resume(SourceName $source_name)
-    {
-        $source = $source_name;
-        $source->status = 'running';
-        $source->save();
-
-        // Enqueue remaining pending patterns
-        $pending = SourceNamePattern::where('source_name_id', $source->id)
-            ->where('status', 'pending')
-            ->orderBy('popularity_rank')
-            ->pluck('id');
-        foreach ($pending as $pid) {
-            // Job expects only the SourceNamePattern ID
+        // Enqueue all pending patterns for background processing
+        $pendingIds = $source->patterns()->where('status','pending')->pluck('id');
+        $queue = config('search.queue');
+        foreach ($pendingIds as $pid) {
             $dispatch = FillPatternSignaturesJob::dispatch((int)$pid);
-            $queue = config('search.queue');
             if (!empty($queue)) { $dispatch->onQueue($queue); }
         }
 
-        return response()->json(['ok' => true] + $this->lookupProgressPayload($source));
+        $source->status = 'running';
+        $source->save();
+
+        return redirect()->route('source-names.show', $source);
     }
+
+    public function show(SourceName $source_name)
+    {
+        return view('source_names.show', $this->lookupProgressPayload($source_name));
+    }
+
+//    public function pause(SourceName $source_name)
+//    {
+//        $source = $source_name;
+//        $source->status = 'paused';
+//        $source->save();
+//        return response()->json(['ok' => true] + $this->lookupProgressPayload($source));
+//    }
+//
+//    public function resume(SourceName $source_name)
+//    {
+//        $source = $source_name;
+//        $source->status = 'running';
+//        $source->save();
+//
+//        // Enqueue remaining pending patterns
+//        $pending = SourceNamePattern::where('source_name_id', $source->id)
+//            ->where('status', 'pending')
+//            ->orderBy('popularity_rank')
+//            ->pluck('id');
+//        foreach ($pending as $pid) {
+//            // Job expects only the SourceNamePattern ID
+//            $dispatch = FillPatternSignaturesJob::dispatch((int)$pid);
+//            $queue = config('search.queue');
+//            if (!empty($queue)) { $dispatch->onQueue($queue); }
+//        }
+//
+//        return response()->json(['ok' => true] + $this->lookupProgressPayload($source));
+//    }
 
     public function progress(SourceName $source_name)
     {
@@ -144,100 +135,67 @@ class SourceNameController extends Controller
             ->update(['starred' => false]);
         return response()->json(['ok' => true] + $this->lookupProgressPayload($source_name->fresh())) ;
     }
-
-    public function rephrase(SourceName $source_name, Request $request)
-    {
-        $data = $request->validate([
-            'from' => ['required','string'],
-            'to' => ['required','string','different:from'],
-        ]);
-        $from = (string)$data['from'];
-        $to = trim((string)$data['to']);
-        if ($to === '') {
-            return response()->json(['ok' => false, 'error' => 'Empty phrase'], 422);
-        }
-        // Try update; if target already exists, delete the source and star the existing
-        $existing = AlterEgo::where('source_name_id', $source_name->id)->where('phrase', $to)->first();
-        if ($existing) {
-            AlterEgo::where('source_name_id', $source_name->id)->where('phrase', $from)->delete();
-            $existing->starred = true; $existing->save();
-        } else {
-            // Update the phrase; if row not found, return 404-ish JSON
-            $row = AlterEgo::where('source_name_id', $source_name->id)->where('phrase', $from)->first();
-            if (!$row) {
-                return response()->json(['ok' => false, 'error' => 'Original phrase not found'], 404);
-            }
-            $row->phrase = $to;
-            $row->starred = true; // star the saved variant by default
-            try {
-                $row->save();
-            } catch (\Throwable $e) {
-                return response()->json(['ok' => false, 'error' => 'Failed to save phrase'], 500);
-            }
-        }
-        return response()->json(['ok' => true] + $this->lookupProgressPayload($source_name->fresh()));
-    }
-
-    public function start(SourceName $source_name)
-    {
-        // Always operate on a fresh, persisted instance to avoid accidental inserts
-        $source = $source_name;
-        $id = $source_name->id;
-
-        // Select all patterns for this source;
-        // filtering to standard types was already applied at creation time.
-
-        foreach ($source->patterns as $p) {
-            $p->status = 'pending';
-            $p->save();
-        }
-
-        // Update status
-        $source->status = 'running';
-        $source->save();
-
-        // Enqueue all pending patterns for background processing
-        $pendingIds = $source->patterns()->where('status','pending')->pluck('id');
-        $queue = config('search.queue');
-        foreach ($pendingIds as $pid) {
-            $dispatch = FillPatternSignaturesJob::dispatch((int)$pid);
-            if (!empty($queue)) { $dispatch->onQueue($queue); }
-        }
-
-        return response()->json(['ok' => true] + $this->lookupProgressPayload($source->fresh()));
-    }
+//
+//    public function rephrase(SourceName $source_name, Request $request)
+//    {
+//        $data = $request->validate([
+//            'from' => ['required','string'],
+//            'to' => ['required','string','different:from'],
+//        ]);
+//        $from = (string)$data['from'];
+//        $to = trim((string)$data['to']);
+//        if ($to === '') {
+//            return response()->json(['ok' => false, 'error' => 'Empty phrase'], 422);
+//        }
+//        // Try update; if target already exists, delete the source and star the existing
+//        $existing = AlterEgo::where('source_name_id', $source_name->id)->where('phrase', $to)->first();
+//        if ($existing) {
+//            AlterEgo::where('source_name_id', $source_name->id)->where('phrase', $from)->delete();
+//            $existing->starred = true; $existing->save();
+//        } else {
+//            // Update the phrase; if row not found, return 404-ish JSON
+//            $row = AlterEgo::where('source_name_id', $source_name->id)->where('phrase', $from)->first();
+//            if (!$row) {
+//                return response()->json(['ok' => false, 'error' => 'Original phrase not found'], 404);
+//            }
+//            $row->phrase = $to;
+//            $row->starred = true; // star the saved variant by default
+//            try {
+//                $row->save();
+//            } catch (\Throwable $e) {
+//                return response()->json(['ok' => false, 'error' => 'Failed to save phrase'], 500);
+//            }
+//        }
+//        return response()->json(['ok' => true] + $this->lookupProgressPayload($source_name->fresh()));
+//    }
 
     private function lookupProgressPayload(SourceName $s): array
     {
-        $patterns = $s->patterns;
-        $alterEgos = $s->alterEgos;
         return [
-            'status' => $s->status,
-            'patternsProcessedCount' => $patterns->where('status','done')->count(),
-            'patternsCount' => $patterns->count(),
-            'signaturedPatternsCount' => $s->signaturedPatterns()->count(),
-            'alterEgosCount' => $alterEgos->count(),
-            'starred' => $alterEgos->where('starred', true)->pluck('phrase')->all(),
-            'patterns' => $patterns
-                ->where('status','processing')
+            'item' => $s,
+            'patternsProcessedCount' => $s->patterns()->where('status','done')->count(),
+            'patternsCount' => $s->patterns->count(),
+            'patternsLive' => $s->patterns()->whereIn('status', ['done','processing'])
                 ->map(fn($pattern) => $this->lookupPatternPayload($s->status, $pattern)),
-            // todo: source words matched
-            'firstClassWordsMatched' => [],
-            // todo: filter selected last
-            'unselectedPatterns' => [],
+            'patternsWaiting' => $s->patterns()->whereIn('status', ['pending','deferred'])
+                ->map(fn($pattern) => $this->lookupPatternPayload($s->status, $pattern)),
+            'signatureIndexedPatternsCount' => $s->signatureIndexedPatterns()->count(),
+            'alterEgosCount' => $s->alterEgos()->count(),
+            'starred' => $s->alterEgos()->where('starred', true)->pluck('phrase')->all(),
+            'wordMatches' => $s->with('word')->wordMatches,
         ];
     }
     private function lookupPatternPayload(string $status, SourceNamePattern $pattern): array
     {
-        $signaturedPatterns = $pattern->signaturedPatterns;
+        $signatureIndexedPatterns = $pattern->signatureIndexedPatterns;
         $alterEgos = $pattern->alterEgos;
         return [
             'id' => $pattern->id,
             'status' => $status,
-            'template' => $pattern->pattern_template,
-            'signaturedPatternsCount' => $signaturedPatterns->count(),
+            'template' => $pattern->template,
+            'signatureIndexedPatternsCount' => $signatureIndexedPatterns->count(),
             'alterEgosCount' => $alterEgos->count(),
-            'signaturedPatterns' => $signaturedPatterns,
+            'signatureIndexedPatterns' => $signatureIndexedPatterns,
             'alterEgos' => $alterEgos,
         ];
     }

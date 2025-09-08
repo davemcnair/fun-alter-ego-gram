@@ -11,7 +11,7 @@ use Generator;
  * Purpose:
  *  Given a source signature, pattern token positions, and a candidate map
  *  of [token][word => signature], it fills the positions with candidates whose signatures collectively
- *  match the source letters. For each complete fill, it emits a compact "signaturedPattern" string
+ *  match the source letters. For each complete fill, it emits a compact "signatureIndexedPattern" string
  *  such as "{title:a}{forename:adn}{surname:aciinv}" in token position order.
  *
  */

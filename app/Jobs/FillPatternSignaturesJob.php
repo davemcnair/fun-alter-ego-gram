@@ -14,6 +14,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * ProcessPatternJob
@@ -116,11 +117,11 @@ class FillPatternSignaturesJob implements ShouldQueue
         ) as $signaturePattern) {
             $signaturePatterns[] = [
                 'source_name_pattern_id' => $sourceNamePattern->id,
-                'signatured_pattern' => $signaturePattern,
+                'pattern' => $signaturePattern,
             ];
             $count++;
             if ($count % 1000 == 0) {
-                try { Log::info($source->name . '/' . ($sourceNamePattern->pattern_template ?? '') . ' :' . $count . ' filled'); } catch (\Throwable $e) {}
+                try { Log::info($source->name . '/' . ($sourceNamePattern->template ?? '') . ' :' . $count . ' filled'); } catch (Throwable $e) {}
                 SignatureIndexedPattern::insert($signaturePatterns);
                 $signaturePatterns = [];
             }
@@ -129,10 +130,10 @@ class FillPatternSignaturesJob implements ShouldQueue
         if (!empty($signaturePatterns)) {
             SignatureIndexedPattern::insert($signaturePatterns);
         }
-        try { Log::info($source->name . '/' . ($sourceNamePattern->pattern_template ?? '') . ' :' . $count . ' fills completed'); } catch (\Throwable $e) {}
+        try { Log::info($source->name . '/' . ($sourceNamePattern->template ?? '') . ' :' . $count . ' fills completed'); } catch (Throwable $e) {}
         // Dispatch expansion on the configured queue if any
         $queue = config('search.queue');
-        $dispatch = ExpandSignaturedPatternsJob::dispatch($sourceNamePattern->id);
+        $dispatch = ExpandSignatureIndexedPatternsJob::dispatch($sourceNamePattern->id);
         if (!empty($queue)) {
             $dispatch->onQueue($queue);
         }

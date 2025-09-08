@@ -13,7 +13,7 @@ class SignatureFillServiceTest extends TestCase
 
     /**
      * Simple happy-path: two slots {forename}{surname} with an exact cover available.
-     * Expect a single signaturedPattern in slot order.
+     * Expect a single signatureIndexedPattern in slot order.
      */
     public function test_generates_signature_patterns_exact_cover_in_slot_order(): void
     {

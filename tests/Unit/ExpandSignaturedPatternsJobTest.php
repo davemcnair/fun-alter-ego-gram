@@ -2,7 +2,7 @@
 
 namespace Tests\Unit;
 
-use App\Jobs\ExpandSignaturedPatternsJob;
+use App\Jobs\ExpandSignatureIndexedPatternsJob;
 use App\Models\AlterEgo;
 use App\Models\SignatureIndexedPattern;
 use App\Models\SourceName;
@@ -13,7 +13,7 @@ use App\Services\WordMatchService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-class ExpandSignaturedPatternsJobTest extends TestCase
+class ExpandSignatureIndexedPatternsJobTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -28,7 +28,7 @@ class ExpandSignaturedPatternsJobTest extends TestCase
         ]);
     }
 
-    public function test_expands_single_signatured_pattern_with_fun_preference(): void
+    public function test_expands_single_signatureIndexed_pattern_with_fun_preference(): void
     {
         // Arrange: a source with one pattern {forename}{surname}
         $source = SourceName::create([
@@ -43,10 +43,10 @@ class ExpandSignaturedPatternsJobTest extends TestCase
             'popularity_rank' => 1,
             'status' => 'pending',
         ]);
-        // Signatured fill to expand: Adam + Vinci
+        // SignatureIndexed fill to expand: Adam + Vinci
         SignatureIndexedPattern::create([
             'source_name_pattern_id' => $snp->id,
-            'signatured_pattern' => '{forename:aadm}{surname:ciinv}',
+            'signatureIndexed_pattern' => '{forename:aadm}{surname:ciinv}',
         ]);
 
         // Words: forename 'Adam' (fun) matches aadm; surname: prefer fun over ok for the same signature
@@ -56,7 +56,7 @@ class ExpandSignaturedPatternsJobTest extends TestCase
         $this->addWord('InVic', 'surname', 'fun', 'ciinv');
 
         // Act: run job
-        $job = new ExpandSignaturedPatternsJob($snp->id);
+        $job = new ExpandSignatureIndexedPatternsJob($snp->id);
         $job->handle(app(WordMatchService::class), app(PhraseBuilderService::class));
 
         // Assert: an AlterEgo was created with the fun-preferred surname and proper capitalization
@@ -87,7 +87,7 @@ class ExpandSignaturedPatternsJobTest extends TestCase
         ]);
         SignatureIndexedPattern::create([
             'source_name_pattern_id' => $snp->id,
-            'signatured_pattern' => '{surname:ary}{surname:ciinv}',
+            'signatureIndexed_pattern' => '{surname:ary}{surname:ciinv}',
         ]);
 
         // Words for the two signatures
@@ -95,7 +95,7 @@ class ExpandSignaturedPatternsJobTest extends TestCase
         $this->addWord('vinci', 'surname', 'ok', 'ciinv');
 
         // Act
-        $job = new ExpandSignaturedPatternsJob($snp->id);
+        $job = new ExpandSignatureIndexedPatternsJob($snp->id);
         $job->handle(app(WordMatchService::class), app(PhraseBuilderService::class));
 
         // Assert: hyphenated and capitalized surnames

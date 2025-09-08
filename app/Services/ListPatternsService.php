@@ -56,14 +56,11 @@ class ListPatternsService
         return ['meta' => $meta, 'rows' => $presentRows];
     }
 
-    public function listWithinMinLength(string $totalLength, ?string $patternType = null): Collection
+    public function listWithinMinLength(string $totalLength): Collection
     {
-        $query = Pattern::where('min_total_length', '<=', $totalLength)
-            ->orderBy('popularity_rank');
-        if ($patternType !== null) {
-            $query->where('pattern_type', $patternType);
-        }
-        return $query->get();
+        return Pattern::where('min_total_length', '<=', $totalLength)
+            ->orderBy('popularity_rank')
+            ->get();
     }
 
     /**

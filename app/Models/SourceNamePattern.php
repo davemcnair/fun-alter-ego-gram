@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 class SourceNamePattern extends Model
 {
@@ -25,8 +26,8 @@ class SourceNamePattern extends Model
         return $this->hasMany(SignaturedPattern::class);
     }
 
-    public function alterEgos(): HasMany
+    public function alterEgos(): HasManyThrough
     {
-        return $this->hasMany(AlterEgo::class);
+        return $this->hasManyThrough(AlterEgo::class, SignaturedPattern::class);
     }
 }

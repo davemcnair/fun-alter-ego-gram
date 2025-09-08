@@ -208,76 +208,42 @@ class SourceNameController extends Controller
             if (!empty($queue)) { $dispatch->onQueue($queue); }
         }
 
-        return response()->json(['ok' => true] + $this->progressPayload($source->fresh()));
+        return response()->json(['ok' => true] + $this->lookupProgressPayload($source->fresh()));
     }
 
-    private function progressPayload(SourceName $s): array
+    private function lookupProgressPayload(SourceName $s): array
     {
-        // Build grouped alter egos by pattern template
-        $patterns = SourceNamePattern::where('source_name_id', $s->id)
-            ->orderBy('popularity_rank')
-            ->get(['id','pattern_template','popularity_rank']);
-        $alterEgos = AlterEgo::where('source_name_id', $s->id)
-            ->orderBy('id')
-            ->get(['source_name_pattern_id','phrase','starred']);
-        $byPatternId = [];
-        foreach ($alterEgos as $ae) {
-            $byPatternId[$ae->source_name_pattern_id ?? 0][] = $ae->phrase;
-        }
-        $groups = [];
-        foreach ($patterns as $p) {
-            $phrases = $byPatternId[$p->id] ?? [];
-            if (!empty($phrases)) {
-                $groups[] = [
-                    'pattern' => $p->pattern_template,
-                    'rank' => (int)$p->popularity_rank,
-                    'phrases' => array_values(array_unique($phrases)),
-                ];
-            }
-        }
-        $starred = AlterEgo::where('source_name_id', $s->id)
-            ->where('starred', true)
-            ->orderBy('id')
-            ->pluck('phrase')
-            ->all();
-        // Compute dynamic progress
-        $total = SourceNamePattern::where('source_name_id', $s->id)->count();
-        $done = SourceNamePattern::where('source_name_id', $s->id)->where('status','done')->count();
-        $aeCount = AlterEgo::where('source_name_id', $s->id)->count();
+        $patterns = $s->patterns;
+        $alterEgos = $s->alterEgos;
         return [
-            'id' => $s->id,
             'status' => $s->status,
-            'patternsTotal' => (int)$total,
-            'patternsSearched' => (int)$done,
-            'alterEgosFound' => (int)$aeCount,
-            'groups' => $groups,
-            'starred' => $starred,
+            'patternsProcessedCount' => $patterns->where('status','done')->count(),
+            'patternsCount' => $patterns->count(),
+            'signaturedPatternsCount' => $s->signaturedPatterns()->count(),
+            'alterEgosCount' => $alterEgos->count(),
+            'starred' => $alterEgos->where('starred', true)->pluck('phrase')->all(),
+            'patterns' => $patterns
+                ->where('status','processing')
+                ->map(fn($pattern) => $this->lookupPatternPayload($s->status, $pattern)),
+            // todo: source words matched
+            'firstClassWordsMatched' => [],
+            // todo: filter selected last
+            'unselectedPatterns' => [],
         ];
     }
-
-
-    /**
-     * Flatten WordMatchService groups to token => list of {word, signature}.
-     * @param array<string,array<string,array<int,array{word:string,signature:string}>>> $groups
-     * @return array<string,array<int,array{word:string,signature:string}>>
-     */
-    private function flattenMatchesByTokenWithSignatures(array $groups): array
+    private function lookupPatternPayload(string $status, SourceNamePattern $pattern): array
     {
-        $out = [];
-        foreach ($groups as $token => $byList) {
-            $bucket = [];
-            foreach ($byList as $items) {
-                // groups already exclude boring by service unless include_boring option is set
-                foreach ($items as $it) {
-                    $w = (string)($it['word'] ?? '');
-                    $sig = (string)($it['signature'] ?? '');
-                    if ($w === '' || $sig === '') continue;
-                    $bucket[$w] = $sig; // dedupe by word
-                }
-            }
-            $out[$token] = array_map(function($w) use ($bucket){ return ['word'=>$w, 'signature'=>$bucket[$w]]; }, array_keys($bucket));
-        }
-        return $out;
+        $signaturedPatterns = $pattern->signaturedPatterns;
+        $alterEgos = $pattern->alterEgos;
+        return [
+            'id' => $pattern->id,
+            'status' => $status,
+            'template' => $pattern->template,
+            'signaturedPatternsCount' => $signaturedPatterns->count(),
+            'alterEgosCount' => $alterEgos->count(),
+            'signaturedPatterns' => $signaturedPatterns,
+            'alterEgos' => $alterEgos,
+        ];
     }
 
     public function destroy(SourceName $source_name)

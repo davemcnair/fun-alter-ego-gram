@@ -11,16 +11,11 @@ class AlterEgo extends Model
     use HasFactory;
 
     protected $fillable = [
-        'source_name_id', 'source_name_pattern_id', 'phrase', 'starred'
+        'signatured_pattern_id', 'phrase', 'starred'
     ];
 
-    public function sourceName(): BelongsTo
+    public function signaturedPattern(): BelongsTo
     {
-        return $this->belongsTo(SourceName::class);
-    }
-
-    public function sourceNamePattern(): BelongsTo
-    {
-        return $this->belongsTo(SourceNamePattern::class);
+        return $this->belongsTo(SignaturedPattern::class);
     }
 }

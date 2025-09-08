@@ -12,6 +12,8 @@ return new class extends Migration
             $table->id();
             $table->string('template')->unique();
             $table->unsignedInteger('popularity_rank')->default(0)->index();
+            $table->string('pattern_type', 20)->default('exotic');
+            $table->unsignedInteger('min_total_length')->default(0);
             // Optional descriptive metadata - may help future UI/filters
             $table->unsignedTinyInteger('forename_count')->default(0);
             $table->unsignedTinyInteger('surname_count')->default(0);

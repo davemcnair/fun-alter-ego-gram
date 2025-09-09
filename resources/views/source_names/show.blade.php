@@ -74,13 +74,18 @@
             <div id="alterEgoGroups">
                 @php $hasAny = false; @endphp
                 @foreach(($patternsLive ?? []) as $p)
-                    @if(($p->alterEgos ?? collect())->count() > 0)
+                    @php
+                        $alterEgos = isset($p['alterEgos']) ? $p['alterEgos'] : [];
+                        $count = is_iterable($alterEgos) ? count($alterEgos) : (is_object($alterEgos) && method_exists($alterEgos,'count') ? $alterEgos->count() : 0);
+                    @endphp
+                    @if($count > 0)
                         @php $hasAny = true; @endphp
                         <div style="margin-bottom:10px;">
-                            <div><strong>{{ $p->pattern->template }}</strong> <span class="tag">{{ ($p->alterEgos ?? collect())->count() }} found</span></div>
+                            <div><strong>{{ $p['template'] ?? '' }}</strong> <span class="tag">{{ $count }} found</span></div>
                             <ul style="margin-top:6px;">
-                                @foreach($p->alterEgos as $ae)
-                                    <li>{{ $ae->phrase }}</li>
+                                @foreach($alterEgos as $ae)
+                                    @php $phrase = is_array($ae) ? ($ae['phrase'] ?? '') : (is_object($ae) ? ($ae->phrase ?? '') : ''); @endphp
+                                    <li>{{ $phrase }}</li>
                                 @endforeach
                             </ul>
                         </div>
@@ -172,42 +177,6 @@
                 @endif
             </div>
 
-            <div class="card">
-                @php
-                    $allPatterns = ($patterns ?? collect());
-                    $unselected = $allPatterns->filter(function($p){ return ($p->status ?? null) === 'deselected'; });
-                @endphp
-                <h3 style="margin-top:0;">Patterns ({{ $unselected->count() }})</h3>
-                <table style="width:100%; border-collapse: collapse;">
-                    <thead>
-                    <tr>
-                        <th style="text-align:left; padding:8px; background:#f3f4f6;">Rank</th>
-                        <th style="text-align:left; padding:8px; background:#f3f4f6;">Pattern</th>
-                        <th style="text-align:left; padding:8px; background:#f3f4f6;">Status</th>
-                        <th style="text-align:left; padding:8px; background:#f3f4f6;">Alter egos</th>
-                        <th style="text-align:left; padding:8px; background:#f3f4f6;">Action</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    @forelse($unselected as $p)
-                        @php $countAE = ($p->alterEgos ?? collect())->count(); @endphp
-                        <tr style="border-bottom:1px solid #e5e7eb;">
-                            <td style="padding:8px;">{{ $p->popularity_rank }}</td>
-                            <td style="padding:8px;">
-                                {{ $p->pattern->template }}
-                            </td>
-                            <td style="padding:8px;"><span class="tag">{{ $p->status }}</span></td>
-                            <td style="padding:8px;">{{ $countAE }}</td>
-                            <td style="padding:8px;">
-                                <button type="button" onclick="enablePattern({{ $item->id }}, {{ $p->id }})" style="background:#10b981;">Search</button>
-                            </td>
-                        </tr>
-                    @empty
-                        <tr><td colspan="5" class="muted" style="padding:8px;">No unselected patterns.</td></tr>
-                    @endforelse
-                    </tbody>
-                </table>
-            </div>
         </div>
     </div>
 
@@ -870,68 +839,49 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
 
 
     function render(p) {
-        statusEl.textContent = p.status;
-        const groupsArr = Array.isArray(p.groups) ? p.groups : [];
+        const status = (p && p.item && p.item.status) ? p.item.status : (p.status || '');
+        statusEl.textContent = status;
+        // Build groups from new backend payload
+        const groupsArr = Array.isArray(p && p.patternsLive) ? (p.patternsLive.map(function(pl){
+            const tmpl = pl && (pl.template || (pl.signatureIndexedPatterns && pl.signatureIndexedPatterns[0] && pl.signatureIndexedPatterns[0].pattern) || '');
+            const phrases = Array.isArray(pl && pl.alterEgos) ? pl.alterEgos.map(function(ae){ return (ae && ae.phrase) ? ae.phrase : (ae && ae['phrase'] ? ae['phrase'] : ''); }).filter(Boolean) : [];
+            return { pattern: tmpl || '', phrases: phrases };
+        }).filter(function(g){ return g.phrases.length > 0; })) : [];
         // Update starred UI/state early so phrase star buttons reflect it
-        updateStarredUI(p.starred || []);
+        updateStarredUI((p && p.starred) ? p.starred : []);
         // Hide patterns searched row when completed; show otherwise
         if (pattRow) {
-            const isCompleted = String(p.status || '').toLowerCase() === 'completed';
+            const isCompleted = String(status || '').toLowerCase() === 'completed';
             pattRow.style.display = isCompleted ? 'none' : '';
         }
         // Maintain counts when not completed
-        if (String(p.status || '').toLowerCase() !== 'completed') {
-            pattS.textContent = p.patternsSearched;
-            pattT.textContent = p.patternsTotal;
+        if (String(status || '').toLowerCase() !== 'completed') {
+            pattS.textContent = String((p && p.patternsProcessedCount) || 0);
+            pattT.textContent = String((p && p.patternsCount) || 0);
         }
         // Alter egos counts
-        aeFound.textContent = p.alterEgosFound;
-        // Compute fun/AE counts: full recompute when doing full render; incremental otherwise
-        const hasLast = !!p.lastGroup;
-        if (!renderedOnce || !hasLast) {
-            if (patternsWithAE) patternsWithAE.textContent = String(groupsArr.length);
-            try {
-                let funCount = 0;
-                let funPatterns = 0;
-                groupsArr.forEach(function(g){
-                    const phrases = Array.isArray(g.phrases) ? g.phrases : [];
-                    let hasFunInGroup = false;
-                    phrases.forEach(function(ph){
-                        const isFun = hasAnyFunToken(ph, g.pattern);
-                        if (isFun) { funCount++; hasFunInGroup = true; }
-                    });
-                    if (hasFunInGroup) funPatterns++;
-                });
-                if (funAeFound) funAeFound.textContent = String(funCount);
-                if (patternsWithFunAE) patternsWithFunAE.textContent = String(funPatterns);
-            } catch (e) { if (funAeFound) funAeFound.textContent = '0'; if (patternsWithFunAE) patternsWithFunAE.textContent = '0'; }
-        } else if (hasLast) {
-            // Incremental update for lastGroup
-            if (patternsWithAE) {
-                const cur = parseInt(patternsWithAE.textContent || '0', 10) || 0;
-                patternsWithAE.textContent = String(cur + 1);
-            }
-            try {
-                const phrases = Array.isArray(p.lastGroup.phrases) ? p.lastGroup.phrases : [];
-                let addFun = 0;
+        aeFound.textContent = String((p && p.alterEgosCount) || 0);
+        // Full recompute of fun/AE counts each render
+        if (patternsWithAE) patternsWithAE.textContent = String(groupsArr.length);
+        try {
+            let funCount = 0;
+            let funPatterns = 0;
+            groupsArr.forEach(function(g){
+                const phrases = Array.isArray(g.phrases) ? g.phrases : [];
                 let hasFunInGroup = false;
                 phrases.forEach(function(ph){
-                    if (hasAnyFunToken(ph, p.lastGroup.pattern)) { addFun++; hasFunInGroup = true; }
+                    const isFun = hasAnyFunToken(ph, g.pattern);
+                    if (isFun) { funCount++; hasFunInGroup = true; }
                 });
-                if (funAeFound) {
-                    const curFun = parseInt(funAeFound.textContent || '0', 10) || 0;
-                    funAeFound.textContent = String(curFun + addFun);
-                }
-                if (hasFunInGroup && patternsWithFunAE) {
-                    const curFP = parseInt(patternsWithFunAE.textContent || '0', 10) || 0;
-                    patternsWithFunAE.textContent = String(curFP + 1);
-                }
-            } catch (e) { /* ignore */ }
-        }
+                if (hasFunInGroup) funPatterns++;
+            });
+            if (funAeFound) funAeFound.textContent = String(funCount);
+            if (patternsWithFunAE) patternsWithFunAE.textContent = String(funPatterns);
+        } catch (e) { if (funAeFound) funAeFound.textContent = '0'; if (patternsWithFunAE) patternsWithFunAE.textContent = '0'; }
         // Render grouped alter egos by pattern (full re-render each poll to reflect background updates)
         if (groupsEl) {
             groupsEl.innerHTML = '';
-            const groups = p.groups || [];
+            const groups = groupsArr;
             if (groups.length === 0) {
                 const div = document.createElement('div');
                 div.className = 'muted';
@@ -950,7 +900,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
             refreshTokenWordsUI(used);
             applyOnlyUsedFilterToTable(used);
         } catch (e) { /* ignore */ }
-        completed = p.status === 'completed';
+        completed = String(status || '').toLowerCase() === 'completed';
     }
 
     // Fixed poll delay (5s)

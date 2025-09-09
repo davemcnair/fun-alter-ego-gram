@@ -8,10 +8,12 @@ use App\Models\SourceNamePattern;
 use App\Models\AlterEgo;
 use App\Services\ListPatternsService;
 
+use App\Services\WordMatchService;
 use App\Traits\HelpsMatchWords;
 use DB;
 use Illuminate\Http\Request;
 use App\Jobs\FillPatternSignaturesJob;
+use Illuminate\Support\Facades\Log;
 
 class SourceNameController extends Controller
 {
@@ -23,7 +25,7 @@ class SourceNameController extends Controller
         return view('source_names.index', compact('items'));
     }
 
-    public function store(Request $request, ListPatternsService $patternsService)
+    public function store(Request $request, ListPatternsService $patternsService, WordMatchService $wordMatchService)
     {
         $data = $request->validate([
             'name' => ['required','string','min:5','max:25', "regex:/^[A-Za-z .,\-']+$/"],
@@ -34,14 +36,21 @@ class SourceNameController extends Controller
 
         $includeBoring = (bool)($data['allow_boring'] ?? false);
 
-        $standardShortEnoughPatterns = $patternsService->listWithinMinLength(strlen($signature));
-        $filteredPatterns = $patternsService->filterForSource($signature, $standardShortEnoughPatterns, $includeBoring);
-
         $source = SourceName::create([
             'name' => $name,
             'signature' => $signature,
             'status' => 'idle',
         ]);
+        $tokensWithWords = $wordMatchService->storeNewMatchingWords($source, $includeBoring);
+        [$storedMinLengths, $matchedMinLengths] =
+            $wordMatchService->extractMatchingTokenWordMinimumLengths($source, $tokensWithWords);
+        $standardShortEnoughPatterns = $patternsService->listWithinMinLength(strlen($signature));
+        $filteredPatterns = $patternsService->filterPatternsForSource(
+            $signature,
+            $standardShortEnoughPatterns,
+            $storedMinLengths,
+            $matchedMinLengths
+        );
 
         $bulk = [];
         $now = now();
@@ -49,7 +58,7 @@ class SourceNameController extends Controller
         foreach ($filteredPatterns as $pattern) {
             $bulk[] = [
                 'source_name_id' => $source->id,
-                'pattern_template' => $pattern->template,
+                'pattern_id' => $pattern->id,
                 'popularity_rank' => $pattern->popularity_rank,
                 // Restrict pending to standard patterns for new searches
                 'status' => $pattern->pattern_type == 'standard' ? 'pending' : 'deferred',
@@ -66,6 +75,7 @@ class SourceNameController extends Controller
             $dispatch = FillPatternSignaturesJob::dispatch((int)$pid);
             if (!empty($queue)) { $dispatch->onQueue($queue); }
         }
+        Log::info('SourceNameController.store', ['dispatched' => count($bulk) . ' fills from ' . $filteredPatterns->count() . ' patterns']);;
 
         $source->status = 'running';
         $source->save();
@@ -75,6 +85,8 @@ class SourceNameController extends Controller
 
     public function show(SourceName $source_name)
     {
+        $source_name->fresh();
+        \Log::info('SourceNameController.show', ['source_name' => $source_name]);
         return view('source_names.show', $this->lookupProgressPayload($source_name));
     }
 
@@ -190,7 +202,7 @@ class SourceNameController extends Controller
         return [
             'id' => $pattern->id,
             'status' => $status,
-            'template' => $pattern->template,
+            'template' => optional($pattern->pattern)->template,
             'signatureIndexedPatternsCount' => $signatureIndexedPatterns->count(),
             'alterEgosCount' => $alterEgos->count(),
             'signatureIndexedPatterns' => $signatureIndexedPatterns,

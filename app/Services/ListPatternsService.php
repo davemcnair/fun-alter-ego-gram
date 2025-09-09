@@ -56,7 +56,7 @@ class ListPatternsService
         return ['meta' => $meta, 'rows' => $presentRows];
     }
 
-    public function listWithinMinLength(string $totalLength): Collection
+    public function listWithinMinLength(int $totalLength): Collection
     {
         return Pattern::where('min_total_length', '<=', $totalLength)
             ->orderBy('popularity_rank')
@@ -66,36 +66,20 @@ class ListPatternsService
     /**
      * Filter patterns for a given source by effective word match minimums.
      */
-    public function filterForSource(string $sourceSignature, Collection $patterns, bool $includeBoring = false): Collection
+    public function filterPatternsForSource(
+        string $sourceSignature,
+        Collection $patterns,
+        array $storedWordBasedMins,
+        array $matchingWordBasedMins
+    ): Collection
     {
         $sourceLength = strlen($sourceSignature);
-        $wordsQuery = DB::table('words')->select('id', 'token_type', 'signature');
+        $anyWordsFound = array_keys($matchingWordBasedMins);
 
-        if (!$includeBoring) {
-            $wordsQuery->where('list_type', '!=', 'boring');
-        }
-        $actualMins = Token::query()->pluck('min_length', 'name')->toArray();
-        // can be larger
-        $effectiveMins = [];
-        $anyWordsFound = [];
-        $wordsQuery->chunkById(1000, function ($rows) use (&$effectiveMins, &$anyWordsFound, $sourceSignature, $sourceLength) {
-            foreach ($rows as $r) {
-                $signature = $r->signature;
-                $length = strlen($signature);
-                if ($length > $sourceLength) continue;
-                if (!$this->isSubset($signature, $sourceSignature)) continue;
-                $token_type = $r->token_type;
-                $anyWordsFound[$token_type] = true;
-                if (!isset($effectiveMins[$token_type]) || $length < $effectiveMins[$token_type]) {
-                    $effectiveMins[$token_type] = $length;
-                }
-            }
-        }, 'id');
-
-        return $patterns->filter(function ($row) use ($actualMins, $effectiveMins, $anyWordsFound, $sourceLength) {
+        return $patterns->filter(function ($row) use ($storedWordBasedMins, $matchingWordBasedMins, $anyWordsFound, $sourceLength) {
             // Determine if the pattern row includes a given token type using stored columns
-            $hasToken = function ($row, string $name): bool {
-                return match ($name) {
+            $hasToken = function ($row, $tokenName): bool {
+                return match ($tokenName) {
                     Token::TOKEN_NAME_TITLE => $row->has_title ?? false,
                     Token::TOKEN_NAME_FORENAME => ($row->forename_count ?? 0) > 0,
                     Token::TOKEN_NAME_INITIALS => $row->has_initials ?? false,
@@ -114,7 +98,7 @@ class ListPatternsService
                     // If this pattern requires a token for which no words were found, reject
                     if (!isset($anyWordsFound[$name])) return false;
                     // Track if any effective min grew compared to static
-                    if (($effectiveMins[$name] ?? 0) > ($actualMins[$name] ?? 0)) {
+                    if (($matchingWordBasedMins[$name] ?? 0) > ($storedWordBasedMins[$name] ?? 0)) {
                         $minLengthUnchanged = false;
                     }
                     // Sum dynamic min only for tokens used by this pattern
@@ -123,11 +107,12 @@ class ListPatternsService
                         Token::TOKEN_NAME_SURNAME => (int)($row->surname_count ?? 0),
                         default => 1,
                     };
-                    $dynamicMin += (int)($effectiveMins[$name] ?? 0) * max(1, $count);
+                    $dynamicMin += (int)($matchingWordBasedMins[$name] ?? 0) * max(1, $count);
                 }
             }
 
             return $minLengthUnchanged || $dynamicMin <= $sourceLength;
         });
     }
+
 }

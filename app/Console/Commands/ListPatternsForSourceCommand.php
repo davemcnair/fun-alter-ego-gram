@@ -26,7 +26,7 @@ class ListPatternsForSourceCommand extends Command
 
         $signature = $this->makeSignature($source);
         $rows= $svc->listWithinMinLength(strlen($signature), 'standard');
-            $rows = $svc->filterForSource($signature, $rows, (bool)$this->option('include-boring'));
+            $rows = $svc->filterPatternsForSource($signature, $rows, (bool)$this->option('include-boring'));
 
         foreach ($rows as $row) {
             $this->line(sprintf('%5d. %s', $row['popularity_rank'], $row['template']));

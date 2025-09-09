@@ -122,7 +122,7 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
         };
 
         // Build slot order from the pattern template for formatting
-        $slotOrder = $this->buildSlotOrderFromTemplate((string)$sourceNamePattern->pattern_template);
+        $slotOrder = $this->buildSlotOrderFromTemplate((string)$sourceNamePattern->pattern->template);
 
         $createdCount = 0;
         foreach ($sourceNamePattern->signatureIndexedPatterns as $sigRow) {
@@ -153,8 +153,7 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
 
             // Persist as AlterEgo (idempotent)
             AlterEgo::firstOrCreate(
-                ['source_name_id' => $source->id, 'phrase' => $phrase],
-                ['source_name_pattern_id' => $sourceNamePattern->id]
+                ['signature_indexed_pattern_id' => $sigRow->id, 'phrase' => $phrase]
             );
             $createdCount++;
         }

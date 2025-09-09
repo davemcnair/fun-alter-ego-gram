@@ -5,9 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
+use Staudenmeir\EloquentHasManyDeep\HasManyDeep;
+use Staudenmeir\EloquentHasManyDeep\HasRelationships;
 
 class SourceName extends Model
 {
+    use HasRelationships;
 
     protected $fillable = [
         'name', 'signature', 'status',
@@ -15,12 +18,12 @@ class SourceName extends Model
 
     public function patterns(): HasMany
     {
-        return $this->hasMany(SourceNamePattern::class);
+        return $this->hasMany(SourceNamePattern::class)->with(['pattern']);
     }
 
     public function wordMatches(): HasMany
     {
-        return $this->hasMany(MatchedWord::class);
+        return $this->hasMany(MatchedWord::class)->with('word');
     }
 
     public function signatureIndexedPatterns(): HasManyThrough
@@ -28,19 +31,8 @@ class SourceName extends Model
         return $this->hasManyThrough(SignatureIndexedPattern::class, SourceNamePattern::class);
     }
 
-    public function alterEgos(): HasManyThrough
+    public function alterEgos(): HasManyDeep
     {
-        // HasManyThrough through two layers:
-        // todo: examine
-        //      $source_name->sourceNamePatterns->flatMap->signatureIndexedPatterns->flatMap->alterEgos
-        return $this->hasManyThrough(AlterEgo::class,SignatureIndexedPattern::class)
-            ->join(
-                'source_name_patterns',
-                 'signature_indexed_patterns.source_name_pattern_id',
-                '=',
-                'source_name_patterns.id'
-            )
-            ->whereColumn('source_name_patterns.id.source_name_id', 'source_name.id');
-
+        return $this->hasManyDeep(AlterEgo::class, [SourceNamePattern::class, SignatureIndexedPattern::class]);
     }
 }

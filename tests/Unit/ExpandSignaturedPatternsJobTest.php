@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Jobs\ExpandSignatureIndexedPatternsJob;
 use App\Models\AlterEgo;
+use App\Models\Pattern;
 use App\Models\SignatureIndexedPattern;
 use App\Models\SourceName;
 use App\Models\SourceNamePattern;
@@ -37,9 +38,10 @@ class ExpandSignatureIndexedPatternsJobTest extends TestCase
             'status' => 'running',
             'patterns_total' => 1,
         ]);
+        $pattern = Pattern::create(['template' => '{forename}{surname}']);
         $snp = SourceNamePattern::create([
             'source_name_id' => $source->id,
-            'pattern_template' => '{forename}{surname}',
+            'pattern_id' => $pattern->id,
             'popularity_rank' => 1,
             'status' => 'pending',
         ]);
@@ -79,9 +81,10 @@ class ExpandSignatureIndexedPatternsJobTest extends TestCase
             'status' => 'running',
             'patterns_total' => 1,
         ]);
+        $pattern2 = Pattern::create(['template' => '{surname:2}']);
         $snp = SourceNamePattern::create([
             'source_name_id' => $source->id,
-            'pattern_template' => '{surname:2}',
+            'pattern_id' => $pattern2->id,
             'popularity_rank' => 1,
             'status' => 'pending',
         ]);

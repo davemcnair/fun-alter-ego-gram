@@ -42,13 +42,12 @@ return new class extends Migration
 
         Schema::create('alter_egos', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('source_name_id')->constrained('source_names')->onDelete('cascade');
-            $table->foreignId('source_name_pattern_id')->constrained('source_name_patterns')->onDelete('cascade');
+            $table->foreignId('signature_indexed_pattern_id')->constrained('signature_indexed_patterns')->onDelete('cascade');
             $table->string('phrase');
             $table->boolean('starred')->default(false);
             $table->timestamps();
             $table->index('starred');
-            $table->unique(['source_name_id','phrase']);
+            $table->unique(['signature_indexed_pattern_id','phrase']);
         });
     }
 

@@ -47,15 +47,10 @@
             <div>
                 <div>Status: <span id="status" class="tag">{{ $item->status }}</span></div>
                 <div id="patternsRow" style="margin-top:6px;">Patterns searched: <strong id="patternsSearched">0</strong> / <strong id="patternsTotal">0</strong></div>
-                <div style="margin-top:6px;">Alter egos found: <strong id="alterEgosFound">0</strong> <span class="muted">in <span id="patternsWithAE">0</span> patterns</span></div>
+                <div style="margin-top:6px;">Alter egos found: <strong id="alterEgosFound">{{$alterEgosCount}}</strong> <span class="muted">in <span id="patternsWithAE">0</span> patterns</span></div>
                 <div style="margin-top:6px;">Fun alter egos found: <strong id="funAlterEgosFound">0</strong> <span class="muted">in <span id="patternsWithFunAE">0</span> patterns</span></div>
             </div>
-            <div style="justify-self:end; display:flex; gap:8px; align-items:center;">
-                <button id="pauseBtn">Pause</button>
-                <button id="resumeBtn" style="display:none; background:#10b981;">Resume</button>
-                <a class="link" href="{{ route('source-names.index') }}">Back</a>
-            </div>
-        </div>
+          </div>
     </div>
 
         <div class="columns">
@@ -78,11 +73,11 @@
             </div>
             <div id="alterEgoGroups">
                 @php $hasAny = false; @endphp
-                @foreach(($patterns ?? []) as $p)
+                @foreach(($patternsLive ?? []) as $p)
                     @if(($p->alterEgos ?? collect())->count() > 0)
                         @php $hasAny = true; @endphp
                         <div style="margin-bottom:10px;">
-                            <div><strong>{{ $p->pattern_template }}</strong> <span class="tag">{{ ($p->alterEgos ?? collect())->count() }} found</span></div>
+                            <div><strong>{{ $p->pattern->template }}</strong> <span class="tag">{{ ($p->alterEgos ?? collect())->count() }} found</span></div>
                             <ul style="margin-top:6px;">
                                 @foreach($p->alterEgos as $ae)
                                     <li>{{ $ae->phrase }}</li>
@@ -105,7 +100,7 @@
                     </label>
                 </h3>
                 @php
-                    $groups = is_array($matches) ? $matches : [];
+                    $groups = is_array($wordMatches) ? $wordMatches : [];
                     if (!empty($groups)) {
                         uksort($groups, function($a, $b){
                             if ($a === 'surname' && $b !== 'surname') return -1;
@@ -199,7 +194,7 @@
                         <tr style="border-bottom:1px solid #e5e7eb;">
                             <td style="padding:8px;">{{ $p->popularity_rank }}</td>
                             <td style="padding:8px;">
-                                {{ $p->pattern_template }}
+                                {{ $p->pattern->template }}
                             </td>
                             <td style="padding:8px;"><span class="tag">{{ $p->status }}</span></td>
                             <td style="padding:8px;">{{ $countAE }}</td>
@@ -226,7 +221,7 @@
     $funForename = [];
     $allSurname = [];
     $allForename = [];
-    $groupsForFun = is_array($matches) ? $matches : [];
+    $groupsForFun = is_array($wordMatches) ? $wordMatches : [];
     // collect fun
     if (isset($groupsForFun['surname']['fun'])) {
         foreach ($groupsForFun['surname']['fun'] as $it) {
@@ -259,7 +254,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
 
 (function(){
     const id = {{ $item->id }};
-    let paused = {{ ($item->status === 'paused' || $item->status === 'idle') ? 'true' : 'false' }};
+    let paused = false;
     let completed = {{ $item->status === 'completed' ? 'true' : 'false' }};
     const statusEl = document.getElementById('status');
     const wordFilterStatus = document.getElementById('wordFilterStatus');
@@ -955,10 +950,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
             refreshTokenWordsUI(used);
             applyOnlyUsedFilterToTable(used);
         } catch (e) { /* ignore */ }
-        paused = p.status === 'paused';
         completed = p.status === 'completed';
-        pauseBtn.style.display = (!paused && !completed) ? 'inline-block' : 'none';
-        resumeBtn.style.display = (paused && !completed) ? 'inline-block' : 'none';
     }
 
     // Fixed poll delay (5s)
@@ -967,13 +959,13 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
     }
 
     async function stepLoop() {
-        if (paused || completed) return;
+        if (completed) return;
         try {
             // Async poll progress; background workers should process jobs
             const p = await call("{{ route('source-names.progress', $item) }}", 'GET');
             render(p);
         } catch (e) { /* ignore */ }
-        if (!paused && !completed) {
+        if (!completed) {
             setTimeout(stepLoop, getPollDelayMs());
         }
     }
@@ -1011,16 +1003,6 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
         } catch (e) {}
     }
 
-    pauseBtn.addEventListener('click', async function(){
-        const p = await call("{{ route('source-names.pause', $item) }}", 'POST');
-        render(p);
-    });
-    resumeBtn.addEventListener('click', async function(){
-        const p = await call("{{ route('source-names.resume', $item) }}", 'POST');
-        render(p);
-        if (!paused && !completed) stepLoop();
-    });
-
     // Selection UI handlers (only present when idle)
     (function(){
         const selCard = document.getElementById('selectionCard');
@@ -1054,7 +1036,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
 
     // Auto-start behavior
     const initialStatus = '{{ $item->status }}';
-    if (!paused && !completed) {
+    if (!completed) {
         // Already running -> start the loop
         stepLoop();
     } else if (initialStatus === 'idle') {

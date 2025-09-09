@@ -19,9 +19,7 @@ class SourceNameController extends Controller
 
     public function index()
     {
-        $items = SourceName::withCount('alterEgos')
-            ->orderByDesc('id')
-            ->paginate(15);
+        $items = SourceName::paginate(15);
         return view('source_names.index', compact('items'));
     }
 
@@ -175,14 +173,14 @@ class SourceNameController extends Controller
             'item' => $s,
             'patternsProcessedCount' => $s->patterns()->where('status','done')->count(),
             'patternsCount' => $s->patterns->count(),
-            'patternsLive' => $s->patterns()->whereIn('status', ['done','processing'])
+            'patternsLive' => $s->patterns()->whereIn('status', ['done','processing'])->get()
                 ->map(fn($pattern) => $this->lookupPatternPayload($s->status, $pattern)),
-            'patternsWaiting' => $s->patterns()->whereIn('status', ['pending','deferred'])
+            'patternsWaiting' => $s->patterns()->whereIn('status', ['pending','deferred'])->get()
                 ->map(fn($pattern) => $this->lookupPatternPayload($s->status, $pattern)),
             'signatureIndexedPatternsCount' => $s->signatureIndexedPatterns()->count(),
             'alterEgosCount' => $s->alterEgos()->count(),
             'starred' => $s->alterEgos()->where('starred', true)->pluck('phrase')->all(),
-            'wordMatches' => $s->with('word')->wordMatches,
+            'wordMatches' => $s->wordMatches,
         ];
     }
     private function lookupPatternPayload(string $status, SourceNamePattern $pattern): array

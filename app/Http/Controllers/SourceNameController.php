@@ -192,9 +192,10 @@ class SourceNameController extends Controller
             'signatureIndexedPatternsCount' => $s->signatureIndexedPatterns()->count(),
             'alterEgosCount' => $s->alterEgos()->count(),
             'starred' => $s->alterEgos()->where('starred', true)->pluck('phrase')->all(),
-            'wordMatches' => $s->wordMatches,
+            'matchedWords' => $s->matchedWordÏs,
         ];
     }
+
     private function lookupPatternPayload(string $status, SourceNamePattern $pattern): array
     {
         $signatureIndexedPatterns = $pattern->signatureIndexedPatterns;

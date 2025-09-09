@@ -105,7 +105,7 @@
                     </label>
                 </h3>
                 @php
-                    $groups = is_array($wordMatches) ? $wordMatches : [];
+                    $groups = is_array($matchedWords) ? $matchedWords : [];
                     if (!empty($groups)) {
                         uksort($groups, function($a, $b){
                             if ($a === 'surname' && $b !== 'surname') return -1;
@@ -190,7 +190,7 @@
     $funForename = [];
     $allSurname = [];
     $allForename = [];
-    $groupsForFun = is_array($wordMatches) ? $wordMatches : [];
+    $groupsForFun = is_array($matchedWords) ? $matchedWords : [];
     // collect fun
     if (isset($groupsForFun['surname']['fun'])) {
         foreach ($groupsForFun['surname']['fun'] as $it) {

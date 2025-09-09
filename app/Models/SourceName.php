@@ -21,7 +21,7 @@ class SourceName extends Model
         return $this->hasMany(SourceNamePattern::class)->with(['pattern']);
     }
 
-    public function wordMatches(): HasMany
+    public function matchedWords(): HasMany
     {
         return $this->hasMany(MatchedWord::class)->with('word');
     }

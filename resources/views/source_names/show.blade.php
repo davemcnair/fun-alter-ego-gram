@@ -1003,36 +1003,8 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
         } catch (e) {}
     }
 
-    // Selection UI handlers (only present when idle)
-    (function(){
-        const selCard = document.getElementById('selectionCard');
-        const startBtn = document.getElementById('startBtn');
-        const selectAll = document.getElementById('selectAllTemplates');
-        if (selectAll) {
-            selectAll.addEventListener('change', function(){
-                document.querySelectorAll('.tplCheck').forEach(function(c){ c.checked = selectAll.checked; });
-            });
-        }
-        if (startBtn) {
-            startBtn.addEventListener('click', async function(){
-                try {
-                    const chosen = Array.from(document.querySelectorAll('.tplCheck:checked')).map(function(cb){ return cb.value; });
-                    const p = await callJson("{{ route('source-names.start', $item) }}", {templates: chosen});
-                    render(p);
-                    if (selCard) selCard.style.display = 'none';
-                    paused = false; completed = false;
-                    stepLoop();
-                } catch (e) { /* ignore */ }
-            });
-        }
-        if (showPatternSelectionLink && selCard) {
-            showPatternSelectionLink.addEventListener('click', function(ev){
-                ev.preventDefault();
-                selCard.style.display = 'block';
-                window.scrollTo({top: selCard.offsetTop - 20, behavior: 'smooth'});
-            });
-        }
-    })();
+    // Selection UI and manual start removed because start is handled in store()
+    (function(){ /* no-op */ })();
 
     // Auto-start behavior
     const initialStatus = '{{ $item->status }}';
@@ -1040,17 +1012,10 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
         // Already running -> start the loop
         stepLoop();
     } else if (initialStatus === 'idle') {
-        // If idle, auto-start with default selection (all templates)
-        callJson("{{ route('source-names.start', $item) }}", { templates: [] })
-            .then(function(p){
-                render(p);
-                paused = false; completed = false;
-                stepLoop();
-            })
-            .catch(function(){
-                // fallback to a passive progress fetch if start fails
-                call("{{ route('source-names.progress', $item) }}", 'GET').then(render).catch(function(){});
-            });
+        // If idle, do not auto-start (store handles starting); just fetch progress once
+        call("{{ route('source-names.progress', $item) }}", 'GET')
+            .then(function(p){ render(p); })
+            .catch(function(){});
     } else {
         // ensure UI state reflects current status when paused/completed
         call("{{ route('source-names.progress', $item) }}", 'GET').then(render).catch(function(){});
@@ -1092,47 +1057,47 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
         el.classList.add('dragging-word');
         e.dataTransfer.effectAllowed = 'move';
       });
-      block.addEventListener('dragend', function(){
-        if (dragging) dragging.classList.remove('dragging-word');
-        dragging = null;
-        try {
-          if (li && phraseSpan) {
-            const current = phraseSpan.textContent.trim();
-            if (current && current !== orig) {
-              // Auto-persist the reorder without requiring a separate save click
-              callJson("{{ route('source-names.rephrase', $item) }}", { from: orig, to: current })
-                .then(function(res){
-                  if (res && res.ok) {
-                    render(res);
-                  } else {
-                    alert('Failed to save phrase order.');
-                    // Revert UI back to original phrase for clarity
-                    phraseSpan.textContent = orig;
-                  }
-                })
-                .catch(function(){
-                  alert('Error saving phrase order.');
-                  phraseSpan.textContent = orig;
-                });
-            }
-          }
-        } catch (e) { /* ignore */ }
-      });
-      block.addEventListener('dragover', function(e){
-        if (!dragging) return;
-        e.preventDefault();
-        const after = getAfter(block, e.clientX, e.clientY);
-        if (!after) {
-          block.appendChild(dragging);
-          // keep separators consistent
-        } else {
-          // Insert before the target or before its preceding separator
-          const ref = after;
-          block.insertBefore(dragging, ref);
-        }
-        // Normalize separators between parts
-        normalizeSeparators(block);
-      });
+      {{--block.addEventListener('dragend', function(){--}}
+      {{--  if (dragging) dragging.classList.remove('dragging-word');--}}
+      {{--  dragging = null;--}}
+      {{--  try {--}}
+      {{--    if (li && phraseSpan) {--}}
+      {{--      const current = phraseSpan.textContent.trim();--}}
+      {{--      if (current && current !== orig) {--}}
+      {{--        // Auto-persist the reorder without requiring a separate save click--}}
+      {{--        callJson("{{ route('source-names.rephrase', $item) }}", { from: orig, to: current })--}}
+      {{--          .then(function(res){--}}
+      {{--            if (res && res.ok) {--}}
+      {{--              render(res);--}}
+      {{--            } else {--}}
+      {{--              alert('Failed to save phrase order.');--}}
+      {{--              // Revert UI back to original phrase for clarity--}}
+      {{--              phraseSpan.textContent = orig;--}}
+      {{--            }--}}
+      {{--          })--}}
+      {{--          .catch(function(){--}}
+      {{--            alert('Error saving phrase order.');--}}
+      {{--            phraseSpan.textContent = orig;--}}
+      {{--          });--}}
+      {{--      }--}}
+      {{--    }--}}
+      {{--  } catch (e) { /* ignore */ }--}}
+      {{--});--}}
+      {{--block.addEventListener('dragover', function(e){--}}
+      {{--  if (!dragging) return;--}}
+      {{--  e.preventDefault();--}}
+      {{--  const after = getAfter(block, e.clientX, e.clientY);--}}
+      {{--  if (!after) {--}}
+      {{--    block.appendChild(dragging);--}}
+      {{--    // keep separators consistent--}}
+      {{--  } else {--}}
+      {{--    // Insert before the target or before its preceding separator--}}
+      {{--    const ref = after;--}}
+      {{--    block.insertBefore(dragging, ref);--}}
+      {{--  }--}}
+      {{--  // Normalize separators between parts--}}
+      {{--  normalizeSeparators(block);--}}
+      {{--});--}}
       // initial cleanup
       normalizeSeparators(block);
     }

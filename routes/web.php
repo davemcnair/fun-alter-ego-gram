@@ -34,7 +34,7 @@ Route::get('/source-names/{source_name}/progress', [SourceNameController::class,
 Route::post('/source-names/{source_name}/star', [SourceNameController::class, 'star'])->name('source-names.star');
 Route::post('/source-names/{source_name}/unstar', [SourceNameController::class, 'unstar'])->name('source-names.unstar');
 // Persist a reordered phrase variant
-//Route::post('/source-names/{source_name}/rephrase', [SourceNameController::class, 'rephrase'])->name('source-names.rephrase');
+Route::post('/source-names/{source_name}/rephrase', [SourceNameController::class, 'rephrase'])->name('source-names.rephrase');
 
 // Docs: progress choices (static view)
 Route::view('/docs/progress_choices', 'docs.progress_choices')->name('docs.progress_choices');

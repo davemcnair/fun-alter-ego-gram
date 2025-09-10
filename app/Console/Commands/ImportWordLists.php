@@ -2,6 +2,9 @@
 
 namespace App\Console\Commands;
 
+use App\Models\TokenSignature;
+use App\Models\Token;
+use App\Models\TokenSignatureWord;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use App\Models\Word;
@@ -28,7 +31,7 @@ class ImportWordLists extends Command
         DB::transaction(function () use ($basePath, &$affected) {
             foreach (File::directories($basePath) as $tokenTypePath) {
                 $tokenType = basename($tokenTypePath);
-
+                $token = Token::where('name', $tokenType)->first();
                 foreach (File::files($tokenTypePath) as $file) {
                     // $file is SplFileInfo
                     $listType = pathinfo($file->getFilename(), PATHINFO_FILENAME); // ok, fun, boring
@@ -48,33 +51,30 @@ class ImportWordLists extends Command
                             continue;
                         }
 
-                        // Track affected pair for later reconciliation
-                        $affected[$tokenType . '|' . $signature] = [
-                            'token_type' => $tokenType,
+                        $tokenSignature = TokenSignature::firstOrCreate([
+                            'token_id' => $token->id,
                             'signature' => $signature,
-                        ];
+                        ]);
 
-                        // Ensure anagram group exists
-                        $group = AnagramGroup::firstOrCreate(
-                            ['token_type' => $tokenType, 'signature' => $signature],
-                            ['words_count' => 0]
-                        );
-
-                        $w = Word::updateOrCreate(
-                            [
-                                'word' => $word,
-                                'token_type' => $tokenType,
-                                'list_type' => $listType,
-                            ],
-                            [
-                                'signature' => $signature,
-                                'anagram_group_id' => $group->id,
-                            ]
-                        );
-
-                        // Increment words_count when newly attached/created
-                        if ($w->wasRecentlyCreated || (int)$w->anagram_group_id !== (int)$group->id) {
-                            $group->increment('words_count');
+                        if ($tokenSignature->wasRecentlyCreated) {
+                            $isDeferred = false;
+                        } else {
+                            $isDeferred = $listType !== 'fun';
+                        }
+                        TokenSignatureWord::create([
+                            'signature_id' => $tokenSignature->id,
+                            'word_original'=> trim($word),
+                            'list_type'    => $listType,
+                            'is_deferred'  => $isDeferred,
+                        ]);
+                        if (!$tokenSignature->wasRecentlyCreated
+                            && ($firstWord = $tokenSignature->words()->first())
+                            && $firstWord->list_type!='fun'
+                            && !$firstWord->is_deferred
+                            && $tokenSignature->words()->where('list_type', 'fun')->exists()
+                        ) {
+                            $firstWord->is_deferred = true;
+                            $firstWord->save();
                         }
                     }
                 }

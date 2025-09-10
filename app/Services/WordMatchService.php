@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\SourceName;
 use App\Models\Token;
+use App\Models\TokenSignatureWord;
 use App\Models\Word;
 use App\Traits\HelpsMatchWords;
 use Illuminate\Support\Facades\DB;
@@ -22,9 +23,9 @@ class WordMatchService
         $srcLen = strlen($sourceSignature);
 
         // Build base query and apply filters
-        $query = DB::table('words')
+        $query = TokenSignatureWord::with('tokenSignature.token')
             ->select('id', 'word', 'token_type', 'list_type', 'signature')
-            ->where('use_for_search', 1);
+            ->where('is_deferred', false);
         if ($filterToken !== '') $query->where('token_type', $filterToken);
         if ($filterList !== '') {
             $query->where('list_type', $filterList);
@@ -55,7 +56,6 @@ class WordMatchService
 
         return $grouped;
     }
-
     public function storeNewMatchingWords(SourceName $sourceName, bool $includeBoring): array
     {
         $sourceSignature = $sourceName->signature;

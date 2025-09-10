@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('signatures', function (Blueprint $table) {
+        Schema::create('token_signatures', function (Blueprint $table) {
             $table->id();
             $table->foreignId('token_id')->constrained('tokens')->cascadeOnDelete();
             $table->string('signature');
@@ -21,6 +21,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('signatures');
+        Schema::dropIfExists('token_signatures');
     }
 };

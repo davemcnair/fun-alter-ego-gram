@@ -5,7 +5,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class Signature extends Model
+class TokenSignature extends Model
 {
     protected $fillable = ['token_id', 'signature'];
 
@@ -16,7 +16,7 @@ class Signature extends Model
 
     public function words(): HasMany
     {
-        return $this->hasMany(TokenWord::class);
+        return $this->hasMany(TokenSignatureWord::class);
     }
 }
 

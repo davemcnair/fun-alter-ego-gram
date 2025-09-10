@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class MatchedWord extends Model
 {
 
+    public $timestamps = false;
+
     protected $fillable = [
         'source_name_id', 'word_id', 'used'
     ];

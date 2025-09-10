@@ -942,19 +942,19 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
         if (expand) { sample.style.display = 'none'; all.style.display = 'block'; }
         else { all.style.display = 'none'; sample.style.display = 'block'; }
     }
-    window.enablePattern = async function(sourceId, patternId){
-        try {
-            const res = await fetch("" + sourceId + "/patterns/" + patternId + "/enable".replace(/^/, '/source-names/'), {
-                method: 'POST',
-                headers: {'X-Requested-With':'XMLHttpRequest','X-CSRF-TOKEN': '{{ csrf_token() }}' }
-            });
-            const p = await res.json();
-            render(p);
-        } catch (e) {}
-    }
+    {{--window.enablePattern = async function(sourceId, patternId){--}}
+    {{--    try {--}}
+    {{--        const res = await fetch("" + sourceId + "/patterns/" + patternId + "/enable".replace(/^/, '/source-names/'), {--}}
+    {{--            method: 'POST',--}}
+    {{--            headers: {'X-Requested-With':'XMLHttpRequest','X-CSRF-TOKEN': '{{ csrf_token() }}' }--}}
+    {{--        });--}}
+    {{--        const p = await res.json();--}}
+    {{--        render(p);--}}
+    {{--    } catch (e) {}--}}
+    {{--}--}}
 
     // Selection UI and manual start removed because start is handled in store()
-    (function(){ /* no-op */ })();
+    // (function(){ /* no-op */ })();
 
     // Auto-start behavior
     const initialStatus = '{{ $item->status }}';

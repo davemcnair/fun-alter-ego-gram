@@ -7,6 +7,7 @@ use App\Models\Token;
 use App\Models\Word;
 use App\Traits\HelpsMatchWords;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class WordMatchService
 {
@@ -63,10 +64,10 @@ class WordMatchService
             // words must always be unique by (token_type, signature, use_for_search)
             ->where('use_for_search', true)
             ->select('id', 'token_type', 'signature');
-
         if (!$includeBoring) {
             $wordsQuery->where('list_type', '!=', 'boring');
         }
+        Log::info($wordsQuery->count() . ' new words');
         $anyWordsFoundForToken = [];
         $wordsQuery->chunkById(1000, function ($rows) use (&$anyWordsFoundForToken, $sourceName) {
             $sourceSignature = $sourceName->signature;
@@ -106,7 +107,7 @@ class WordMatchService
             $length = strlen($signature);
             if ($length > $sourceNameLength) continue;
             if (!$this->isSubset($signature, $sourceSignature)) continue;
-            $token_type = $matchedWord->token_type;
+            $token_type = $matchedWord->word->token_type;
             if (!isset($matchingWordBasedMins[$token_type]) || $length < $matchingWordBasedMins[$token_type]) {
                 $matchingWordBasedMins[$token_type] = $length;
             }

@@ -42,9 +42,13 @@ class SourceNameController extends Controller
             'status' => 'idle',
         ]);
         $tokensWithWords = $wordMatchService->storeNewMatchingWords($source, $includeBoring);
+        Log::info('SourceNameController.store '. count($tokensWithWords) . ' tokens with words');;
+
         [$storedMinLengths, $matchedMinLengths] =
-            $wordMatchService->extractMatchingTokenWordMinimumLengths($source, $tokensWithWords);
+            $wordMatchService->extractMatchingTokenWordMinimumLengths($source->refresh(), $tokensWithWords);
         $standardShortEnoughPatterns = $patternsService->listWithinMinLength(strlen($signature));
+
+        Log::info('SourceNameController.store ' . $standardShortEnoughPatterns->count() . ' standard patterns');
         $filteredPatterns = $patternsService->filterPatternsForSource(
             $signature,
             $standardShortEnoughPatterns,
@@ -52,6 +56,7 @@ class SourceNameController extends Controller
             $matchedMinLengths
         );
 
+        Log::info('SourceNameController.store ' . count($filteredPatterns) . ' filtered patterns');;
         $bulk = [];
         $now = now();
         /** @var Pattern $pattern */
@@ -70,6 +75,8 @@ class SourceNameController extends Controller
 
         // Enqueue all pending patterns for background processing
         $pendingIds = $source->patterns()->where('status','pending')->pluck('id');
+        Log::info('SourceNameController.store ' . count($pendingIds) . ' pending patterns');;
+        $bulk = [];
         $queue = config('search.queue');
         foreach ($pendingIds as $pid) {
             $dispatch = FillPatternSignaturesJob::dispatch((int)$pid);

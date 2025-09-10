@@ -96,7 +96,7 @@ class ListPatternsService
             foreach (Token::NAMES as $name) {
                 if ($hasToken($row, $name)) {
                     // If this pattern requires a token for which no words were found, reject
-                    if (!isset($anyWordsFound[$name])) return false;
+                    if (!in_array($name, $anyWordsFound, true)) return false;
                     // Track if any effective min grew compared to static
                     if (($matchingWordBasedMins[$name] ?? 0) > ($storedWordBasedMins[$name] ?? 0)) {
                         $minLengthUnchanged = false;

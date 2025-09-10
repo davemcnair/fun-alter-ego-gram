@@ -7,7 +7,6 @@ use Illuminate\Database\Eloquent\Model;
 
 class Token extends Model
 {
-    use HasFactory;
 
     public const TOKEN_NAME_TITLE = 'title';
     public const TOKEN_NAME_FORENAME = 'forename';

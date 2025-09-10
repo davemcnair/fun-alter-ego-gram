@@ -11,8 +11,10 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // todo: seed words from resources if available
-        // Seed patterns from resources if available
-        $this->call(PatternsFromResourcesSeeder::class);
+        // Seed words and patterns from resources
+        $this->call([
+            WordsFromResourcesSeeder::class,
+            PatternsFromResourcesSeeder::class,
+        ]);
     }
 }

@@ -58,6 +58,9 @@ class WordMatchService
 
     public function storeNewMatchingWords(SourceName $sourceName, bool $includeBoring): array
     {
+        $sourceSignature = $sourceName->signature;
+        $sourceNameLength = strlen($sourceSignature);
+
         $wordsQuery = Word::whereDoesntHave('matchedWords', function($q) use ($sourceName){
                 $q->where('source_name_id', $sourceName->id);
             })
@@ -67,16 +70,39 @@ class WordMatchService
         if (!$includeBoring) {
             $wordsQuery->where('list_type', '!=', 'boring');
         }
-        Log::info($wordsQuery->count() . ' new words');
+        // Apply a length guard at the database level to avoid scanning impossible candidates
+        $wordsQuery->whereRaw('LENGTH(signature) <= ?', [$sourceNameLength]);
+        $prefilterCount = $wordsQuery->count();
+        Log::info(sprintf('%d new words (pre-filtered by length <= %d) for source %d:%s',
+            $prefilterCount,
+            $sourceNameLength,
+            $sourceName->id,
+            $sourceName->name
+        ));
+        // Extra diagnostics when no candidates found and app.debug enabled
+        if ($prefilterCount === 0 && (bool)config('app.debug')) {
+            $diag = [];
+            $diag['source_id'] = $sourceName->id;
+            $diag['source'] = $sourceName->name;
+            $diag['sig'] = $sourceSignature;
+            $diag['len'] = $sourceNameLength;
+            $diag['include_boring'] = $includeBoring;
+            try {
+                $diag['words_total_use_for_search'] = (int)DB::table('words')->where('use_for_search', 1)->count();
+                $diag['words_len_leq'] = (int)DB::table('words')->where('use_for_search', 1)->whereRaw('LENGTH(signature) <= ?', [$sourceNameLength])->count();
+                $diag['words_len_non_boring'] = (int)DB::table('words')->where('use_for_search', 1)->whereRaw('LENGTH(signature) <= ?', [$sourceNameLength])->where('list_type', '!=', 'boring')->count();
+                // Count already linked to this source (to see if exclusion removes all)
+                $diag['already_linked'] = (int)DB::table('matched_words')->where('source_name_id', $sourceName->id)->count();
+            } catch (\Throwable $e) {
+                $diag['error'] = 'diag-failed:' . $e->getMessage();
+            }
+            Log::debug('WordMatchService.storeNewMatchingWords diagnostics', $diag);
+        }
         $anyWordsFoundForToken = [];
-        $wordsQuery->chunkById(1000, function ($rows) use (&$anyWordsFoundForToken, $sourceName) {
-            $sourceSignature = $sourceName->signature;
-            $sourceNameLength = strlen($sourceSignature);
+        $wordsQuery->chunkById(1000, function ($rows) use (&$anyWordsFoundForToken, $sourceName, $sourceSignature) {
             $matches = [];
             foreach ($rows as $r) {
                 $signature = $r->signature;
-                $length = strlen($signature);
-                if ($length > $sourceNameLength) continue;
                 if (!$this->isSubset($signature, $sourceSignature)) continue;
                 $token_type = $r->token_type;
                 $anyWordsFoundForToken[$token_type] = true;

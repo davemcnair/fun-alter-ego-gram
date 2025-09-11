@@ -3,17 +3,17 @@
 namespace App\Jobs;
 
 use App\Models\SourceName;
-use App\Models\Word;
+use App\Models\TokenSignature;
 use App\Models\AlterEgo;
 use App\Services\PhraseBuilderService;
 use App\Models\SourceNamePattern;
-use App\Services\WordMatchService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * ProcessPatternJob
@@ -85,7 +85,6 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
      * Handle filling pattern signatures for the associated SourceNamePattern.
      */
     public function handle(
-        WordMatchService $wordMatchService,
         PhraseBuilderService $phraseBuilderService
     ): void
     {
@@ -103,57 +102,27 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
         $sourceNamePattern->status = 'processing';
         $sourceNamePattern->save();
 
-        // Precompute a deterministic word picker for (token, signature)
-        $wordCache = [];
-        $pick = function(string $token, string $signature) use (&$wordCache) : ?string {
-            $key = strtolower($token).'|'.strtolower($signature);
-            if (array_key_exists($key, $wordCache)) return $wordCache[$key];
-            // Deterministic preference: fun > ok > boring; then alphabetically
-            $rows = Word::query()
-                ->where('token_type', $token)
-                ->where('signature', $signature)
-                ->orderByRaw("CASE list_type WHEN 'fun' THEN 1 WHEN 'ok' THEN 2 ELSE 3 END")
-                ->orderBy('word')
-                ->limit(1)
-                ->get(['word']);
-            $chosen = $rows->first()->word ?? null;
-            $wordCache[$key] = $chosen ? (string)$chosen : null;
-            return $wordCache[$key];
-        };
-
         // Build slot order from the pattern template for formatting
         $slotOrder = $this->buildSlotOrderFromTemplate((string)$sourceNamePattern->pattern->template);
 
         $createdCount = 0;
-        foreach ($sourceNamePattern->signatureIndexedPatterns as $sigRow) {
-            $pairs = $this->parseSignatureIndexedPattern((string)$sigRow->pattern);
-            if (empty($pairs)) continue;
+        foreach ($sourceNamePattern->signatureIndexedPatterns as $signatureIndexedPattern) {
+            $tokenIdSignaturePairs = $this->parseSignatureIndexedPattern($signatureIndexedPattern->pattern);
 
-            // Resolve words deterministically for each slot
             $words = [];
-            $ok = true;
-            foreach ($pairs as $idx => $pair) {
-                $tok = (string)($pair['token'] ?? '');
-                $sig = (string)($pair['signature'] ?? '');
-                if ($tok === '' || $sig === '') { $ok = false; break; }
-                $w = $pick($tok, $sig);
-                if ($w === null || $w === '') { $ok = false; break; }
-                $words[] = $w;
+            foreach ($tokenIdSignaturePairs as $pair) {
+                $words[] = TokenSignature::query()
+                    ->where('token_id', $pair['token_id'])
+                    ->where('signature', $pair['signature'])
+                    ->first()
+                    ->words()->where('is_deferred', false)->pluck('word')->toArray();
             }
-            if (!$ok) continue;
 
-            // Format phrase with proper surname hyphenation/casing
-            try {
-                $phrase = $phraseBuilderService->formatPhraseBySlots($words, $slotOrder, false);
-            } catch (\Throwable $e) {
-                // Fallback: simple join
-                $phrase = trim(implode(' ', array_filter($words, fn($w) => $w !== '')));
-            }
-            if ($phrase === '') continue;
+            $phrase = $phraseBuilderService->formatPhraseBySlots($words, $slotOrder, false);
 
             // Persist as AlterEgo (idempotent)
             AlterEgo::firstOrCreate(
-                ['signature_indexed_pattern_id' => $sigRow->id, 'phrase' => $phrase]
+                ['signature_indexed_pattern_id' => $signatureIndexedPattern->id, 'phrase' => $phrase]
             );
             $createdCount++;
         }
@@ -173,12 +142,12 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
                 $source->status = 'running';
             }
             $source->save();
-        } catch (\Throwable $e) {
-            try { Log::warning('Failed to update SourceName status for '.$source->id.': '.$e->getMessage()); } catch (\Throwable $e2) {}
+        } catch (Throwable $e) {
+            try { Log::warning('Failed to update SourceName status for '.$source->id.': '.$e->getMessage()); } catch (Throwable $e2) {}
         }
 
         // Optional log
-        try { Log::info('Expanded signatureIndexed patterns for SNP '.$sourceNamePattern->id.' => '.$createdCount.' phrase(s).'); } catch (\Throwable $e) {}
+        try { Log::info('Expanded signatureIndexed patterns for SNP '.$sourceNamePattern->id.' => '.$createdCount.' phrase(s).'); } catch (Throwable $e) {}
     }
 
     /**
@@ -189,9 +158,9 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
     private function parseSignatureIndexedPattern(string $s): array
     {
         $out = [];
-        if (preg_match_all('/\{([a-z]+):([a-z]+)\}/i', $s, $m, PREG_SET_ORDER)) {
+        if (preg_match_all('/\{([0-9]+):([a-z]+)\}/i', $s, $m, PREG_SET_ORDER)) {
             foreach ($m as $match) {
-                $out[] = [ 'token' => strtolower($match[1]), 'signature' => strtolower($match[2]) ];
+                $out[] = [ 'token_id' => strtolower($match[1]), 'signature' => strtolower($match[2]) ];
             }
         }
         return $out;

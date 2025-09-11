@@ -35,4 +35,9 @@ class Token extends Model
         'has_boring',
         'max_multiples',
     ];
+
+    public static function lookup(string $name): self
+    {
+        return self::where('name', $name)->first();
+    }
 }

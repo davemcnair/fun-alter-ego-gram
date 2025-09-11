@@ -53,7 +53,7 @@ class Pattern extends Model
                 $name = strtolower($match[1]);
                 $count = isset($match[2]) && ctype_digit($match[2]) ? max(1, (int)$match[2]) : 1;
                 for ($i = 0; $i < $count; $i++) {
-                    $patternTokenPositions[$pos++] = $name;
+                    $patternTokenPositions[$pos++] = Token::lookup($name)->id;
                 }
             }
         }

@@ -4,8 +4,8 @@ namespace App\Services;
 
 use App\Models\SourceName;
 use App\Models\Token;
+use App\Models\TokenSignature;
 use App\Models\TokenSignatureWord;
-use App\Models\Word;
 use App\Traits\HelpsMatchWords;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -13,6 +13,72 @@ use Illuminate\Support\Facades\Log;
 class WordMatchService
 {
     use HelpsMatchWords;
+
+    /**
+     * Add a word for a token/list into TokenSignature/TokenSignatureWord tables.
+     * Mirrors ImportWordLists behavior for existing/new signatures and deferral rules.
+     *
+     * Returns the TokenSignatureWord created or found, or null if the word normalizes to empty
+     * or the token name does not exist.
+     */
+    public function addTokenWord(string $tokenName, string $word, string $listType): ?TokenSignatureWord
+    {
+        $signature = $this->makeSignature($word);
+        if ($signature === '') {
+            return null;
+        }
+
+        // Ensure token exists; if missing and is one of known token names, create minimal record; otherwise return null
+        $token = Token::where('name', $tokenName)->first();
+        if (!$token) {
+            if (in_array($tokenName, Token::NAMES, true)) {
+                $token = Token::create([
+                    'name' => $tokenName,
+                    'prio' => 0,
+                    'min_length' => 0,
+                    'allow_nearly' => false,
+                    'has_fun' => false,
+                    'has_boring' => false,
+                    'max_multiples' => 1,
+                ]);
+            } else {
+                return null;
+            }
+        }
+
+        $tokenSignature = TokenSignature::firstOrCreate([
+            'token_id' => $token->id,
+            'signature' => $signature,
+        ]);
+
+        $isDeferred = !$tokenSignature->wasRecentlyCreated && $listType !== 'fun';
+
+        // Avoid duplicate unique constraint violations; return existing if present
+        $tokenSignatureWord = TokenSignatureWord::firstOrCreate(
+            [
+                'token_signature_id' => $tokenSignature->id,
+                'list_type' => $listType,
+                'word' => $this->normalize($word),
+            ],
+            [
+                'is_deferred' => $isDeferred,
+            ]
+        );
+
+        // Retroactively defer the first non-fun word if a fun word exists under the same signature
+        if (!$tokenSignature->wasRecentlyCreated) {
+            $firstWord = $tokenSignature->words()->orderBy('id')->first();
+            if ($firstWord && $firstWord->list_type !== 'fun' && !$firstWord->is_deferred) {
+                $funExists = $tokenSignature->words()->where('list_type', 'fun')->exists();
+                if ($funExists) {
+                    $firstWord->is_deferred = true;
+                    $firstWord->save();
+                }
+            }
+        }
+
+        return $tokenSignatureWord;
+    }
 
     public function findMatches(string $sourceSignature, array $options = []): array
     {
@@ -22,101 +88,111 @@ class WordMatchService
 
         $srcLen = strlen($sourceSignature);
 
-        // Build base query and apply filters
-        $query = TokenSignatureWord::with('tokenSignature.token')
-            ->select('id', 'word', 'token_type', 'list_type', 'signature')
-            ->where('is_deferred', false);
-        if ($filterToken !== '') $query->where('token_type', $filterToken);
+        // If there are no token_signature_words yet, fall back to legacy words table behavior
+        if (DB::table('token_signature_words')->count() === 0) {
+            return $this->findMatchesFromWords($sourceSignature, $options);
+        }
+
+        // Use TokenSignature/TokenSignatureWord joined with Token to respect deferrals and normalized signatures.
+        $query = TokenSignatureWord::query()
+            ->join('token_signatures as ts', 'ts.id', '=', 'token_signature_words.token_signature_id')
+            ->join('tokens as t', 't.id', '=', 'ts.token_id')
+            ->where('token_signature_words.is_deferred', false)
+            ->whereRaw('LENGTH(ts.signature) <= ?', [$srcLen]);
+
+        if ($filterToken !== '') {
+            $query->where('t.name', $filterToken);
+        }
         if ($filterList !== '') {
-            $query->where('list_type', $filterList);
+            $query->where('token_signature_words.list_type', $filterList);
         } else {
             if (!$includeBoring) {
-                $query->where('list_type', '!=', 'boring');
+                $query->where('token_signature_words.list_type', '!=', 'boring');
             }
         }
-        // Push signature-length filter down to SQL for efficiency
-        $query->whereRaw('LENGTH(signature) <= ?', [$srcLen]);
 
         $grouped = [];
 
-        // Stream rows in id order to avoid loading entire table
-        $query->orderBy('id');
-        $query->chunkById(1000, function ($rows) use (&$grouped, $sourceSignature) {
+        // Select only required fields; order by tsw.id for stable chunking
+        $query->orderBy('token_signature_words.id');
+        $query->select([
+            'token_signature_words.id',
+            'token_signature_words.word as word',
+            'token_signature_words.list_type as list_type',
+            'ts.signature as signature',
+            't.name as token_type',
+        ]);
+
+        $query->chunk(1000, function ($rows) use (&$grouped, $sourceSignature) {
             foreach ($rows as $r) {
-                // Core subset check based on precomputed signatures
+                // Subset check against the source signature
                 if (!$this->isSubset((string)$r->signature, $sourceSignature)) continue;
-                // Group by token and list types
-                $grouped[$r->token_type][$r->list_type][] = [
+                $token = (string)$r->token_type;
+                $list  = (string)$r->list_type;
+                $grouped[$token][$list][] = [
                     'id' => (int)$r->id,
                     'word' => (string)$r->word,
                     'signature' => (string)$r->signature,
                 ];
             }
-        }, 'id');
+        });
 
         return $grouped;
     }
-    public function storeNewMatchingWords(SourceName $sourceName, bool $includeBoring): array
+    public function storeNewSourceNameMatchedWords(SourceName $sourceName, bool $includeBoring = false): array
     {
         $sourceSignature = $sourceName->signature;
-        $sourceNameLength = strlen($sourceSignature);
+        $srcLen = strlen($sourceSignature);
 
-        $wordsQuery = Word::whereDoesntHave('matchedWords', function($q) use ($sourceName){
-                $q->where('source_name_id', $sourceName->id);
-            })
-            // words must always be unique by (token_type, signature, use_for_search)
+        // Prefilter candidates from legacy words table
+        $query = \App\Models\Word::query()
             ->where('use_for_search', true)
-            ->select('id', 'token_type', 'signature');
+            ->whereRaw('LENGTH(signature) <= ?', [$srcLen]);
         if (!$includeBoring) {
-            $wordsQuery->where('list_type', '!=', 'boring');
+            $query->where('list_type', '!=', 'boring');
         }
-        // Apply a length guard at the database level to avoid scanning impossible candidates
-        $wordsQuery->whereRaw('LENGTH(signature) <= ?', [$sourceNameLength]);
-        $prefilterCount = $wordsQuery->count();
+
+        $insertedTokens = [];
+        $toInsert = [];
+
+        // Build a set of existing word_ids for this source to avoid duplicates
+        $existing = DB::table('matched_words')
+            ->where('source_name_id', $sourceName->id)
+            ->pluck('word_id')
+            ->all();
+        $existingSet = array_fill_keys($existing, true);
+
+        $prefilterCount = $query->count();
         Log::info(sprintf('%d new words (pre-filtered by length <= %d) for source %d:%s',
             $prefilterCount,
-            $sourceNameLength,
+            $srcLen,
             $sourceName->id,
             $sourceName->name
         ));
-        // Extra diagnostics when no candidates found and app.debug enabled
-        if ($prefilterCount === 0 && (bool)config('app.debug')) {
-            $diag = [];
-            $diag['source_id'] = $sourceName->id;
-            $diag['source'] = $sourceName->name;
-            $diag['sig'] = $sourceSignature;
-            $diag['len'] = $sourceNameLength;
-            $diag['include_boring'] = $includeBoring;
-            try {
-                $diag['words_total_use_for_search'] = (int)DB::table('words')->where('use_for_search', 1)->count();
-                $diag['words_len_leq'] = (int)DB::table('words')->where('use_for_search', 1)->whereRaw('LENGTH(signature) <= ?', [$sourceNameLength])->count();
-                $diag['words_len_non_boring'] = (int)DB::table('words')->where('use_for_search', 1)->whereRaw('LENGTH(signature) <= ?', [$sourceNameLength])->where('list_type', '!=', 'boring')->count();
-                // Count already linked to this source (to see if exclusion removes all)
-                $diag['already_linked'] = (int)DB::table('matched_words')->where('source_name_id', $sourceName->id)->count();
-            } catch (\Throwable $e) {
-                $diag['error'] = 'diag-failed:' . $e->getMessage();
-            }
-            Log::debug('WordMatchService.storeNewMatchingWords diagnostics', $diag);
-        }
-        $anyWordsFoundForToken = [];
-        $wordsQuery->chunkById(1000, function ($rows) use (&$anyWordsFoundForToken, $sourceName, $sourceSignature) {
-            $matches = [];
-            foreach ($rows as $r) {
-                $signature = $r->signature;
-                if (!$this->isSubset($signature, $sourceSignature)) continue;
-                $token_type = $r->token_type;
-                $anyWordsFoundForToken[$token_type] = true;
-                $matches[] = [
+
+        $query->orderBy('id')->chunkById(1000, function ($rows) use (&$toInsert, &$insertedTokens, $sourceSignature, $sourceName, &$existingSet) {
+            foreach ($rows as $w) {
+                if (isset($existingSet[$w->id])) continue;
+                if (!$this->isSubset((string)$w->signature, $sourceSignature)) continue;
+                $toInsert[] = [
                     'source_name_id' => $sourceName->id,
-                    'word_id' => (int)$r->id,
-                    'used' => false
+                    'word_id' => $w->id,
+                    'used' => false,
                 ];
+                $existingSet[$w->id] = true;
+                $insertedTokens[$w->token_type] = true;
             }
-            if (!empty($matches)) {
-                DB::table('matched_words')->insert($matches);
+            if (count($toInsert) >= 1000) {
+                DB::table('matched_words')->insert($toInsert);
+                $toInsert = [];
             }
         }, 'id');
-        return array_keys( $anyWordsFoundForToken);
+
+        if (!empty($toInsert)) {
+            DB::table('matched_words')->insert($toInsert);
+        }
+
+        return array_keys($insertedTokens);
     }
 
     public function extractMatchingTokenWordMinimumLengths(SourceName $sourceName, array $liveTokens): array
@@ -124,15 +200,13 @@ class WordMatchService
         $storedWordBasedMins = Token::whereIn('name', $liveTokens)
             ->pluck('min_length', 'name')
             ->toArray();
-        // effective mins lengths can be longer based on matching words
+        // effective mins lengths can be longer based on matching words (legacy words table)
         $matchingWordBasedMins = [];
         $sourceSignature = $sourceName->signature;
-        $sourceNameLength = strlen($sourceSignature);
         foreach($sourceName->matchedWords as $matchedWord) {
             $signature = $matchedWord->word->signature;
-            $length = strlen($signature);
-            if ($length > $sourceNameLength) continue;
             if (!$this->isSubset($signature, $sourceSignature)) continue;
+            $length = strlen($signature);
             $token_type = $matchedWord->word->token_type;
             if (!isset($matchingWordBasedMins[$token_type]) || $length < $matchingWordBasedMins[$token_type]) {
                 $matchingWordBasedMins[$token_type] = $length;

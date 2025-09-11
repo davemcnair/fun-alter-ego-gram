@@ -16,7 +16,7 @@ final class DfsService
      * @param array<int, string> $patternTokenPositions
      * @param array<string,int> $remainingSourceLetterCountsNeeded
      * @param array<int,int> $chosenSignatures map: pos => sig
-     * @param array<int,string> $chosenTokens map: pos => token name
+     * @param array<int,string> $chosenTokens map: pos => token id
      */
     public function dfs(
         array $patternTokenPositions,

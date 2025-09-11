@@ -30,4 +30,9 @@ class SourceName extends Model
     {
         return $this->hasManyDeep(AlterEgo::class, [SourceNamePattern::class, SignatureIndexedPattern::class]);
     }
+
+    public function sourceNameMatchedWords(): HasMany
+    {
+        return $this->hasMany(SourceNameMatchedWord::class);
+    }
 }

@@ -7,32 +7,16 @@ use App\Models\Pattern;
 use App\Models\SignatureIndexedPattern;
 use App\Models\SourceName;
 use App\Models\SourceNamePattern;
-use App\Models\Word;
 use App\Services\SignatureFillService;
 use App\Services\WordMatchService;
+use App\Traits\HelpsMatchWords;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class FillPatternSignaturesJobTest extends TestCase
 {
     use RefreshDatabase;
-
-    private function addWord(string $word, string $token, string $list, string $signature): Word
-    {
-        return Word::create([
-            'word' => $word,
-            'token_type' => $token,
-            'list_type' => $list,
-            'use_for_search' => true,
-            'signature' => $signature,
-        ]);
-    }
-
-    private function makeSignature(string $s): string
-    {
-        $norm = strtolower(preg_replace('/[^a-z]/i', '', $s) ?? '');
-        $chars = str_split($norm); sort($chars); return implode('', $chars);
-    }
+    use HelpsMatchWords;
 
     public function test_creates_signature_indexed_patterns_for_simple_template(): void
     {
@@ -44,7 +28,7 @@ class FillPatternSignaturesJobTest extends TestCase
             'status' => 'running',
         ]);
         $pattern = Pattern::create(['template'=>'{forename}{surname}']);
-        $snp = SourceNamePattern::create([
+        $sourceNamePattern = SourceNamePattern::create([
             'source_name_id' => $source->id,
             'pattern_id' => $pattern->id,
             'popularity_rank' => 1,
@@ -53,20 +37,20 @@ class FillPatternSignaturesJobTest extends TestCase
 
         // Provide words whose signatures are subsets of the source signature
         // forename: jane (aajen -> after normalization 'aejn')
-        $this->addWord('jane', 'forename', 'fun', $this->makeSignature('jane'));
-        // surname: mary
-        $this->addWord('mary', 'surname', 'fun', $this->makeSignature('mary'));
+        $wordMatchService = app(WordMatchService::class);
+        $wordMatchService->addTokenWord('forename', 'jane', 'fun');
+        $wordMatchService->addTokenWord('surname', 'mary', 'fun');
 
         // Act
-        $job = new FillPatternSignaturesJob($snp->id);
-        $job->handle(app(WordMatchService::class), app(SignatureFillService::class));
+        $job = new FillPatternSignaturesJob($sourceNamePattern->id);
+        $job->handle($wordMatchService, app(SignatureFillService::class));
 
         // Assert: at least one signature-indexed pattern row was created for this SNP
-        $count = SignatureIndexedPattern::where('source_name_pattern_id', $snp->id)->count();
+        $count = SignatureIndexedPattern::where('source_name_pattern_id', $sourceNamePattern->id)->count();
         $this->assertGreaterThan(0, $count, 'Expected at least one signature-indexed pattern to be created');
 
         // Validate that rows use the correct column name 'pattern'
-        $row = SignatureIndexedPattern::where('source_name_pattern_id', $snp->id)->first();
+        $row = SignatureIndexedPattern::where('source_name_pattern_id', $sourceNamePattern->id)->first();
         $this->assertNotNull($row);
         $this->assertNotSame('', (string)$row->pattern);
     }

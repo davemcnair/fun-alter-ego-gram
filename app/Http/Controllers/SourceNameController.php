@@ -41,6 +41,10 @@ class SourceNameController extends Controller
             'signature' => $signature,
             'status' => 'idle',
         ]);
+        // WordMatchService change notes:
+        // - storeNewSourceNameMatchedTokenSignatureWords now returns unique token_ids (ints) for which
+        //   there are matched TokenSignatureWord rows. It also stores links using insertOrIgnore.
+        // - extractMatchingTokenWordMinimumLengths expects an array of token_ids.
         $tokenIdsWithWords = $wordMatchService->storeNewSourceNameMatchedTokenSignatureWords($source, $includeBoring);
         Log::info('SourceNameController.store '. count($tokenIdsWithWords) . ' tokens with words');;
 

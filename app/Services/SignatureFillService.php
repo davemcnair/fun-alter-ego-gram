@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Models\Token;
+use App\Models\TokenSignatureWord;
 use App\Traits\HelpsMatchWords;
 use Generator;
 
@@ -10,10 +10,10 @@ use Generator;
  * SignatureFillService
  * --------------------
  * Purpose:
- *  Given a source signature, pattern token positions, and a candidate map
- *  of [token][word => signature], it fills the positions with candidates whose signatures collectively
+ *  Given a source signature, pattern token positions, and a list ofmatchingTokenSignatureWordIds,
+ * it fills the positions with candidates whose signatures collectively
  *  match the source letters. For each complete fill, it emits a compact "signatureIndexedPattern" string
- *  such as "{title:a}{forename:adn}{surname:aciinv}" in token position order.
+ *  such as "{1:a}{2:adn}{5:aciinv}" in token position order.
  *
  */
 final class SignatureFillService
@@ -21,48 +21,40 @@ final class SignatureFillService
     use HelpsMatchWords;
 
     /**
-     * @param string $sourceSignature precomputed signature
-     * @param array<int, string> $patternTokenPositions
-     * @param array<string, array<string,string>> $matchingSignaturesByToken token => [word=>signature]
-     * @return Generator<string>
+     * @param string $sourceSignature
+     * @param array $patternTokenPositions
+     * @param array $matchingTokenSignatureWordIds
+     * @return Generator
      */
     public function generateSignaturePatterns(
         string $sourceSignature,
         array  $patternTokenPositions,
-        array  $matchingSignaturesByToken
+        array  $matchingTokenSignatureWordIds
     ): Generator
     {
         $sourceLetterCountsNeeded = $this->letterCountsFromSignature($sourceSignature);
-        $candidatesSignaturesByToken = $this->precomputeCandidateSignaturesByToken($matchingSignaturesByToken);
-
-        // The incoming patternTokenPositions are numeric token IDs (from Pattern::parsePatternTokenSlotPositions),
-        // while our candidate map is keyed by token NAMES. DfsService treats the identifiers opaquely and also
-        // emits them in the output, so convert the slot identifiers from IDs to names to align with candidates
-        // and to match test expectations like "{forename:...}{surname:...}".
-        $idToName = Token::pluck('name', 'id')->all();
-        $slotTokensAsNames = [];
-        foreach ($patternTokenPositions as $pos => $tokenId) {
-            $slotTokensAsNames[$pos] = (string)($idToName[$tokenId] ?? $tokenId);
-        }
+        $candidatesSignaturesByTokenId = $this->precomputeCandidateSignaturesByTokenId($matchingTokenSignatureWordIds);
 
         $dfs = new DfsService();
-        yield from $dfs->dfs($slotTokensAsNames, $sourceLetterCountsNeeded, $candidatesSignaturesByToken, [], []);
+        yield from $dfs->dfs($patternTokenPositions, $sourceLetterCountsNeeded, $candidatesSignaturesByTokenId, [], []);
     }
 
-    /** Build per-token candidates: signatures with precomputed histograms, per-letter maxima, and a letter index */
-    private function precomputeCandidateSignaturesByToken(array $matchingSignaturesByToken): array
+    /** Build per-token_id candidates: signatures with precomputed histograms, per-letter maxima, and a letter index */
+    private function precomputeCandidateSignaturesByTokenId(array $matchingTokenSignatureWordIds): array
     {
-        $candidateSignaturesByToken = [];
-        foreach ($matchingSignaturesByToken as $token => $signaturesByWord) {
+        $candidateSignaturesByTokenId = [];
+        foreach ($matchingTokenSignatureWordIds as $id) {
+            $model = TokenSignatureWord::find($id);
+            $signature = $model->tokenSignature->signature;
+            $token_id = $model->tokenSignature->token_id;
             // Step 1: build candidate list with per-candidate histograms
-            $candidates = [];
-            foreach ($signaturesByWord as $signature) {
-                $candidates[] = [
-                    'signature' => $signature,
-                    'len' => strlen($signature),
-                    'hist' => $this->letterCountsFromSignature($signature),
-                ];
-            }
+            $candidateSignaturesByTokenId[$token_id]['signatures'][] = [
+                'signature' => $signature,
+                'len' => strlen($signature),
+                'hist' => $this->letterCountsFromSignature($signature),
+            ];
+        }
+        foreach ($candidateSignaturesByTokenId as $token_id => &$candidates) {
             // Sort deterministically (shorter first, then signature)
             usort($candidates, function($a, $b){
                 if ($a['len'] === $b['len']) {
@@ -80,13 +72,13 @@ final class SignatureFillService
                     $letterIndices[$ch][] = $i;
                 }
             }
-            $candidateSignaturesByToken[$token] = [
+            $candidateSignaturesByTokenId[$token_id] = [
                 'signatures' => $candidates,
                 'maxLetterCounts' => $maxLetterCounts,
                 'letterIndices' => $letterIndices,
             ];
         }
-        return $candidateSignaturesByToken;
+        return $candidateSignaturesByTokenId;
     }
 
 }

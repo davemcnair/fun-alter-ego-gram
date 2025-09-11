@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Token;
 use App\Traits\HelpsMatchWords;
 use Generator;
 
@@ -34,9 +35,18 @@ final class SignatureFillService
         $sourceLetterCountsNeeded = $this->letterCountsFromSignature($sourceSignature);
         $candidatesSignaturesByToken = $this->precomputeCandidateSignaturesByToken($matchingSignaturesByToken);
 
-        // unionCanFill here causes false negatives on multi-token sigs
+        // The incoming patternTokenPositions are numeric token IDs (from Pattern::parsePatternTokenSlotPositions),
+        // while our candidate map is keyed by token NAMES. DfsService treats the identifiers opaquely and also
+        // emits them in the output, so convert the slot identifiers from IDs to names to align with candidates
+        // and to match test expectations like "{forename:...}{surname:...}".
+        $idToName = Token::pluck('name', 'id')->all();
+        $slotTokensAsNames = [];
+        foreach ($patternTokenPositions as $pos => $tokenId) {
+            $slotTokensAsNames[$pos] = (string)($idToName[$tokenId] ?? $tokenId);
+        }
+
         $dfs = new DfsService();
-        yield from $dfs->dfs($patternTokenPositions, $sourceLetterCountsNeeded, $candidatesSignaturesByToken, [], []);
+        yield from $dfs->dfs($slotTokensAsNames, $sourceLetterCountsNeeded, $candidatesSignaturesByToken, [], []);
     }
 
     /** Build per-token candidates: signatures with precomputed histograms, per-letter maxima, and a letter index */

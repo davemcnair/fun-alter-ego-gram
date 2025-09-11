@@ -2,7 +2,9 @@
 
 namespace Tests\Unit;
 
-use App\Models\Word;
+use App\Models\Token;
+use App\Models\TokenSignature;
+use App\Models\TokenSignatureWord;
 use App\Services\WordMatchService;
 use App\Traits\HelpsMatchWords;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -19,16 +21,25 @@ class WordMatchServiceTest extends TestCase
     {
         parent::setUp();
         $this->svc = app(WordMatchService::class);
+        // Seed tokens required for this test file
+        Token::insert([
+            ['name' => 'forename', 'prio' => 1, 'min_length' => 2],
+            ['name' => 'surname',  'prio' => 2, 'min_length' => 2],
+            ['name' => 'adjective','prio' => 3, 'min_length' => 2],
+            ['name' => 'noun',     'prio' => 4, 'min_length' => 1],
+        ]);
     }
 
-    private function addWord(string $word, string $token, string $list, bool $useForSearch = true): Word
+    private function addTSW(string $token, string $word, string $list): TokenSignatureWord
     {
-        return Word::create([
-            'word' => $word,
-            'token_type' => $token,
+        $sig = $this->makeSignature($word);
+        $tok = Token::where('name', $token)->firstOrFail();
+        $ts = TokenSignature::firstOrCreate(['token_id' => $tok->id, 'signature' => $sig]);
+        return TokenSignatureWord::create([
+            'token_signature_id' => $ts->id,
+            'word' => strtolower($word),
             'list_type' => $list,
-            'use_for_search' => $useForSearch,
-            'signature' => $this->makeSignature($word),
+            'is_deferred' => false,
         ]);
     }
 
@@ -38,17 +49,17 @@ class WordMatchServiceTest extends TestCase
         $sig = $this->makeSignature($src); // aaejmnry
 
         // forename fun: jane
-        $jane = $this->addWord('jane', 'forename', 'fun', true);
+        $this->addTSW('forename', 'jane', 'fun');
         // surname ok: ray
-        $ray = $this->addWord('ray', 'surname', 'ok', true);
+        $this->addTSW('surname', 'ray', 'ok');
         // surname boring: mary (subset, but should be excluded by default)
-        $mary = $this->addWord('mary', 'surname', 'boring', true);
+        $this->addTSW('surname', 'mary', 'boring');
         // adjective fun: mean (subset)
-        $mean = $this->addWord('mean', 'adjective', 'fun', true);
+        $this->addTSW('adjective', 'mean', 'fun');
         // a candidate that is NOT subset: 'zoo' (not subset)
-        $zoo = $this->addWord('zoo', 'noun', 'fun', true);
+        $this->addTSW('noun', 'zoo', 'fun');
 
-        $groups = $this->svc->findMatches($sig, [ 'include_boring' => false ]);
+        $groups = $this->svc->findMatchingTokenSignatureWords($sig, [ 'include_boring' => false ]);
 
         // Basic presence
         $this->assertArrayHasKey('forename', $groups);
@@ -70,9 +81,9 @@ class WordMatchServiceTest extends TestCase
     public function test_include_boring_true_includes_boring_when_no_list_filter(): void
     {
         $sig = $this->makeSignature('Mary Jane');
-        $this->addWord('mary', 'surname', 'boring', true);
+        $this->addTSW('surname', 'mary', 'boring');
 
-        $groups = $this->svc->findMatches($sig, [ 'include_boring' => true ]);
+        $groups = $this->svc->findMatchingTokenSignatureWords($sig, [ 'include_boring' => true ]);
         $this->assertArrayHasKey('surname', $groups);
         $this->assertArrayHasKey('boring', $groups['surname']);
         $this->assertSame('mary', $groups['surname']['boring'][0]['word']);
@@ -81,10 +92,10 @@ class WordMatchServiceTest extends TestCase
     public function test_token_filter_limits_results_to_that_token(): void
     {
         $sig = $this->makeSignature('Mary Jane');
-        $this->addWord('jane', 'forename', 'fun', true);
-        $this->addWord('ray', 'surname', 'ok', true);
+        $this->addTSW('forename', 'jane', 'fun');
+        $this->addTSW('surname', 'ray', 'ok');
 
-        $groups = $this->svc->findMatches($sig, [ 'token' => 'forename', 'include_boring' => true ]);
+        $groups = $this->svc->findMatchingTokenSignatureWords($sig, [ 'token' => 'forename', 'include_boring' => true ]);
         $this->assertArrayHasKey('forename', $groups);
         $this->assertArrayNotHasKey('surname', $groups);
     }
@@ -92,10 +103,10 @@ class WordMatchServiceTest extends TestCase
     public function test_list_filter_limits_results_to_that_list_even_if_include_boring_true(): void
     {
         $sig = $this->makeSignature('Mary Jane');
-        $this->addWord('mary', 'surname', 'boring', true);
-        $this->addWord('ray', 'surname', 'ok', true);
+        $this->addTSW('surname', 'mary', 'boring');
+        $this->addTSW('surname', 'ray', 'ok');
 
-        $groups = $this->svc->findMatches($sig, [ 'list' => 'ok', 'include_boring' => true ]);
+        $groups = $this->svc->findMatchingTokenSignatureWords($sig, [ 'list' => 'ok', 'include_boring' => true ]);
         $this->assertArrayHasKey('surname', $groups);
         $this->assertArrayHasKey('ok', $groups['surname']);
         $this->assertArrayNotHasKey('boring', $groups['surname'], 'List filter should override include_boring');
@@ -106,12 +117,12 @@ class WordMatchServiceTest extends TestCase
     {
         // Source with two n's required for "anna"
         $sig = $this->makeSignature('anna');
-        $this->addWord('anna', 'forename', 'fun', true);   // exact match
-        $this->addWord('ana', 'forename', 'ok', true);     // subset
-        $this->addWord('annas', 'forename', 'fun', true);  // longer than source (should be filtered by LENGTH and subset)
-        $this->addWord('nana', 'forename', 'ok', false);   // subset but not use_for_search
+        $this->addTSW('forename', 'anna', 'fun');   // exact match
+        $this->addTSW('forename', 'ana', 'ok');     // subset
+        $this->addTSW('forename', 'annas', 'fun');  // longer than source (should be filtered by LENGTH and subset)
+        // legacy use_for_search semantics do not apply on signature tables; emulate exclusion by not inserting 'nana'
 
-        $groups = $this->svc->findMatches($sig, [ 'include_boring' => true ]);
+        $groups = $this->svc->findMatchingTokenSignatureWords($sig, [ 'include_boring' => true ]);
 
         $this->assertArrayHasKey('forename', $groups);
         $this->assertArrayHasKey('fun', $groups['forename']);
@@ -123,6 +134,5 @@ class WordMatchServiceTest extends TestCase
         $this->assertContains('anna', $funWords);
         $this->assertContains('ana', $okWords);
         $this->assertNotContains('annas', $funWords, 'Longer-than-source word must be excluded');
-        $this->assertNotContains('nana', $okWords, 'Rows with use_for_search=0 must be excluded');
     }
 }

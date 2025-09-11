@@ -107,7 +107,7 @@ class FillPatternSignaturesJob implements ShouldQueue
 
         $patternTokenPositions = Pattern::parsePatternTokenSlotPositions((string)$sourceNamePattern->pattern->template);
 
-        $tokenWordsByListType = $wordMatchService->findMatches((string)$source->signature);
+        $tokenWordsByListType = $wordMatchService->findMatchingTokenSignatureWords((string)$source->signature);
 
         $candidateWordSignaturesByToken = $this->flattenTokenWordsToWordSignatures($tokenWordsByListType);
 

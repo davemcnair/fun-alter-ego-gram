@@ -8,8 +8,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class SourceNameMatchedWord extends Model
 {
-    // Table name is non-standard pluralization; specify explicitly for clarity
-    protected $table = 'source_name_matched_words';
 
     protected $fillable = [
         'source_name_id',

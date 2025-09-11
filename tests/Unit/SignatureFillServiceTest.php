@@ -3,13 +3,26 @@
 namespace Tests\Unit;
 
 use App\Models\Pattern;
+use App\Models\Token;
 use App\Services\SignatureFillService;
 use App\Traits\HelpsMatchWords;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class SignatureFillServiceTest extends TestCase
 {
+    use RefreshDatabase;
     use HelpsMatchWords;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // Seed required tokens used by Pattern::parsePatternTokenSlotPositions
+        Token::insert([
+            ['name' => 'forename', 'prio' => 1, 'min_length' => 2],
+            ['name' => 'surname',  'prio' => 2, 'min_length' => 2],
+        ]);
+    }
 
     /**
      * Simple happy-path: two slots {forename}{surname} with an exact cover available.

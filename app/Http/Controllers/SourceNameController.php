@@ -41,11 +41,11 @@ class SourceNameController extends Controller
             'signature' => $signature,
             'status' => 'idle',
         ]);
-        $tokensWithWords = $wordMatchService->storeNewSourceNameMatchedWords($source, $includeBoring);
-        Log::info('SourceNameController.store '. count($tokensWithWords) . ' tokens with words');;
+        $tokenIdsWithWords = $wordMatchService->storeNewSourceNameMatchedTokenSignatureWords($source, $includeBoring);
+        Log::info('SourceNameController.store '. count($tokenIdsWithWords) . ' tokens with words');;
 
         [$storedMinLengths, $matchedMinLengths] =
-            $wordMatchService->extractMatchingTokenWordMinimumLengths($source->refresh(), $tokensWithWords);
+            $wordMatchService->extractMatchingTokenWordMinimumLengths($source->refresh(), $tokenIdsWithWords);
         $standardShortEnoughPatterns = $patternsService->listWithinMinLength(strlen($signature));
 
         Log::info('SourceNameController.store ' . $standardShortEnoughPatterns->count() . ' standard patterns');

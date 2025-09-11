@@ -52,38 +52,45 @@ class DfsServiceTest extends TestCase
     public function test_dfs_exact_cover_two_slots(): void
     {
         $dfs = new DfsService();
-        $slots = [0 => 'forename', 1 => 'surname'];
+        $forenameTokenId = 1;
+        $surnameTokenId = 2;
+        $slots = [0 => $forenameTokenId, 1 => $surnameTokenId];
         $srcSig = 'aadmciinv'; // Adam + Vinci
         $need = $this->letterCountsFromSignature($srcSig);
         $cands = $this->buildCandidates([
-            'forename' => ['aadm', 'adn'],
-            'surname'  => ['ciinv', 'ary'],
+            1 => ['aadm', 'adn'],
+            2  => ['ciinv', 'ary'],
         ]);
         $out = iterator_to_array($dfs->dfs($slots, $need, $cands, [], []), false);
-        $this->assertSame(['{forename:aadm}{surname:ciinv}'], $out);
+        $this->assertSame(['{1:aadm}{2:ciinv}'], $out);
     }
 
     public function test_dfs_duplicate_token_run_allows_reuse_of_same_candidate(): void
     {
         $dfs = new DfsService();
-        $slots = [0 => 'surname', 1 => 'surname'];
+        $forenameTokenId = 1;
+        $surnameTokenId = 2;
+        // Both slots are the same token (surname)
+        $slots = [0 => $surnameTokenId, 1 => $surnameTokenId];
         $srcSig = 'ciinvciinv';
         $need = $this->letterCountsFromSignature($srcSig);
         $cands = $this->buildCandidates([
-            'surname' => ['ciinv'],
+            2 => ['ciinv'],
         ]);
         $out = iterator_to_array($dfs->dfs($slots, $need, $cands, [], []), false);
-        $this->assertSame(['{surname:ciinv}{surname:ciinv}'], $out);
+        $this->assertSame(['{2:ciinv}{2:ciinv}'], $out);
     }
 
     public function test_dfs_impossible_yields_nothing(): void
     {
         $dfs = new DfsService();
-        $slots = [0 => 'forename'];
+
+        $forenameTokenId = 1;
+        $slots = [0 => $forenameTokenId];
         $srcSig = 'abc';
         $need = $this->letterCountsFromSignature($srcSig);
         $cands = $this->buildCandidates([
-            'forename' => ['adn'],
+            1 => ['adn'],
         ]);
         $out = iterator_to_array($dfs->dfs($slots, $need, $cands, [], []), false);
         $this->assertSame([], $out);
@@ -93,13 +100,13 @@ class DfsServiceTest extends TestCase
     {
         $dfs = new DfsService();
         // Pattern: 4 slots
-        $slots = [0=>'t1', 1=>'t2', 2=>'t3', 3=>'t4'];
+        $slots = [0=>1, 1=>2, 2=>3, 3=>4];
         // Build source need with some rare letters forcing pruning
         $srcSig = 'aaaaabbbbccddeeffgghhij';
         $need = $this->letterCountsFromSignature($srcSig);
         // Each token gets many candidates, but only a few contain rare letters 'j' or 'i'.
         $candsMap = [];
-        foreach (['t1','t2','t3','t4'] as $t) {
+        foreach ([1,2,3,4] as $t) {
             $list = [];
             // 300 filler candidates of length 3-5 without i/j (should be pruned by letter index)
             for ($k=0; $k<300; $k++) {

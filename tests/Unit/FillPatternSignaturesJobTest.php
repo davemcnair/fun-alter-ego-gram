@@ -18,6 +18,16 @@ class FillPatternSignaturesJobTest extends TestCase
     use RefreshDatabase;
     use HelpsMatchWords;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // Seed required tokens used by Pattern::parsePatternTokenSlotPositions
+        \App\Models\Token::insert([
+            ['name' => 'forename', 'prio' => 1, 'min_length' => 2],
+            ['name' => 'surname',  'prio' => 2, 'min_length' => 2],
+        ]);
+    }
+
     public function test_creates_signature_indexed_patterns_for_simple_template(): void
     {
         // Arrange a source and one pattern

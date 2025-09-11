@@ -23,7 +23,7 @@ class WordsMatchesCommand extends Command
             return self::FAILURE;
         }
         $sourceSignature = $this->makeSignature($sourceName);
-        $groupedWordsByTokenAndListType = $svc->findMatches($sourceSignature, [
+        $groupedWordsByTokenAndListType = $svc->findMatchingTokenSignatureWords($sourceSignature, [
             'token' => (string)$this->option('token'),
             'list' => (string)$this->option('list'),
             'include_boring' => (bool)$this->option('include-boring'),

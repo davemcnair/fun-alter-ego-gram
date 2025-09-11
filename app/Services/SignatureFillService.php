@@ -10,9 +10,9 @@ use Generator;
  * SignatureFillService
  * --------------------
  * Purpose:
- *  Given a source signature, pattern token positions, and a list ofmatchingTokenSignatureWordIds,
- * it fills the positions with candidates whose signatures collectively
- *  match the source letters. For each complete fill, it emits a compact "signatureIndexedPattern" string
+ *  Given a source signature, pattern token positions, and a list of matchingTokenSignatureWord ids,
+ *  it fills the positions with candidates whose signatures collectively match the source letters.
+ *  For each complete fill, it emits a compact "signatureIndexedPattern" string
  *  such as "{1:a}{2:adn}{5:aciinv}" in token position order.
  *
  */
@@ -54,26 +54,28 @@ final class SignatureFillService
                 'hist' => $this->letterCountsFromSignature($signature),
             ];
         }
-        foreach ($candidateSignaturesByTokenId as $token_id => &$candidates) {
+        foreach ($candidateSignaturesByTokenId as $token_id => &$bucket) {
+            $list = (array)($bucket['signatures'] ?? []);
             // Sort deterministically (shorter first, then signature)
-            usort($candidates, function($a, $b){
-                if ($a['len'] === $b['len']) {
-                    return $a['signature'] <=> $b['signature'];
+            usort($list, function($a, $b){
+                if (($a['len'] ?? 0) === ($b['len'] ?? 0)) {
+                    return ($a['signature'] ?? '') <=> ($b['signature'] ?? '');
                 }
-                return $a['len'] < $b['len'] ? -1 : 1;
+                return ($a['len'] ?? 0) < ($b['len'] ?? 0) ? -1 : 1;
             });
             // Step 2: rebuild letter indices and per-letter maxima on sorted candidates
             $letterIndices = [];
             $maxLetterCounts = [];
-            foreach ($candidates as $i => $candidate) {
-                foreach ($candidate['hist'] as $ch => $n) {
+            foreach ($list as $i => $candidate) {
+                $hist = (array)($candidate['hist'] ?? []);
+                foreach ($hist as $ch => $n) {
                     $maxLetterCounts[$ch] = max($maxLetterCounts[$ch] ?? 0, (int)$n);
                     $letterIndices[$ch] = $letterIndices[$ch] ?? [];
                     $letterIndices[$ch][] = $i;
                 }
             }
             $candidateSignaturesByTokenId[$token_id] = [
-                'signatures' => $candidates,
+                'signatures' => $list,
                 'maxLetterCounts' => $maxLetterCounts,
                 'letterIndices' => $letterIndices,
             ];

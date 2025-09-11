@@ -6,7 +6,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class TokenSignatureWord extends Model
 {
-    protected $fillable = ['signature_id', 'list_type', 'word', 'is_deferred'];
+    // Allow both canonical DB column names and the alternative keys used by import code
+    protected $fillable = [
+        'token_signature_id',
+        'list_type',
+        'word',
+        'is_deferred',
+    ];
 
     public function tokenSignature(): BelongsTo
     {

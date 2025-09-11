@@ -31,6 +31,7 @@ class ImportWordLists extends Command
         DB::transaction(function () use ($basePath, &$affected) {
             foreach (File::directories($basePath) as $tokenTypePath) {
                 $tokenType = basename($tokenTypePath);
+                \Log::info($tokenType);
                 $token = Token::where('name', $tokenType)->first();
                 foreach (File::files($tokenTypePath) as $file) {
                     // $file is SplFileInfo

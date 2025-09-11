@@ -34,10 +34,18 @@ return new class extends Migration
             $table->unique(['source_name_pattern_id', 'pattern'], 'sigp_unique');
         });
 
-        Schema::create('matched_words', function (Blueprint $table) {
+        Schema::create('source_name_matched_words', function (Blueprint $table) {
             $table->foreignId('source_name_id')->constrained('source_names')->onDelete('cascade');
-            $table->foreignId('word_id')->constrained('words')->onDelete('cascade');
-            $table->boolean('used');
+            $table->foreignId('token_signature_word_id')->constrained('token_signature_words')->onDelete('cascade');
+            $table->timestamps();
+            $table->unique(['source_name_id', 'token_signature_word_id'], 'matched_words_unique');
+            $table->index('token_signature_word_id');
+            $table->index('source_name_id');
+        });
+
+        Schema::create('source_name_matched_words_alter_egos', function (Blueprint $table) {
+            $table->foreignId('source_name_matched_word_id')->constrained('source_name_matched_words')->onDelete('cascade');
+            $table->foreignId('alter_ego_id')->constrained('alter_egos')->onDelete('cascade');
         });
 
         Schema::create('alter_egos', function (Blueprint $table) {
@@ -54,7 +62,8 @@ return new class extends Migration
     public function down(): void
     {
         Schema::dropIfExists('alter_egos');
-        Schema::dropIfExists('matched_words');
+        Schema::dropIfExists('source_name_matched_words_alter_egos');
+        Schema::dropIfExists('source_name_matched_words');
         Schema::dropIfExists('signature_indexed_patterns');
         Schema::dropIfExists('source_name_patterns');
         Schema::dropIfExists('source_names');

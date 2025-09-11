@@ -3,12 +3,11 @@
 namespace App\Models;
 
 use App\Services\PhraseBuilderService;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Throwable;
 
 class Pattern extends Model
 {
-    use HasFactory;
 
     protected $fillable = [
         'template',
@@ -135,7 +134,7 @@ class Pattern extends Model
         try {
             $builder = app(PhraseBuilderService::class);
             return $builder->formatPhraseBySlots($words, $slotOrder, false);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             // Fallback: simple join
             return trim(implode(' ', array_filter($words, fn($w) => $w !== '')));
         }

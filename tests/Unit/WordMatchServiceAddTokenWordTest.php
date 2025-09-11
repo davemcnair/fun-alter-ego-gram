@@ -54,7 +54,7 @@ class WordMatchServiceAddTokenWordTest extends TestCase
         $this->assertFalse((bool)$nf->is_deferred, 'First word of new signature should not be deferred initially');
 
         // Add a fun word with same signature; should retro-defer first non-fun
-        $fun = $this->svc->addTokenWord('forename', 'jane', 'fun');
+        $this->svc->addTokenWord('forename', 'jane', 'fun');
         $nf->refresh();
         $this->assertTrue((bool)$nf->is_deferred, 'First non-fun must be retro-deferred once a fun word exists');
     }

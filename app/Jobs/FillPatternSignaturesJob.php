@@ -114,7 +114,7 @@ class FillPatternSignaturesJob implements ShouldQueue
         foreach ($signatureFillService->generateSignaturePatterns(
             (string)$source->signature,
             $patternTokenPositions,
-            $candidateWordSignaturesByToken
+            $tokenSignatureWordsIds
         ) as $signaturePattern) {
             $signaturePatterns[] = [
                 'source_name_pattern_id' => $sourceNamePattern->id,
@@ -140,21 +140,4 @@ class FillPatternSignaturesJob implements ShouldQueue
         }
     }
 
-    /**
-     * Flatten the grouped matches structure into token => list of {word, signature}.
-     */
-    private function flattenTokenWordsToWordSignatures(array $groups): array
-    {
-        $out = [];
-        foreach ($groups as $token => $byList) {
-            $bucket = [];
-            foreach ($byList as $items) {
-                foreach ($items as $item) {
-                    $bucket[$item['word']] = $item['signature']; // dedupe by word, prefer first signature (should be identical per word)
-                }
-            }
-            $out[$token] = $bucket;
-        }
-        return $out;
-    }
 }

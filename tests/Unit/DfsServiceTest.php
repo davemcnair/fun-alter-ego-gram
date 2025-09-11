@@ -68,7 +68,6 @@ class DfsServiceTest extends TestCase
     public function test_dfs_duplicate_token_run_allows_reuse_of_same_candidate(): void
     {
         $dfs = new DfsService();
-        $forenameTokenId = 1;
         $surnameTokenId = 2;
         // Both slots are the same token (surname)
         $slots = [0 => $surnameTokenId, 1 => $surnameTokenId];
@@ -120,7 +119,7 @@ class DfsServiceTest extends TestCase
         }
         $cands = $this->buildCandidates($candsMap);
         $t0 = microtime(true);
-        $out = iterator_to_array($dfs->dfs($slots, $need, $cands, [], []), false);
+        iterator_to_array($dfs->dfs($slots, $need, $cands, [], []), false);
         $elapsed = microtime(true) - $t0;
         // Ensure the search completes quickly (< 1.0s)
         $this->assertLessThan(1.0, $elapsed, 'DFS should prune quickly via letter index and union checks');

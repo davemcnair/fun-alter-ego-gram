@@ -3,7 +3,6 @@
 namespace Tests\Unit;
 
 use App\Models\Pattern;
-use App\Models\Token;
 use App\Services\ListPatternsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Collection;
@@ -79,7 +78,7 @@ class ListPatternsServiceTest extends TestCase
     {
         $p1 = $this->addPattern(['min_total_length' => 5, 'popularity_rank' => 3]);
         $p2 = $this->addPattern(['min_total_length' => 7, 'popularity_rank' => 1]);
-        $p3 = $this->addPattern(['min_total_length' => 9, 'popularity_rank' => 2]);
+        $this->addPattern(['min_total_length' => 9, 'popularity_rank' => 2]);
 
         $rows = $this->svc->listWithinMinLength(7);
         $this->assertInstanceOf(Collection::class, $rows);

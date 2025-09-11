@@ -10,7 +10,6 @@ use App\Models\SourceName;
 use App\Models\SourceNamePattern;
 use App\Models\Word;
 use App\Services\PhraseBuilderService;
-use App\Services\WordMatchService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -36,7 +35,6 @@ class ExpandSignatureIndexedPatternsJobTest extends TestCase
             'name' => 'Dummy',
             'signature' => 'dmmuy',
             'status' => 'running',
-            'patterns_total' => 1,
         ]);
         $pattern = Pattern::create(['template' => '{forename}{surname}']);
         $snp = SourceNamePattern::create([
@@ -59,7 +57,7 @@ class ExpandSignatureIndexedPatternsJobTest extends TestCase
 
         // Act: run job
         $job = new ExpandSignatureIndexedPatternsJob($snp->id);
-        $job->handle(app(WordMatchService::class), app(PhraseBuilderService::class));
+        $job->handle(app(PhraseBuilderService::class));
 
         // Assert: an AlterEgo was created with the fun-preferred surname and proper capitalization
         $ae = AlterEgo::where('source_name_id', $source->id)->first();
@@ -79,7 +77,6 @@ class ExpandSignatureIndexedPatternsJobTest extends TestCase
             'name' => 'Dummy',
             'signature' => 'dmmuy',
             'status' => 'running',
-            'patterns_total' => 1,
         ]);
         $pattern2 = Pattern::create(['template' => '{surname:2}']);
         $snp = SourceNamePattern::create([
@@ -99,7 +96,7 @@ class ExpandSignatureIndexedPatternsJobTest extends TestCase
 
         // Act
         $job = new ExpandSignatureIndexedPatternsJob($snp->id);
-        $job->handle(app(WordMatchService::class), app(PhraseBuilderService::class));
+        $job->handle(app(PhraseBuilderService::class));
 
         // Assert: hyphenated and capitalized surnames
         $ae = AlterEgo::where('source_name_id', $source->id)->first();

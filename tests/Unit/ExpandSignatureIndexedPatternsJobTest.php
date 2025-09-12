@@ -8,8 +8,8 @@ use App\Models\Pattern;
 use App\Models\SignatureIndexedPattern;
 use App\Models\SourceName;
 use App\Models\SourceNamePattern;
-use App\Models\Word;
 use App\Services\PhraseBuilderService;
+use App\Services\WordMatchService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -17,16 +17,6 @@ class ExpandSignatureIndexedPatternsJobTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function addWord(string $word, string $token, string $list, string $signature): Word
-    {
-        return Word::create([
-            'word' => $word,
-            'token_type' => $token,
-            'list_type' => $list,
-            'use_for_search' => true,
-            'signature' => $signature,
-        ]);
-    }
 
     public function test_expands_single_signatureIndexed_pattern_with_fun_preference(): void
     {
@@ -49,18 +39,19 @@ class ExpandSignatureIndexedPatternsJobTest extends TestCase
             'pattern' => '{forename:aadm}{surname:ciinv}',
         ]);
 
+        $wordService = app(WordMatchService::class);
         // Words: forename 'Adam' (fun) matches aadm; surname: prefer fun over ok for the same signature
-        $this->addWord('Adam', 'forename', 'fun', 'aadm');
+        $wordService->addTokenWord('forename','Adam', 'fun');
         // Only one representative row is allowed per (token_type, signature) due to a partial unique index.
         // So we provide a single FUN representative for the surname signature.
-        $this->addWord('InVic', 'surname', 'fun', 'ciinv');
+        $wordService->addTokenWord('surname','InVic', 'fun');
 
         // Act: run job
         $job = new ExpandSignatureIndexedPatternsJob($snp->id);
         $job->handle(app(PhraseBuilderService::class));
 
         // Assert: an AlterEgo was created with the fun-preferred surname and proper capitalization
-        $ae = AlterEgo::where('source_name_id', $source->id)->first();
+        $ae = AlterEgo::where('signature_indexed_pattern_id', $source->id)->first();
         $this->assertNotNull($ae, 'AlterEgo should have been created');
         $this->assertSame($snp->id, $ae->source_name_pattern_id);
         // PhraseBuilderService capitalizes tokens; expect "Adam Invic"
@@ -90,9 +81,12 @@ class ExpandSignatureIndexedPatternsJobTest extends TestCase
             'pattern' => '{surname:ary}{surname:ciinv}',
         ]);
 
+
+        $wordService = app(WordMatchService::class);
+
         // Words for the two signatures
-        $this->addWord('ray', 'surname', 'fun', 'ary');
-        $this->addWord('vinci', 'surname', 'ok', 'ciinv');
+        $wordService->addTokenWord('surname','ray', 'fun');
+        $wordService->addTokenWord('surname','vinci', 'ok');
 
         // Act
         $job = new ExpandSignatureIndexedPatternsJob($snp->id);

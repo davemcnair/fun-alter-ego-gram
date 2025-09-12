@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\SourceName;
 use App\Models\TokenSignature;
 use App\Models\AlterEgo;
+use App\Models\Token;
 use App\Services\PhraseBuilderService;
 use App\Models\SourceNamePattern;
 use Illuminate\Bus\Queueable;
@@ -111,19 +112,29 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
 
             $words = [];
             foreach ($tokenIdSignaturePairs as $pair) {
-                $words[] = TokenSignature::query()
+                $ts = TokenSignature::query()
                     ->where('token_id', $pair['token_id'])
                     ->where('signature', $pair['signature'])
-                    ->first()
-                    ->words()->where('is_deferred', false)->pluck('word')->toArray();
+                    ->first();
+                if ($ts) {
+                    // Prefer 'fun' list, then 'ok', then any other; only non-deferred words
+                    $word = $ts->words()
+                        ->where('is_deferred', false)
+                        ->orderByRaw("CASE list_type WHEN 'fun' THEN 0 WHEN 'ok' THEN 1 ELSE 2 END")
+                        ->value('word');
+                    $words[] = (string)($word ?? '');
+                } else {
+                    $words[] = '';
+                }
             }
 
             $phrase = $phraseBuilderService->formatPhraseBySlots($words, $slotOrder, false);
 
             // Persist as AlterEgo (idempotent)
-            AlterEgo::firstOrCreate(
-                ['signature_indexed_pattern_id' => $signatureIndexedPattern->id, 'phrase' => $phrase]
-            );
+            AlterEgo::firstOrCreate([
+                'signature_indexed_pattern_id' => $signatureIndexedPattern->id,
+                'phrase' => $phrase,
+            ]);
             $createdCount++;
         }
 
@@ -158,9 +169,16 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
     private function parseSignatureIndexedPattern(string $s): array
     {
         $out = [];
-        if (preg_match_all('/\{([0-9]+):([a-z]+)\}/i', $s, $m, PREG_SET_ORDER)) {
+        // Expect patterns like {forename:aadm}{surname:ciinv}
+        if (preg_match_all('/\{([a-z_]+):([a-z]+)\}/i', $s, $m, PREG_SET_ORDER)) {
             foreach ($m as $match) {
-                $out[] = [ 'token_id' => strtolower($match[1]), 'signature' => strtolower($match[2]) ];
+                $tokenName = strtolower($match[1]);
+                $signature = strtolower($match[2]);
+                // Look up Token by name to get its ID
+                $token = Token::lookup($tokenName);
+                if ($token) {
+                    $out[] = [ 'token_id' => $token->id, 'signature' => $signature ];
+                }
             }
         }
         return $out;

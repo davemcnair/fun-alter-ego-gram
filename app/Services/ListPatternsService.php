@@ -74,44 +74,31 @@ class ListPatternsService
     ): Collection
     {
         $sourceLength = strlen($sourceSignature);
-        $anyWordsFound = array_keys($matchingWordBasedMins);
 
-        return $patterns->filter(function ($row) use ($storedWordBasedMins, $matchingWordBasedMins, $anyWordsFound, $sourceLength) {
-            // Determine if the pattern row includes a given token type using stored columns
-            $hasToken = function ($row, $tokenName): bool {
-                return match ($tokenName) {
-                    Token::TOKEN_NAME_TITLE => $row->has_title ?? false,
-                    Token::TOKEN_NAME_FORENAME => ($row->forename_count ?? 0) > 0,
-                    Token::TOKEN_NAME_INITIALS => $row->has_initials ?? false,
-                    Token::TOKEN_NAME_PREFIX => $row->has_prefix ?? false,
-                    Token::TOKEN_NAME_SURNAME => ($row->surname_count ?? 0) > 0,
-                    Token::TOKEN_NAME_SUFFIX => $row->has_suffix ?? false,
-                    Token::TOKEN_NAME_HONORIFIC => $row->has_honorific ?? false,
-                    default => false,
-                };
-            };
+        $tokenIdsByName = Token::all()->pluck('id', 'name')->toArray();
 
-            $minLengthUnchanged = true;
+        return $patterns->filter(function ($row) use (
+            $storedWordBasedMins,
+            $matchingWordBasedMins,
+            $sourceLength,
+            $tokenIdsByName
+        ) {
             $dynamicMin = 0;
-            foreach (Token::NAMES as $name) {
-                if ($hasToken($row, $name)) {
+            foreach ($tokenIdsByName as $id => $name) {
+                if ($row->has($name)) {
                     // If this pattern requires a token for which no words were found, reject
-                    if (!in_array($name, $anyWordsFound, true)) return false;
-                    // Track if any effective min grew compared to static
-                    if (($matchingWordBasedMins[$name] ?? 0) > ($storedWordBasedMins[$name] ?? 0)) {
-                        $minLengthUnchanged = false;
-                    }
+                    if (!isset($matchedTokenIds, $id)) return false;
                     // Sum dynamic min only for tokens used by this pattern
                     $count = match ($name) {
-                        Token::TOKEN_NAME_FORENAME => (int)($row->forename_count ?? 0),
-                        Token::TOKEN_NAME_SURNAME => (int)($row->surname_count ?? 0),
+                        Token::TOKEN_NAME_FORENAME => $row->forename_count,
+                        Token::TOKEN_NAME_SURNAME => $row->surname_count,
                         default => 1,
                     };
-                    $dynamicMin += (int)($matchingWordBasedMins[$name] ?? 0) * max(1, $count);
+                    $dynamicMin += max($matchingWordBasedMins[$id] ?? $storedWordBasedMins[$id]) * max(1, $count);
                 }
             }
 
-            return $minLengthUnchanged || $dynamicMin <= $sourceLength;
+            return $dynamicMin <= $sourceLength;
         });
     }
 

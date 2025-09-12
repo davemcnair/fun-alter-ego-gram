@@ -18,6 +18,19 @@ class AlterEgo extends Model
         return $this->belongsTo(SignatureIndexedPattern::class);
     }
 
+    // Computed attributes to expose denormalized relations without DB columns
+    public function getSourceNamePatternIdAttribute(): ?int
+    {
+        return $this->signatureIndexedPattern?->source_name_pattern_id;
+    }
+
+    public function getSourceNameIdAttribute(): ?int
+    {
+        // Derive SourceName via the SourceNamePattern relation
+        $snp = $this->signatureIndexedPattern?->sourceNamePattern;
+        return $snp?->source_name_id;
+    }
+
     /**
      * Inverse many-to-many to SourceNameMatchedWord via pivot source_name_matched_words_alter_egos
      */

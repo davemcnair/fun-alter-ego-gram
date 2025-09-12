@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Models\Pattern;
+use App\Models\Token;
 use App\Services\ListPatternsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Collection;
@@ -13,11 +14,23 @@ class ListPatternsServiceTest extends TestCase
     use RefreshDatabase;
 
     private ListPatternsService $svc;
+    private array $tokenIds = [];
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->svc = app(ListPatternsService::class);
+        // Seed tokens and capture their IDs for id-keyed tests
+        Token::insert([
+            ['name' => Token::TOKEN_NAME_TITLE, 'prio' => 0, 'min_length' => 0],
+            ['name' => Token::TOKEN_NAME_FORENAME, 'prio' => 1, 'min_length' => 2],
+            ['name' => Token::TOKEN_NAME_INITIALS, 'prio' => 0, 'min_length' => 1],
+            ['name' => Token::TOKEN_NAME_PREFIX, 'prio' => 0, 'min_length' => 1],
+            ['name' => Token::TOKEN_NAME_SURNAME, 'prio' => 2, 'min_length' => 2],
+            ['name' => Token::TOKEN_NAME_SUFFIX, 'prio' => 0, 'min_length' => 1],
+            ['name' => Token::TOKEN_NAME_HONORIFIC, 'prio' => 0, 'min_length' => 1],
+        ]);
+        $this->tokenIds = Token::whereIn('name', Token::NAMES)->pluck('id','name')->toArray();
     }
 
     private function addPattern(array $overrides = []): Pattern
@@ -93,8 +106,14 @@ class ListPatternsServiceTest extends TestCase
         $pat = $this->addPattern(['forename_count' => 1, 'surname_count' => 1]);
         $patterns = collect([$pat]);
 
-        $stored = ['forename' => 4, 'surname' => 4];
-        $matching = ['forename' => 4, 'surname' => 4]; // unchanged
+        $stored = [
+            $this->tokenIds[Token::TOKEN_NAME_FORENAME] => 4,
+            $this->tokenIds[Token::TOKEN_NAME_SURNAME] => 4,
+        ];
+        $matching = [
+            $this->tokenIds[Token::TOKEN_NAME_FORENAME] => 4,
+            $this->tokenIds[Token::TOKEN_NAME_SURNAME] => 4,
+        ]; // unchanged
         $sourceSig = str_repeat('a', 7); // length 7
 
         $filtered = $this->svc->filterPatternsForSource($sourceSig, $patterns, $stored, $matching);
@@ -105,7 +124,9 @@ class ListPatternsServiceTest extends TestCase
     {
         $pat = $this->addPattern(['forename_count' => 1, 'surname_count' => 0]);
         $patterns = collect([$pat]);
-        $stored = ['forename' => 2];
+        $stored = [
+            $this->tokenIds[Token::TOKEN_NAME_FORENAME] => 2,
+        ];
         $matching = []; // no words found for forename
         $sourceSig = 'aaaa';
 
@@ -120,8 +141,14 @@ class ListPatternsServiceTest extends TestCase
         $patterns = collect([$pat]);
 
         // Stored mins lower than matching mins -> considered increased
-        $stored = ['forename' => 2, 'surname' => 2];
-        $matching = ['forename' => 3, 'surname' => 4];
+        $stored = [
+            $this->tokenIds[Token::TOKEN_NAME_FORENAME] => 2,
+            $this->tokenIds[Token::TOKEN_NAME_SURNAME] => 2,
+        ];
+        $matching = [
+            $this->tokenIds[Token::TOKEN_NAME_FORENAME] => 3,
+            $this->tokenIds[Token::TOKEN_NAME_SURNAME] => 4,
+        ];
 
         // dynamicMin = forename(2 slots)*3 + surname(1)*4 = 10
         $sourceSigShort = str_repeat('a', 9);
@@ -140,8 +167,14 @@ class ListPatternsServiceTest extends TestCase
         $pat = $this->addPattern(['forename_count' => 0, 'surname_count' => 1]);
         $patterns = collect([$pat]);
 
-        $stored = ['surname' => 3, 'forename' => 2];
-        $matching = ['surname' => 5, 'forename' => 100]; // forename not used; should not affect sum
+        $stored = [
+            $this->tokenIds[Token::TOKEN_NAME_SURNAME] => 3,
+            $this->tokenIds[Token::TOKEN_NAME_FORENAME] => 2,
+        ];
+        $matching = [
+            $this->tokenIds[Token::TOKEN_NAME_SURNAME] => 5,
+            $this->tokenIds[Token::TOKEN_NAME_FORENAME] => 100,
+        ]; // forename not used; should not affect sum
 
         // dynamicMin should be 5; with source length 5 passes; with 4 fails
         $okSig = str_repeat('a', 5);

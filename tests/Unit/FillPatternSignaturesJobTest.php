@@ -11,6 +11,8 @@ use App\Models\SourceNamePattern;
 use App\Models\Token;
 use App\Models\TokenSignature;
 use App\Models\TokenSignatureWord;
+use App\Services\SignatureFillService;
+use App\Services\WordMatchService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
@@ -66,7 +68,7 @@ class FillPatternSignaturesJobTest extends TestCase
         $job = new FillPatternSignaturesJob($snp->id);
         // Silence logs during test
         Log::spy();
-        $job->handle(app(\App\Services\WordMatchService::class), app(\App\Services\SignatureFillService::class));
+        $job->handle(app(WordMatchService::class), app(SignatureFillService::class));
 
         // Assert: a signature-indexed pattern was created
         $rows = SignatureIndexedPattern::where('source_name_pattern_id', $snp->id)->get();
@@ -97,7 +99,7 @@ class FillPatternSignaturesJobTest extends TestCase
         // No matching TokenSignatureWords inserted
         $job = new FillPatternSignaturesJob($snp->id);
         Log::spy();
-        $job->handle(app(\App\Services\WordMatchService::class), app(\App\Services\SignatureFillService::class));
+        $job->handle(app(WordMatchService::class), app(SignatureFillService::class));
 
         $rows = SignatureIndexedPattern::where('source_name_pattern_id', $snp->id)->count();
         $this->assertSame(0, $rows, 'Should not create any rows when there are no matches');

@@ -25,71 +25,17 @@ class SourceNameController extends Controller
         return view('source_names.index', compact('items'));
     }
 
-    public function store(Request $request, ListPatternsService $patternsService, WordMatchService $wordMatchService)
+    public function store(Request $request, \App\Services\SourceNameCreationService $createService)
     {
         $data = $request->validate([
             'name' => ['required','string','min:5','max:25', "regex:/^[A-Za-z .,\-']+$/"],
             'allow_boring' => ['nullable','boolean'],
         ]);
-        $name = trim($data['name']);
-        $signature = $this->makeSignature($name);
-
         $includeBoring = (bool)($data['allow_boring'] ?? false);
 
-        $source = SourceName::create([
-            'name' => $name,
-            'signature' => $signature,
-            'status' => 'idle',
-        ]);
-        // WordMatchService change notes:
-        // - storeNewSourceNameMatchedTokenSignatureWords now returns unique token_ids (ints) for which
-        //   there are matched TokenSignatureWord rows. It also stores links using insertOrIgnore.
-        // - extractMatchingTokenWordMinimumLengths expects an array of token_ids.
-        $tokenIdsWithWords = $wordMatchService->storeNewSourceNameMatchedTokenSignatureWords($source, $includeBoring);
-        Log::info('SourceNameController.store '. count($tokenIdsWithWords) . ' tokens with words');;
-
-        [$storedMinLengths, $matchedMinLengths] =
-            $wordMatchService->extractMatchingTokenWordMinimumLengths($source->refresh(), $tokenIdsWithWords);
-        $standardShortEnoughPatterns = $patternsService->listWithinMinLength(strlen($signature));
-
-        Log::info('SourceNameController.store ' . $standardShortEnoughPatterns->count() . ' standard patterns');
-        $filteredPatterns = $patternsService->filterPatternsForSource(
-            $signature,
-            $standardShortEnoughPatterns,
-            $storedMinLengths,
-            $matchedMinLengths
-        );
-
-        Log::info('SourceNameController.store ' . count($filteredPatterns) . ' filtered patterns');;
-        $bulk = [];
-        $now = now();
-        /** @var Pattern $pattern */
-        foreach ($filteredPatterns as $pattern) {
-            $bulk[] = [
-                'source_name_id' => $source->id,
-                'pattern_id' => $pattern->id,
-                'popularity_rank' => $pattern->popularity_rank,
-                // Restrict pending to standard patterns for new searches
-                'status' => $pattern->pattern_type == 'standard' ? 'pending' : 'deferred',
-                'created_at' => $now,
-                'updated_at' => $now,
-            ];
-        }
-        SourceNamePattern::insert($bulk);
-
-        // Enqueue all pending patterns for background processing
-        $pendingIds = $source->patterns()->where('status','pending')->pluck('id');
-        Log::info('SourceNameController.store ' . count($pendingIds) . ' pending patterns');;
-        $bulk = [];
-        $queue = config('search.queue');
-        foreach ($pendingIds as $pid) {
-            $dispatch = FillPatternSignaturesJob::dispatch((int)$pid);
-            if (!empty($queue)) { $dispatch->onQueue($queue); }
-        }
-        Log::info('SourceNameController.store', ['dispatched' => count($bulk) . ' fills from ' . $filteredPatterns->count() . ' patterns']);;
-
-        $source->status = 'running';
-        $source->save();
+        $result = $createService->create($data['name'], $includeBoring);
+        /** @var SourceName $source */
+        $source = $result['source'];
 
         return redirect()->route('source-names.show', $source);
     }
@@ -203,7 +149,7 @@ class SourceNameController extends Controller
             'signatureIndexedPatternsCount' => $s->signatureIndexedPatterns()->count(),
             'alterEgosCount' => $s->alterEgos()->count(),
             'starred' => $s->alterEgos()->where('starred', true)->pluck('phrase')->all(),
-            'sourceNameMatchedWords' => $s->sourceNameMatchedWords,
+            'matchedWords' => $s->sourceNameMatchedWords,
         ];
     }
 

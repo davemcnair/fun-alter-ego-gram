@@ -36,7 +36,7 @@ class ExpandSignatureIndexedPatternsJobTest extends TestCase
         // SignatureIndexed fill to expand: Adam + Vinci
         SignatureIndexedPattern::create([
             'source_name_pattern_id' => $snp->id,
-            'pattern' => '{forename:aadm}{surname:ciinv}',
+            'pattern' => '{1:aadm}{2:ciinv}',
         ]);
 
         $wordService = app(WordMatchService::class);
@@ -78,7 +78,7 @@ class ExpandSignatureIndexedPatternsJobTest extends TestCase
         ]);
         SignatureIndexedPattern::create([
             'source_name_pattern_id' => $snp->id,
-            'pattern' => '{surname:ary}{surname:ciinv}',
+            'pattern' => '{2:ary}{2:ciinv}',
         ]);
 
 

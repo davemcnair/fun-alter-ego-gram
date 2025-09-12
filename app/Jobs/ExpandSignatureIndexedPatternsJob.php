@@ -131,10 +131,15 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
             $phrase = $phraseBuilderService->formatPhraseBySlots($words, $slotOrder, false);
 
             // Persist as AlterEgo (idempotent)
-            AlterEgo::firstOrCreate([
-                'signature_indexed_pattern_id' => $signatureIndexedPattern->id,
-                'phrase' => $phrase,
-            ]);
+            AlterEgo::firstOrCreate(
+                [
+                    'signature_indexed_pattern_id' => $signatureIndexedPattern->id,
+                    'phrase' => $phrase,
+                ],
+                [
+                    'source_name_id' => $source->id,
+                ]
+            );
             $createdCount++;
         }
 
@@ -169,16 +174,14 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
     private function parseSignatureIndexedPattern(string $s): array
     {
         $out = [];
-        // Expect patterns like {forename:aadm}{surname:ciinv}
-        if (preg_match_all('/\{([a-z_]+):([a-z]+)\}/i', $s, $m, PREG_SET_ORDER)) {
+        // Expect patterns like {1:aadm}{4:ciinv}
+        if (preg_match_all('/\{([0-9]+):([a-z]+)\}/i', $s, $m, PREG_SET_ORDER)) {
             foreach ($m as $match) {
-                $tokenName = strtolower($match[1]);
+                $tokenId = (int)$match[1];
                 $signature = strtolower($match[2]);
-                // Look up Token by name to get its ID
-                $token = Token::lookup($tokenName);
-                if ($token) {
-                    $out[] = [ 'token_id' => $token->id, 'signature' => $signature ];
-                }
+
+                $out[] = [ 'token_id' => $tokenId, 'signature' => $signature ];
+
             }
         }
         return $out;

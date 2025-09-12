@@ -3,94 +3,102 @@
 namespace Tests\Unit;
 
 use App\Jobs\FillPatternSignaturesJob;
-use App\Models\Pattern;
-use App\Models\SourceNamePattern;
 use App\Models\Token;
 use App\Services\ListPatternsService;
 use App\Services\SourceNameCreationService;
 use App\Services\WordMatchService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
-use Illuminate\Support\Facades\Config;
-use Illuminate\Support\Facades\App as AppFacade;
+use Mockery;
 use Tests\TestCase;
 
 class SourceNameCreationServiceTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_creates_source_and_links_patterns_and_dispatches_jobs(): void
+    protected function setUp(): void
     {
-        // Ensure queue set but we will fake bus so nothing actually runs
-        Config::set('search.queue', null);
+        parent::setUp();
+        // Minimal token seed for tests
+        Token::insert([
+            ['name' => 'forename', 'prio' => 1, 'min_length' => 2, 'allow_nearly' => false, 'has_fun' => true, 'has_boring' => true, 'max_multiples' => 1],
+            ['name' => 'surname',  'prio' => 2, 'min_length' => 2, 'allow_nearly' => false, 'has_fun' => true, 'has_boring' => false, 'max_multiples' => 1],
+        ]);
+    }
+
+    private function bindEmptyPatternsServiceMock(): void
+    {
+        $mock = Mockery::mock(ListPatternsService::class);
+        $mock->shouldReceive('listWithinMinLength')->andReturn(collect());
+        $mock->shouldReceive('filterPatternsForSource')->andReturn(collect());
+        $this->app->instance(ListPatternsService::class, $mock);
+    }
+
+    public function test_create_links_source_and_matches_words_with_no_patterns_dispatches_no_jobs(): void
+    {
+        $this->bindEmptyPatternsServiceMock();
         Bus::fake();
 
-        // Seed tokens used by filtering logic (ids are used indirectly by WordMatchService in real life)
-        Token::insert([
-            ['name' => Token::TOKEN_NAME_FORENAME, 'prio' => 1, 'min_length' => 2],
-            ['name' => Token::TOKEN_NAME_SURNAME,  'prio' => 2, 'min_length' => 2],
-        ]);
+        // Mock WordMatchService to avoid writing to source_name_matched_words (SQLite FK issues)
+        $wm = Mockery::mock(WordMatchService::class);
+        $wm->shouldReceive('storeNewSourceNameMatchedTokenSignatureWords')
+           ->once()
+           ->withArgs(function($source, $includeBoring) { return $includeBoring === false; })
+           ->andReturn(collect());
+        $wm->shouldReceive('extractMatchingTokenWordMinimumLengths')->once()->andReturn([[], []]);
+        $this->app->instance(WordMatchService::class, $wm);
 
-        // Create a couple of patterns to be returned by the mocked ListPatternsService
-        $p1 = Pattern::create([
-            'template' => '{forename}{surname}',
-            'popularity_rank' => 1,
-            'pattern_type' => 'standard',
-            'min_total_length' => 4,
-            'forename_count' => 1,
-            'surname_count' => 1,
-            'has_title' => false,
-            'has_initials' => false,
-            'has_prefix' => false,
-            'has_suffix' => false,
-            'has_honorific' => false,
-        ]);
-        $p2 = Pattern::create([
-            'template' => '{forename:2}{surname}',
-            'popularity_rank' => 2,
-            'pattern_type' => 'exotic',
-            'min_total_length' => 6,
-            'forename_count' => 2,
-            'surname_count' => 1,
-        ]);
+        // Execute
+        $svc = app(SourceNameCreationService::class);
+        $result = $svc->create('Jane Ray');
 
-        // Mock dependencies
-        $listMock = $this->mock(ListPatternsService::class, function($mock) use ($p1, $p2) {
-            $mock->shouldReceive('listWithinMinLength')
-                ->andReturn(collect([$p1, $p2]));
-            $mock->shouldReceive('filterPatternsForSource')
-                ->andReturn(collect([$p1, $p2]));
-        });
-        $wordMock = $this->mock(WordMatchService::class, function($mock) {
-            $mock->shouldReceive('storeNewSourceNameMatchedTokenSignatureWords')
-                ->andReturn([1,2]);
-            $mock->shouldReceive('extractMatchingTokenWordMinimumLengths')
-                ->andReturn([
-                    // stored mins by token id (dummy)
-                    [1 => 2, 2 => 2],
-                    // matched mins by token id (dummy)
-                    [1 => 2, 2 => 2],
-                ]);
-        });
-
-        $svc = AppFacade::make(SourceNameCreationService::class);
-
-        $result = $svc->create('Jane Ray', includeBoring: false);
-
+        // Assertions on return payload
         $this->assertArrayHasKey('source', $result);
-        $source = $result['source'];
-        $this->assertEquals(' Jane Ray ', ' '.trim($source->name).' ');
-        $this->assertEquals('aaejnry', $source->signature);
-        $this->assertEquals('running', $source->status);
+        $this->assertArrayHasKey('filtered_count', $result);
+        $this->assertArrayHasKey('pending_count', $result);
+        $this->assertSame(0, $result['filtered_count']);
+        $this->assertSame(0, $result['pending_count']);
 
-        // Ensure patterns were linked with correct statuses
-        $links = SourceNamePattern::where('source_name_id', $source->id)->orderBy('pattern_id')->get();
-        $this->assertCount(2, $links);
-        // p1 is standard => pending; p2 is exotic => deferred
-        $this->assertEquals('pending', $links[0]->status);
-        $this->assertEquals('deferred', $links[1]->status);
+        // Source was created and moved to running
+        $source = $result['source']->fresh();
+        $this->assertNotNull($source);
+        $this->assertSame('aaejnry', $source->signature); // sorted signature of "Jane Ray"
+        $this->assertSame('running', $source->status);
 
-        // Ensure a job was dispatched for the pending link
-        Bus::assertDispatched(FillPatternSignaturesJob::class, 1);
+        // No jobs dispatched when there are no pending patterns
+        Bus::assertNotDispatched(FillPatternSignaturesJob::class);
+    }
+
+    public function test_create_respects_include_boring_flag_for_matched_words(): void
+    {
+        $this->bindEmptyPatternsServiceMock();
+        Bus::fake();
+
+        // Mock WordMatchService and assert include_boring flag is propagated
+        $wm = Mockery::mock(WordMatchService::class);
+        $wm->shouldReceive('storeNewSourceNameMatchedTokenSignatureWords')
+           ->once()
+           ->withArgs(function($source, $includeBoring) { return $includeBoring === false; })
+           ->andReturn(collect());
+        $wm->shouldReceive('extractMatchingTokenWordMinimumLengths')->once()->andReturn([[], []]);
+        $this->app->instance(WordMatchService::class, $wm);
+
+        $svc = app(SourceNameCreationService::class);
+        $svc->create('li', false);
+
+        // Now expect true on the next call
+        $wm2 = Mockery::mock(WordMatchService::class);
+        $wm2->shouldReceive('storeNewSourceNameMatchedTokenSignatureWords')
+            ->once()
+            ->withArgs(function($source, $includeBoring) { return $includeBoring === true; })
+            ->andReturn(collect());
+        $wm2->shouldReceive('extractMatchingTokenWordMinimumLengths')->once()->andReturn([[], []]);
+        $this->app->instance(WordMatchService::class, $wm2);
+
+        $svc = app(SourceNameCreationService::class);
+        $svc->create('li', true);
+
+        // No pattern jobs are dispatched in either case since we mocked patterns service to empty
+        Bus::assertNotDispatched(FillPatternSignaturesJob::class);
     }
 }

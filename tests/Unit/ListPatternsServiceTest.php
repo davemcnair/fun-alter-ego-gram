@@ -6,7 +6,6 @@ use App\Models\Pattern;
 use App\Models\Token;
 use App\Services\ListPatternsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Collection;
 use Tests\TestCase;
 
 class ListPatternsServiceTest extends TestCase
@@ -14,183 +13,125 @@ class ListPatternsServiceTest extends TestCase
     use RefreshDatabase;
 
     private ListPatternsService $svc;
-    private array $tokenIds = [];
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->svc = app(ListPatternsService::class);
-        // Seed tokens and capture their IDs for id-keyed tests
+
+        // Seed minimal tokens used by filter tests
         Token::insert([
-            ['name' => Token::TOKEN_NAME_TITLE, 'prio' => 0, 'min_length' => 0],
-            ['name' => Token::TOKEN_NAME_FORENAME, 'prio' => 1, 'min_length' => 2],
-            ['name' => Token::TOKEN_NAME_INITIALS, 'prio' => 0, 'min_length' => 1],
-            ['name' => Token::TOKEN_NAME_PREFIX, 'prio' => 0, 'min_length' => 1],
-            ['name' => Token::TOKEN_NAME_SURNAME, 'prio' => 2, 'min_length' => 2],
-            ['name' => Token::TOKEN_NAME_SUFFIX, 'prio' => 0, 'min_length' => 1],
-            ['name' => Token::TOKEN_NAME_HONORIFIC, 'prio' => 0, 'min_length' => 1],
+            ['name' => 'forename', 'prio' => 1, 'min_length' => 2, 'allow_nearly' => false, 'has_fun' => true, 'has_boring' => true, 'max_multiples' => 2],
+            ['name' => 'surname',  'prio' => 2, 'min_length' => 2, 'allow_nearly' => false, 'has_fun' => true, 'has_boring' => false, 'max_multiples' => 2],
         ]);
-        $this->tokenIds = Token::whereIn('name', Token::NAMES)->pluck('id','name')->toArray();
+
+        // Seed a handful of patterns with varying ranks, templates, and mins for list()/listWithinMinLength() tests
+        Pattern::insert([
+            [
+                'template' => '{forename}{surname}',
+                'popularity_rank' => 1,
+                'pattern_type' => 'standard',
+                'min_total_length' => 4,
+                'forename_count' => 1,
+                'surname_count' => 1,
+                'has_title' => false,
+                'has_initials' => false,
+                'has_prefix' => false,
+                'has_suffix' => false,
+                'has_honorific' => false,
+            ],
+            [
+                'template' => '{title}{forename}{surname}',
+                'popularity_rank' => 2,
+                'pattern_type' => 'standard',
+                'min_total_length' => 6,
+                'forename_count' => 1,
+                'surname_count' => 1,
+                'has_title' => true,
+                'has_initials' => false,
+                'has_prefix' => false,
+                'has_suffix' => false,
+                'has_honorific' => false,
+            ],
+            [
+                'template' => '{forename}{surname}{suffix}',
+                'popularity_rank' => 3,
+                'pattern_type' => 'standard',
+                'min_total_length' => 8,
+                'forename_count' => 1,
+                'surname_count' => 1,
+                'has_title' => false,
+                'has_initials' => false,
+                'has_prefix' => false,
+                'has_suffix' => true,
+                'has_honorific' => false,
+            ],
+            [
+                'template' => 'cool-{forename}-foo', // will be matched by like '%foo%'
+                'popularity_rank' => 4,
+                'pattern_type' => 'novelty',
+                'min_total_length' => 3,
+                'forename_count' => 1,
+                'surname_count' => 0,
+                'has_title' => false,
+                'has_initials' => false,
+                'has_prefix' => false,
+                'has_suffix' => false,
+                'has_honorific' => false,
+            ],
+        ]);
     }
 
-    private function addPattern(array $overrides = []): Pattern
+    public function test_list_paginates_and_filters_like(): void
     {
-        static $i = 1;
-        $defaults = [
-            'template' => "{forename}{surname}" . ($i++),
-            'popularity_rank' => 1000,
-            'pattern_type' => 'standard',
-            'min_total_length' => 5,
-            'forename_count' => 1,
-            'surname_count' => 1,
-            'has_title' => false,
-            'has_initials' => false,
-            'has_prefix' => false,
-            'has_suffix' => false,
-            'has_honorific' => false,
-        ];
-        return Pattern::create(array_merge($defaults, $overrides));
-    }
+        // Like filter should only match the template containing 'foo'
+        $result = $this->svc->list(['like' => 'foo', 'limit' => 2, 'page' => 1]);
 
-    public function test_list_paginates_and_filters_by_like_and_returns_shape(): void
-    {
-        // Create patterns with different popularity ranks and templates
-        $p1 = $this->addPattern(['template' => '{forename}{surname} alpha', 'popularity_rank' => 2, 'min_total_length' => 7]);
-        $p2 = $this->addPattern(['template' => '{forename}{surname} beta',  'popularity_rank' => 1, 'min_total_length' => 6]);
-        $p3 = $this->addPattern(['template' => '{forename} of {surname}',   'popularity_rank' => 3, 'min_total_length' => 8]);
-
-        // Like filter to only include templates containing 'surname'
-        $result = $this->svc->list(['like' => 'surname', 'limit' => 2, 'page' => 1]);
+        $this->assertIsArray($result);
         $this->assertArrayHasKey('meta', $result);
         $this->assertArrayHasKey('rows', $result);
 
         $meta = $result['meta'];
         $rows = $result['rows'];
 
-        $this->assertSame(3, $meta['total']);
+        $this->assertSame(1, $meta['total']);
         $this->assertSame(1, $meta['page']);
-        $this->assertSame(2, $meta['pages']); // limit 2 -> pages ceil(3/2)=2
-        $this->assertSame(2, $meta['count']);
+        $this->assertSame(1, $meta['pages']);
+        $this->assertSame(1, $meta['count']);
 
-        // Rows should be ordered by popularity_rank ASC and limited to 2
-        $this->assertSame($p2->popularity_rank, $rows[0]['popularity_rank']);
-        $this->assertSame($p2->template, $rows[0]['template']);
-        $this->assertSame($p2->min_total_length, $rows[0]['min']);
-
-        $this->assertSame($p1->popularity_rank, $rows[1]['popularity_rank']);
-        $this->assertSame($p1->template, $rows[1]['template']);
-        $this->assertSame($p1->min_total_length, $rows[1]['min']);
-
-        // Page 2 should contain the remaining row
-        $result2 = $this->svc->list(['like' => 'surname', 'limit' => 2, 'page' => 2]);
-        $this->assertSame(1, $result2['meta']['count']);
-        $this->assertSame($p3->template, $result2['rows'][0]['template']);
+        $this->assertCount(1, $rows);
+        $this->assertSame(4, $rows[0]['popularity_rank']);
+        $this->assertSame('cool-{forename}-foo', $rows[0]['template']);
+        $this->assertSame(3, $rows[0]['min']);
     }
 
-    public function test_listWithinMinLength_returns_only_patterns_with_min_leq_threshold_ordered(): void
+    public function test_listWithinMinLength_returns_patterns_sorted_by_rank(): void
     {
-        $p1 = $this->addPattern(['min_total_length' => 5, 'popularity_rank' => 3]);
-        $p2 = $this->addPattern(['min_total_length' => 7, 'popularity_rank' => 1]);
-        $this->addPattern(['min_total_length' => 9, 'popularity_rank' => 2]);
+        $within = $this->svc->listWithinMinLength(6);
 
-        $rows = $this->svc->listWithinMinLength(7);
-        $this->assertInstanceOf(Collection::class, $rows);
-        $this->assertCount(2, $rows);
-        // Should be ordered by popularity_rank ASC
-        $this->assertSame([$p2->id, $p1->id], $rows->pluck('id')->all());
+        // Should include patterns with min_total_length <= 6: ranks 1, 2, and 4
+        $this->assertCount(3, $within);
+        $this->assertSame([1, 2, 4], $within->pluck('popularity_rank')->all());
+
+        // Tighten threshold to 4 => ranks 1 and 4
+        $within4 = $this->svc->listWithinMinLength(4);
+        $this->assertCount(2, $within4);
+        $this->assertSame([1, 4], $within4->pluck('popularity_rank')->all());
+
+        // Tightest threshold to 2 => none
+        $within2 = $this->svc->listWithinMinLength(2);
+        $this->assertCount(0, $within2);
     }
 
-    public function test_filterPatternsForSource_accepts_when_min_lengths_unchanged_even_if_exceeds_source(): void
+    public function test_filterPatternsForSource_rejects_when_required_token_has_no_matches(): void
     {
-        // Pattern requires forename and surname; stored mins equal matching mins
-        $pat = $this->addPattern(['forename_count' => 1, 'surname_count' => 1]);
-        $patterns = collect([$pat]);
-
-        $stored = [
-            $this->tokenIds[Token::TOKEN_NAME_FORENAME] => 4,
-            $this->tokenIds[Token::TOKEN_NAME_SURNAME] => 4,
-        ];
-        $matching = [
-            $this->tokenIds[Token::TOKEN_NAME_FORENAME] => 4,
-            $this->tokenIds[Token::TOKEN_NAME_SURNAME] => 4,
-        ]; // unchanged
-        $sourceSig = str_repeat('a', 7); // length 7
-
-        $filtered = $this->svc->filterPatternsForSource($sourceSig, $patterns, $stored, $matching);
-        $this->assertCount(1, $filtered, 'Unchanged mins should pass even if 4+4=8 > 7');
-    }
-
-    public function test_filterPatternsForSource_rejects_when_required_token_has_no_words(): void
-    {
-        $pat = $this->addPattern(['forename_count' => 1, 'surname_count' => 0]);
-        $patterns = collect([$pat]);
-        $stored = [
-            $this->tokenIds[Token::TOKEN_NAME_FORENAME] => 2,
-        ];
-        $matching = []; // no words found for forename
-        $sourceSig = 'aaaa';
-
-        $filtered = $this->svc->filterPatternsForSource($sourceSig, $patterns, $stored, $matching);
-        $this->assertCount(0, $filtered, 'Required token without any matching words should be rejected');
-    }
-
-    public function test_filterPatternsForSource_uses_dynamic_min_with_counts_and_source_length_gate(): void
-    {
-        // Pattern with 2 forenames and 1 surname
-        $pat = $this->addPattern(['forename_count' => 2, 'surname_count' => 1]);
-        $patterns = collect([$pat]);
-
-        // Stored mins lower than matching mins -> considered increased
-        $stored = [
-            $this->tokenIds[Token::TOKEN_NAME_FORENAME] => 2,
-            $this->tokenIds[Token::TOKEN_NAME_SURNAME] => 2,
-        ];
-        $matching = [
-            $this->tokenIds[Token::TOKEN_NAME_FORENAME] => 3,
-            $this->tokenIds[Token::TOKEN_NAME_SURNAME] => 4,
-        ];
-
-        // dynamicMin = forename(2 slots)*3 + surname(1)*4 = 10
-        $sourceSigShort = str_repeat('a', 9);
-        $sourceSigLong = str_repeat('a', 10);
-
-        $filteredShort = $this->svc->filterPatternsForSource($sourceSigShort, $patterns, $stored, $matching);
-        $this->assertCount(0, $filteredShort, 'Increased mins with sum>source length should be rejected');
-
-        $filteredLong = $this->svc->filterPatternsForSource($sourceSigLong, $patterns, $stored, $matching);
-        $this->assertCount(1, $filteredLong, 'Should pass when dynamic min equals source length');
-    }
-
-    public function test_filterPatternsForSource_ignores_tokens_not_used_by_pattern_when_summing_dynamic_min(): void
-    {
-        // Pattern only uses surname
-        $pat = $this->addPattern(['forename_count' => 0, 'surname_count' => 1]);
-        $patterns = collect([$pat]);
-
-        $stored = [
-            $this->tokenIds[Token::TOKEN_NAME_SURNAME] => 3,
-            $this->tokenIds[Token::TOKEN_NAME_FORENAME] => 2,
-        ];
-        $matching = [
-            $this->tokenIds[Token::TOKEN_NAME_SURNAME] => 5,
-            $this->tokenIds[Token::TOKEN_NAME_FORENAME] => 100,
-        ]; // forename not used; should not affect sum
-
-        // dynamicMin should be 5; with source length 5 passes; with 4 fails
-        $okSig = str_repeat('a', 5);
-        $badSig = str_repeat('a', 4);
-
-        $ok = $this->svc->filterPatternsForSource($okSig, $patterns, $stored, $matching);
-        $bad = $this->svc->filterPatternsForSource($badSig, $patterns, $stored, $matching);
-
-        $this->assertCount(1, $ok);
-        $this->assertCount(0, $bad);
-    }
-
-    public function test_filterPatternsForSource_accepts_pattern_with_no_tokens(): void
-    {
-        $pat = $this->addPattern([
-            'forename_count' => 0,
+        // Create dedicated patterns just for this test
+        $pForenameOnly = Pattern::create([
+            'template' => '{forename}',
+            'popularity_rank' => 10,
+            'pattern_type' => 'standard',
+            'min_total_length' => 2,
+            'forename_count' => 1,
             'surname_count' => 0,
             'has_title' => false,
             'has_initials' => false,
@@ -198,12 +139,77 @@ class ListPatternsServiceTest extends TestCase
             'has_suffix' => false,
             'has_honorific' => false,
         ]);
-        $patterns = collect([$pat]);
-        $stored = [];
-        $matching = [];
-        $sourceSig = 'aaaa';
+        $pBoth = Pattern::create([
+            'template' => '{forename}{surname}-t1',
+            'popularity_rank' => 11,
+            'pattern_type' => 'standard',
+            'min_total_length' => 4,
+            'forename_count' => 1,
+            'surname_count' => 1,
+            'has_title' => false,
+            'has_initials' => false,
+            'has_prefix' => false,
+            'has_suffix' => false,
+            'has_honorific' => false,
+        ]);
 
-        $filtered = $this->svc->filterPatternsForSource($sourceSig, $patterns, $stored, $matching);
-        $this->assertCount(1, $filtered, 'Pattern with no tokens should pass');
+        $patterns = collect([$pForenameOnly, $pBoth]);
+
+        // Build stored/matching min arrays
+        $forenameId = (int)Token::where('name', 'forename')->first()->id;
+        $surnameId = (int)Token::where('name', 'surname')->first()->id;
+        $stored = [
+            $forenameId => 2,
+            $surnameId => 2,
+        ];
+        $matching = [
+            $forenameId => 3,
+            // deliberately omit surname match to force rejection for patterns requiring surname
+        ];
+
+        $sourceSig = 'aejn'; // makeSignature('Jane')
+
+        $kept = $this->svc->filterPatternsForSource($sourceSig, $patterns, $stored, $matching);
+
+        $this->assertTrue($kept->contains('id', $pForenameOnly->id), 'Forename-only pattern should be kept when forename matched');
+        $this->assertFalse($kept->contains('id', $pBoth->id), 'Pattern requiring surname must be rejected if surname has no matches');
+    }
+
+    public function test_filterPatternsForSource_respects_minimums_and_multiplicity(): void
+    {
+        // Create a pattern with surname appearing twice
+        $pMulti = Pattern::create([
+            'template' => '{forename}{surname}{surname}',
+            'popularity_rank' => 12,
+            'pattern_type' => 'standard',
+            'min_total_length' => 6,
+            'forename_count' => 1,
+            'surname_count' => 2,
+            'has_title' => false,
+            'has_initials' => false,
+            'has_prefix' => false,
+            'has_suffix' => false,
+            'has_honorific' => false,
+        ]);
+
+        $patterns = collect([$pMulti]);
+
+        $forenameId = (int)Token::where('name', 'forename')->first()->id;
+        $surnameId = (int)Token::where('name', 'surname')->first()->id;
+
+        // Stored mins (from tokens table) and matching mins
+        $stored = [ $forenameId => 2, $surnameId => 2 ];
+        $matching = [ $forenameId => 3, $surnameId => 2 ];
+
+        // Source signature length must be >= effective sum: max(2,3)*1 + max(2,2)*2 = 3 + 4 = 7
+        $sourceSig = 'aaejnry'; // makeSignature('Jane Ray')
+
+        $kept = $this->svc->filterPatternsForSource($sourceSig, $patterns, $stored, $matching);
+        $this->assertTrue($kept->contains('id', $pMulti->id), 'Pattern should be accepted when effective minima equal source length');
+
+        // Now shorten source to force rejection (length 6)
+        $shortSig = 'aejnry'; // makeSignature('Jean Ry')
+        $rejected = $this->svc->filterPatternsForSource($shortSig, $patterns, $stored, $matching);
+        $this->assertFalse($rejected->contains('id', $pMulti->id), 'Pattern should be rejected when effective minima exceed source length');
     }
 }

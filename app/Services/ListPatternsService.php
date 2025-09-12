@@ -84,17 +84,26 @@ class ListPatternsService
             $tokenIdsByName
         ) {
             $dynamicMin = 0;
-            foreach ($tokenIdsByName as $id => $name) {
+            foreach ($tokenIdsByName as $name => $id) {
                 if ($row->has($name)) {
-                    // If this pattern requires a token for which no words were found, reject
-                    if (!isset($matchedTokenIds, $id)) return false;
+                    // Require at least one matched word for any token used by this pattern
+                    if (!isset($matchingWordBasedMins[$id])) {
+                        return false;
+                    }
                     // Sum dynamic min only for tokens used by this pattern
                     $count = match ($name) {
-                        Token::TOKEN_NAME_FORENAME => $row->forename_count,
-                        Token::TOKEN_NAME_SURNAME => $row->surname_count,
+                        Token::TOKEN_NAME_FORENAME => (int)$row->forename_count,
+                        Token::TOKEN_NAME_SURNAME => (int)$row->surname_count,
                         default => 1,
                     };
-                    $dynamicMin += max($matchingWordBasedMins[$id] ?? $storedWordBasedMins[$id]) * max(1, $count);
+                    $count = max(1, $count);
+                    $stored = (int)($storedWordBasedMins[$id] ?? 0);
+                    $matched = (int)$matchingWordBasedMins[$id];
+                    $effectiveMin = max($stored, $matched);
+                    $dynamicMin += $effectiveMin * $count;
+                    if ($dynamicMin > $sourceLength) {
+                        return false; // early exit if already exceeds source length
+                    }
                 }
             }
 

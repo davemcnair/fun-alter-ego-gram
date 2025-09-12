@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\TokenSignatureWord;
 use App\Traits\HelpsMatchWords;
 use Generator;
+use Illuminate\Support\Collection;
 
 /**
  * SignatureFillService
@@ -29,22 +30,21 @@ final class SignatureFillService
     public function generateSignaturePatterns(
         string $sourceSignature,
         array  $patternTokenPositions,
-        array  $matchingTokenSignatureWordIds
+        Collection $matchingTokenSignatureWords
     ): Generator
     {
         $sourceLetterCountsNeeded = $this->letterCountsFromSignature($sourceSignature);
-        $candidatesSignaturesByTokenId = $this->precomputeCandidateSignaturesByTokenId($matchingTokenSignatureWordIds);
+        $candidatesSignaturesByTokenId = $this->precomputeCandidateSignaturesByTokenId($matchingTokenSignatureWords);
 
         $dfs = new DfsService();
         yield from $dfs->dfs($patternTokenPositions, $sourceLetterCountsNeeded, $candidatesSignaturesByTokenId, [], []);
     }
 
     /** Build per-token_id candidates: signatures with precomputed histograms, per-letter maxima, and a letter index */
-    private function precomputeCandidateSignaturesByTokenId(array $matchingTokenSignatureWordIds): array
+    private function precomputeCandidateSignaturesByTokenId(Collection $matchingTokenSignatureWords): array
     {
         $candidateSignaturesByTokenId = [];
-        foreach ($matchingTokenSignatureWordIds as $id) {
-            $model = TokenSignatureWord::find($id);
+        foreach ($matchingTokenSignatureWords as $model) {
             $signature = $model->tokenSignature->signature;
             $token_id = $model->tokenSignature->token_id;
             // Step 1: build candidate list with per-candidate histograms

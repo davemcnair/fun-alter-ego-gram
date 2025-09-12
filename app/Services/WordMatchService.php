@@ -88,29 +88,33 @@ class WordMatchService
         $includeBoring = (bool)($options['include_boring'] ?? false);
         $srcLen = strlen($sourceSignature);
 
+        // Build an Eloquent query that returns TokenSignatureWord models with relations,
+        // so downstream services (SignatureFillService) can access tokenSignature->signature/token_id.
         $query = TokenSignatureWord::query()
-            ->join('token_signatures as ts', 'ts.id', '=', 'token_signature_words.token_signature_id')
-            ->join('tokens as t', 't.id', '=', 'ts.token_id')
-            ->where('token_signature_words.is_deferred', false)
-            ->whereRaw('LENGTH(ts.signature) <= ?', [$srcLen]);
-        if ($filterToken !== '') {
-            $query->where('t.name', $filterToken);
-        }
-        if ($filterList !== '') {
-            $query->where('token_signature_words.list_type', $filterList);
-        } else if (!$includeBoring) {
-            $query->where('token_signature_words.list_type', '!=', 'boring');
-        }
-//        $query->select(['token_signature_words.id as id', 'ts.signature as signature']);
-        Log::info('Unfiltered matching token signature words: ' . $query->count());
-        $matches = collect();
-        $query->chunk(1000, function ($rows) use (&$matches, $sourceSignature) {
-            $filtered = $rows->filter(function($r) use ($sourceSignature) {
-                return $this->isSubset($r->signature, $sourceSignature);
+            ->with(['tokenSignature.token'])
+            ->where('is_deferred', false)
+            ->whereHas('tokenSignature', function ($q) use ($srcLen, $filterToken) {
+                $q->whereRaw('LENGTH(signature) <= ?', [$srcLen]);
+                if ($filterToken !== '') {
+                    $q->whereHas('token', function ($t) use ($filterToken) {
+                        $t->where('name', $filterToken);
+                    });
+                }
             });
-            $matches = $matches->merge($filtered);
-        });
-        Log::info('Filtered matching token signature words: ' . count($matches));
+
+        if ($filterList !== '') {
+            $query->where('list_type', $filterList);
+        } elseif (!$includeBoring) {
+            $query->where('list_type', '!=', 'boring');
+        }
+
+        // Fetch models and filter by subset relation of signatures in PHP
+        $all = $query->get();
+        Log::info('Unfiltered matching token signature words: ' . $all->count());
+        $matches = $all->filter(function (TokenSignatureWord $tsw) use ($sourceSignature) {
+            return $this->isSubset($tsw->tokenSignature->signature, $sourceSignature);
+        })->values();
+        Log::info('Filtered matching token signature words: ' . $matches->count());
         return $matches;
     }
 

@@ -74,8 +74,13 @@ class TargetCreationService
         Log::info('pending ids', $pendingIds->toArray());
         $queue = config('search.queue');
         foreach ($pendingIds as $pid) {
-            $dispatch = FillPatternSignaturesJob::dispatch((int)$pid);
-            if (!empty($queue)) { $dispatch->onQueue($queue); }
+            if (empty($queue)) {
+                // Run fills inline to ensure progress without a queue worker
+                FillPatternSignaturesJob::dispatchSync((int)$pid);
+            } else {
+                $dispatch = FillPatternSignaturesJob::dispatch((int)$pid);
+                $dispatch->onQueue($queue);
+            }
         }
 
         // Step 6: set target to running

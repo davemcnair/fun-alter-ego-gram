@@ -4,11 +4,12 @@ namespace App\Traits;
 
 trait HelpsMatchWords
 {
-    // ASCII-only normalization: keep a–z, lowercase
+    // ASCII-only normalization: keep a–z, lowercase; drop diacritics and any non-ASCII letters (no transliteration)
     public function normalize(string $s): string
     {
         $s = strtolower($s);
-        return preg_replace('/[^a-z]/i', '', $s) ?? '';
+        // Remove any character outside ASCII a-z. Accented letters are dropped.
+        return preg_replace('/[^a-z]/', '', $s) ?? '';
     }
 
     // Make a sorted-letter signature from input string

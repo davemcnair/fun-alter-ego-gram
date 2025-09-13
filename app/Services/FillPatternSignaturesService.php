@@ -38,6 +38,9 @@ class FillPatternSignaturesService
         $targetPattern->status = 'processing';
         $targetPattern->save();
 
+        $fillStart = microtime(true);
+        try { Log::info('FillPatternSignaturesService: start target=' . ($target->name ?? '') . ' template=' . ((string)$targetPattern->pattern->template)); } catch (\Throwable $e) {}
+
         $patternTokenPositions = Pattern::parsePatternTokenSlotPositions((string)$targetPattern->pattern->template);
 
         $tokenSignatureWords = $wordMatchService->findMatchingTokenSignatureWords((string)$target->signature);
@@ -58,11 +61,52 @@ class FillPatternSignaturesService
                 ->values();
         }
 
+        $candCount = $tokenSignatureWords->count();
+        try { Log::info('FillPatternSignaturesService: candidates=' . $candCount); } catch (\Throwable $e) {}
+
+        // Algorithmic pruning and ordering (Proposed change 3)
+        $targetSig = (string)$target->signature;
+        $targetLen = strlen($targetSig);
+        // 1) Early min-length pruning using WordMatchService helper
+        [$storedTokenMins, $matchingWordBasedMins] = $wordMatchService->extractMatchingTokenWordMinimumLengths($targetSig, $tokenSignatureWords);
+        $minSum = 0;
+        $unsatisfiable = false;
+        foreach ($patternTokenPositions as $pos => $tokenId) {
+            $mwMin = $matchingWordBasedMins[$tokenId] ?? null;
+            if ($mwMin === null) { $unsatisfiable = true; break; }
+            $tokMin = (int)($storedTokenMins[$tokenId] ?? 0);
+            $minSum += max($tokMin, (int)$mwMin);
+        }
+        try { \Log::info('FillPatternSignaturesService: minSum='.$minSum.' targetLen='.$targetLen.' unsat=' . ($unsatisfiable ? '1' : '0')); } catch (\Throwable $e) {}
+        if ($unsatisfiable || $minSum > $targetLen) {
+            // No possible fills; skip DFS and expansion scheduling for this pattern
+            try { \Log::info($target->name . '/' . ((string)$targetPattern->pattern->template) . ' : early-pruned by min-length'); } catch (\Throwable $e) {}
+            // Still mark as processed to avoid endless retries
+            $targetPattern->status = 'done';
+            $targetPattern->save();
+            return;
+        }
+
+        // 2) Rarity-first slot ordering: order by ascending candidate count per token
+        $candidateCounts = [];
+        foreach ($tokenSignatureWords as $tsw) {
+            $tid = (int)$tsw->tokenSignature->token_id;
+            $candidateCounts[$tid] = ($candidateCounts[$tid] ?? 0) + 1;
+        }
+        $orderedSlots = $patternTokenPositions; // copy
+        uasort($orderedSlots, function($aTokenId, $bTokenId) use ($candidateCounts) {
+            $ac = $candidateCounts[$aTokenId] ?? PHP_INT_MAX;
+            $bc = $candidateCounts[$bTokenId] ?? PHP_INT_MAX;
+            if ($ac === $bc) return 0;
+            return $ac < $bc ? -1 : 1;
+        });
+        try { \Log::info('FillPatternSignaturesService: rarity order token_ids=' . implode(',', array_values($orderedSlots))); } catch (\Throwable $e) {}
+
         $signaturePatterns = [];
         $count = 0;
         foreach ($signatureFillService->generateSignaturePatterns(
-            (string)$target->signature,
-            $patternTokenPositions,
+            $targetSig,
+            $orderedSlots,
             $tokenSignatureWords
         ) as $signaturePattern) {
             $signaturePatterns[] = [
@@ -114,11 +158,16 @@ class FillPatternSignaturesService
         if (!empty($signaturePatterns)) {
             TargetSignatureIndexedPattern::insert($signaturePatterns);
         }
-        try { Log::info($target->name . '/' . ((string)$targetPattern->pattern->template) . ' :' . $count . ' fills completed'); } catch (Throwable $e) {}
-        // Dispatch expansion on the configured queue if any
+        $durationMs = (int) round((microtime(true) - $fillStart) * 1000);
+        try { Log::info($target->name . '/' . ((string)$targetPattern->pattern->template) . ' : fills_completed=' . $count . ' candidates=' . ($candCount ?? 0) . ' duration_ms=' . $durationMs); } catch (Throwable $e) {}
+        // Dispatch expansion; run synchronously when no queue is configured
         $queue = config('search.queue');
-        $dispatch = ExpandSignatureIndexedPatternsJob::dispatch($targetPattern->id);
-        if (!empty($queue)) {
+        if (empty($queue)) {
+            // Run inline (synchronously)
+            ExpandSignatureIndexedPatternsJob::dispatchSync($targetPattern->id);
+        } else {
+            // Queue asynchronously (on the configured queue)
+            $dispatch = ExpandSignatureIndexedPatternsJob::dispatch($targetPattern->id);
             $dispatch->onQueue($queue);
         }
     }

@@ -17,7 +17,7 @@ use Illuminate\Support\Collection;
  *  such as "{1:a}{2:adn}{5:aciinv}" in token position order.
  *
  */
-final class SignatureFillService
+class SignatureFillService
 {
     use HelpsMatchWords;
 

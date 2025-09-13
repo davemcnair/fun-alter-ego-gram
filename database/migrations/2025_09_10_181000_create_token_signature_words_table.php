@@ -17,7 +17,10 @@ return new class extends Migration
             $table->timestamps();
 
             $table->unique(['token_signature_id', 'list_type', 'word']);
+            // Indexes to support common query patterns (Proposed change 5)
             $table->index('is_deferred');
+            $table->index(['token_signature_id', 'list_type'], 'tsw_token_list_idx');
+            $table->index(['is_deferred', 'list_type', 'token_signature_id'], 'tsw_deferred_list_token_idx');
         });
     }
 

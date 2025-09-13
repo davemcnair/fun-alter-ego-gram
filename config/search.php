@@ -12,4 +12,18 @@ return [
     // Queue to use for background processing. If null/empty, dispatches use the default queue.
     // Configure via SEARCH_QUEUE in .env, e.g., SEARCH_QUEUE=search
     'queue' => env('SEARCH_QUEUE', null),
+
+    // Feature flag: enable SQL-side exact subset pruning using per-letter counts on token_signatures
+    // Configure via SEARCH_SQL_SUBSET (true/false)
+    'sql_subset_pruning' => filter_var(env('SEARCH_SQL_SUBSET', false), FILTER_VALIDATE_BOOLEAN),
+
+    // Safety flag during rollout: when true, re-verify subset relation in PHP after SQL filtering
+    // Configure via SEARCH_VERIFY_SUBSET (true/false)
+    'verify_subset_in_php' => filter_var(env('SEARCH_VERIFY_SUBSET', true), FILTER_VALIDATE_BOOLEAN),
+
+    // Proposed change 4: caching of match candidates per target signature and filters
+    // Enable/disable caching (default: disabled)
+    'enable_match_cache' => filter_var(env('ENABLE_MATCH_CACHE', false), FILTER_VALIDATE_BOOLEAN),
+    // TTL in seconds for cached ID lists
+    'match_cache_ttl' => (int) env('MATCH_CACHE_TTL', 120),
 ];

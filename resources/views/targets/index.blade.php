@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Source Names</title>
+    <title>Targets</title>
     <style>
         body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; padding: 0; background: #f7fafc; color: #111827; }
         .container { max-width: 960px; margin: 0 auto; padding: 24px; }
@@ -24,13 +24,13 @@
 </head>
 <body>
 <nav style="background:#111827; color:#fff; padding:8px 12px;">
-    <a href="{{ route('source-names.index') }}" style="color:#fff; margin-right:10px; text-decoration:none;"><strong>Source Names</strong></a>
+    <a href="{{ route('targets.index') }}" style="color:#fff; margin-right:10px; text-decoration:none;"><strong>Targets</strong></a>
     <a href="{{ route('patterns.index') }}" style="color:#fff; margin-right:10px; text-decoration:none;">Patterns</a>
     <a href="{{ route('words.index') }}" style="color:#fff; margin-right:10px; text-decoration:none;">Words</a>
 </nav>
 <div class="container">
     <h1>New Search</h1>
-    <form method="post" action="{{ route('source-names.store') }}">
+    <form method="post" action="{{ route('targets.store') }}">
         @csrf
         <div class="row" style="margin-bottom: 12px;">
             <div class="field">
@@ -44,13 +44,13 @@
         </div>
     </form>
 
-    <h1 style="margin-top:28px;">Recent Sources</h1>
+    <h1 style="margin-top:28px;">Recent Targets</h1>
 
     @if(session('status'))
         <div style="margin:10px 0; padding:10px 12px; background:#ecfeff; color:#155e75; border:1px solid #67e8f9; border-radius:6px;">{{ session('status') }}</div>
     @endif
 
-    <form id="bulkForm" method="post" action="{{ route('source-names.bulk-destroy') }}" onsubmit="return confirm('Delete selected source names? This will remove their patterns and alter egos.');">
+    <form id="bulkForm" method="post" action="{{ route('targets.bulk-destroy') }}" onsubmit="return confirm('Delete selected Target names? This will remove their patterns and alter egos.');">
         @csrf
         <div style="margin: 8px 0; display:flex; gap:8px; align-items:center;">
             <label><input type="checkbox" id="selectAll"> Select all</label>
@@ -79,12 +79,12 @@
                     <td>{{ $done }} / {{ $total }}</td>
                     <td>{{ $s->alterEgos()->count() }}</td>
                     <td style="display:flex; gap:6px; align-items:center;">
-                        <a class="btn" href="{{ route('source-names.show', $s) }}">Open</a>
+                        <a class="btn" href="{{ route('targets.show', $s) }}">Open</a>
                         <button type="button" onclick="deleteSingle({{ $s->id }})" style="background:#dc2626;">Delete</button>
                     </td>
                 </tr>
             @empty
-                <tr><td colspan="7">No sources yet.</td></tr>
+                <tr><td colspan="7">No Targets yet.</td></tr>
             @endforelse
             </tbody>
         </table>
@@ -119,7 +119,7 @@
     // Single delete helper uses the bulk form
     window.deleteSingle = function(id){
         try {
-            if (!confirm('Delete this source and all related data?')) return;
+            if (!confirm('Delete this Target and all related data?')) return;
             var form = document.getElementById('bulkForm');
             if (!form) return;
             var checks = document.querySelectorAll('.rowCheck');

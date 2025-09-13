@@ -23,7 +23,7 @@
 </head>
 <body>
 <nav class="top">
-    <a href="{{ route('source-names.index') }}">Source Names</a>
+    <a href="{{ route('targets.index') }}">Source Names</a>
     <a href="{{ route('patterns.index') }}">Patterns</a>
     <a href="{{ route('words.index') }}"><strong>Words</strong></a>
 </nav>

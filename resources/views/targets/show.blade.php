@@ -35,7 +35,7 @@
 </head>
 <body>
 <nav style="background:#111827; color:#fff; padding:8px 12px;">
-    <a href="{{ route('source-names.index') }}" style="color:#fff; margin-right:10px; text-decoration:none;"><strong>Source Names</strong></a>
+    <a href="{{ route('targets.index') }}" style="color:#fff; margin-right:10px; text-decoration:none;"><strong>Source Names</strong></a>
     <a href="{{ route('patterns.index') }}" style="color:#fff; margin-right:10px; text-decoration:none;">Patterns</a>
     <a href="{{ route('words.index') }}" style="color:#fff; margin-right:10px; text-decoration:none;">Words</a>
 </nav>
@@ -244,8 +244,8 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
     const starredSection = document.getElementById('starredSection');
     const starredList = document.getElementById('starredList');
     const starredCount = document.getElementById('starredCount');
-    const URL_STAR = "{{ route('source-names.star', $item) }}";
-    const URL_UNSTAR = "{{ route('source-names.unstar', $item) }}";
+    const URL_STAR = "{{ route('targets.star', $item) }}";
+    const URL_UNSTAR = "{{ route('targets.unstar', $item) }}";
     let onlyFun = false;
     let onlyStarred = false;
     let onlyUsed = true;
@@ -262,7 +262,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
                 onlyFun = !!onlyFunToggle.checked;
                 try { localStorage.setItem('onlyFunToggle', onlyFun ? '1' : '0'); } catch (e) {}
                 // Re-render using last known progress if available
-                call("{{ route('source-names.progress', $item) }}", 'GET').then(render).catch(function(){});
+                call("{{ route('targets.progress', $item) }}", 'GET').then(render).catch(function(){});
             });
         } catch (e) { /* ignore */ }
     }
@@ -274,7 +274,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
             onlyStarredToggle.addEventListener('change', function(){
                 onlyStarred = !!onlyStarredToggle.checked;
                 try { localStorage.setItem('onlyStarredToggle', onlyStarred ? '1' : '0'); } catch (e) {}
-                call("{{ route('source-names.progress', $item) }}", 'GET').then(render).catch(function(){});
+                call("{{ route('targets.progress', $item) }}", 'GET').then(render).catch(function(){});
             });
         } catch (e) { /* ignore */ }
     }
@@ -288,7 +288,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
                 onlyUsed = !!onlyUsedToggle.checked;
                 try { localStorage.setItem('onlyUsedToggle', onlyUsed ? '1' : '0'); } catch (e) {}
                 // Refresh UI against latest progress to recompute used sets
-                call("{{ route('source-names.progress', $item) }}", 'GET').then(render).catch(function(){});
+                call("{{ route('targets.progress', $item) }}", 'GET').then(render).catch(function(){});
             });
         } catch (e) { /* ignore */ }
     }
@@ -652,7 +652,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
                 }
             }
             // Re-render based on latest progress to refresh highlighting
-            call("{{ route('source-names.progress', $item) }}", 'GET').then(render).catch(function(){});
+            call("{{ route('targets.progress', $item) }}", 'GET').then(render).catch(function(){});
         } catch (e) { /* ignore */ }
     }
     function clearWordFilter(){ setWordFilter('', ''); }
@@ -912,7 +912,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
         if (completed) return;
         try {
             // Async poll progress; background workers should process jobs
-            const p = await call("{{ route('source-names.progress', $item) }}", 'GET');
+            const p = await call("{{ route('targets.progress', $item) }}", 'GET');
             render(p);
         } catch (e) { /* ignore */ }
         if (!completed) {
@@ -944,7 +944,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
     }
     {{--window.enablePattern = async function(sourceId, patternId){--}}
     {{--    try {--}}
-    {{--        const res = await fetch("" + sourceId + "/patterns/" + patternId + "/enable".replace(/^/, '/source-names/'), {--}}
+    {{--        const res = await fetch("" + sourceId + "/patterns/" + patternId + "/enable".replace(/^/, '/targets/'), {--}}
     {{--            method: 'POST',--}}
     {{--            headers: {'X-Requested-With':'XMLHttpRequest','X-CSRF-TOKEN': '{{ csrf_token() }}' }--}}
     {{--        });--}}
@@ -963,12 +963,12 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
         stepLoop();
     } else if (initialStatus === 'idle') {
         // If idle, do not auto-start (store handles starting); just fetch progress once
-        call("{{ route('source-names.progress', $item) }}", 'GET')
+        call("{{ route('targets.progress', $item) }}", 'GET')
             .then(function(p){ render(p); })
             .catch(function(){});
     } else {
         // ensure UI state reflects current status when paused/completed
-        call("{{ route('source-names.progress', $item) }}", 'GET').then(render).catch(function(){});
+        call("{{ route('targets.progress', $item) }}", 'GET').then(render).catch(function(){});
     }
 })();
 </script>
@@ -1015,7 +1015,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
       {{--      const current = phraseSpan.textContent.trim();--}}
       {{--      if (current && current !== orig) {--}}
       {{--        // Auto-persist the reorder without requiring a separate save click--}}
-      {{--        callJson("{{ route('source-names.rephrase', $item) }}", { from: orig, to: current })--}}
+      {{--        callJson("{{ route('targets.rephrase', $item) }}", { from: orig, to: current })--}}
       {{--          .then(function(res){--}}
       {{--            if (res && res.ok) {--}}
       {{--              render(res);--}}

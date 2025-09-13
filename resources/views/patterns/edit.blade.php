@@ -21,7 +21,7 @@
 </head>
 <body>
 <nav style="background:#111827; color:#fff; padding:8px 12px;">
-    <a href="{{ route('source-names.index') }}" style="color:#fff; margin-right:10px; text-decoration:none;">Source Names</a>
+    <a href="{{ route('targets.index') }}" style="color:#fff; margin-right:10px; text-decoration:none;">Source Names</a>
     <a href="{{ route('patterns.index') }}" style="color:#fff; margin-right:10px; text-decoration:none;"><strong>Patterns</strong></a>
     <a href="{{ route('words.index') }}" style="color:#fff; margin-right:10px; text-decoration:none;">Words</a>
 </nav>

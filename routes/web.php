@@ -6,7 +6,7 @@ use App\Http\Controllers\PatternController;
 use App\Http\Controllers\WordController;
 
 Route::resource('targets', TargetController::class)->only(['index','store','show','destroy']);
-Route::post('/source-names/bulk-destroy', [TargetController::class, 'bulkDestroy'])->name('target.bulk-destroy');
+Route::post('/targets/bulk-destroy', [TargetController::class, 'bulkDestroy'])->name('target.bulk-destroy');
 
 // Pattern CRUD
 Route::resource('patterns', PatternController::class)->except(['show']);
@@ -25,15 +25,15 @@ Route::post('/words/{word}/promote', [WordController::class, 'promote'])->name('
 Route::post('/words/{word}/toggle-search', [WordController::class, 'toggleSearch'])->name('words.toggle-search');
 
 // Search control endpoints (pause/resume/progress/run-step/start)
-//Route::post('/source-names/{source_name}/pause', [TargetNameController::class, 'pause'])->name('source-names.pause');
-//Route::post('/source-names/{source_name}/resume', [TargetNameController::class, 'resume'])->name('source-names.resume');
-Route::get('/source-names/{source_name}/progress', [TargetNameController::class, 'progress'])->name('source-names.progress');
-//Route::post('/source-names/{source_name}/start', [TargetNameController::class, 'start'])->name('source-names.start');
-// Star / Unstar phrase for this source
-Route::post('/source-names/{source_name}/star', [TargetNameController::class, 'star'])->name('source-names.star');
-Route::post('/source-names/{source_name}/unstar', [TargetNameController::class, 'unstar'])->name('source-names.unstar');
+//Route::post('/targets/{target}/pause', [TargetController::class, 'pause'])->name('targets.pause');
+//Route::post('/targets/{target}/resume', [TargetController::class, 'resume'])->name('targets.resume');
+Route::get('/targets/{target}/progress', [TargetController::class, 'progress'])->name('targets.progress');
+//Route::post('/targets/{target}/start', [TargetController::class, 'start'])->name('targets.start');
+// Star / Unstar phrase for this target
+Route::post('/targets/{target}/star', [TargetController::class, 'star'])->name('targets.star');
+Route::post('/targets/{target}/unstar', [TargetController::class, 'unstar'])->name('targets.unstar');
 // Persist a reordered phrase variant
-Route::post('/source-names/{source_name}/rephrase', [TargetNameController::class, 'rephrase'])->name('source-names.rephrase');
+Route::post('/targets/{target}/rephrase', [TargetController::class, 'rephrase'])->name('targets.rephrase');
 
 // Docs: progress choices (static view)
 Route::view('/docs/progress_choices', 'docs.progress_choices')->name('docs.progress_choices');

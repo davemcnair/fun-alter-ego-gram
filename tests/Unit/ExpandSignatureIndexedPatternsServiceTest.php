@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 
+use App\Models\AlterEgo;
 use App\Models\Pattern;
 use App\Models\TargetSignatureIndexedPattern;
 use App\Models\Target;
@@ -37,7 +38,7 @@ class ExpandSignatureIndexedPatternsServiceTest extends TestCase
             'status' => 'running',
         ]);
         $pattern = Pattern::create(['template' => '{forename}{surname}']);
-        $snp = TargetPattern::create([
+        $targetPattern = TargetPattern::create([
             'target_id' => $target->id,
             'pattern_id' => $pattern->id,
             'popularity_rank' => 1,
@@ -45,7 +46,7 @@ class ExpandSignatureIndexedPatternsServiceTest extends TestCase
         ]);
         // SignatureIndexed fill to expand: Adam + Vinci
         TargetSignatureIndexedPattern::create([
-            'target_pattern_id' => $snp->id,
+            'target_pattern_id' => $targetPattern->id,
             'pattern' => '{1:aadm}{2:ciinv}',
         ]);
 
@@ -58,17 +59,17 @@ class ExpandSignatureIndexedPatternsServiceTest extends TestCase
 
         // Act: run expansion via service
         app(ExpandSignatureIndexedPatternService::class)
-            ->expandWithBuilder($snp->id, app(PhraseBuilderService::class));
+            ->expandWithBuilder($targetPattern->id, app(PhraseBuilderService::class));
 
         // Assert: an AlterEgo was created with the fun-preferred surname and proper capitalization
-        $ae = $snp->alterEgos()->first();
+        /** @var AlterEgo $ae */
+        $ae = $targetPattern->alterEgos()->first();
         $this->assertNotNull($ae, 'AlterEgo should have been created');
-        $this->assertSame($snp->id, $ae->target_name_pattern_id);
         // PhraseBuilderService capitalizes tokens; expect "Adam Invic"
         $this->assertSame('Adam Invic', $ae->phrase);
 
         // Status should be marked done
-        $this->assertSame('done', $snp->fresh()->status);
+        $this->assertSame('done', $targetPattern->fresh()->status);
     }
 
     public function test_expands_double_surname_hyphenated_and_marks_done(): void

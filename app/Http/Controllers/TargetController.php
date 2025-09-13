@@ -2,24 +2,25 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\TargetName;
-use App\Models\TargetNamePattern;
+use App\Models\Target;
+use App\Models\TargetPattern;
 use App\Models\AlterEgo;
+use App\Services\TargetCreationService;
 use App\Traits\HelpsMatchWords;
 use DB;
 use Illuminate\Http\Request;
 
-class TargetNameController extends Controller
+class TargetController extends Controller
 {
     use HelpsMatchWords;
 
     public function index()
     {
-        $items = TargetName::paginate(15);
-        return view('source_names.index', compact('items'));
+        $items = Target::paginate(15);
+        return view('targets.index', compact('items'));
     }
 
-    public function store(Request $request, \App\Services\TargetNameCreationService $createService)
+    public function store(Request $request, TargetCreationService $createService)
     {
         $data = $request->validate([
             'name' => ['required','string','min:5','max:25', "regex:/^[A-Za-z .,\-']+$/"],
@@ -28,35 +29,33 @@ class TargetNameController extends Controller
         $includeBoring = (bool)($data['allow_boring'] ?? false);
 
         $result = $createService->create($data['name'], $includeBoring);
-        /** @var TargetName $target */
-        $target = $result['source'];
+        /** @var Target $target */
+        $target = $result['target'];
 
-        return redirect()->route('source-names.show', $target);
+        return redirect()->route('targets.show', $target);
     }
 
-    public function show(TargetName $target_name)
+    public function show(Target $target)
     {
-        $target_name->fresh();
-        \Log::info('TargetNameController.show', ['source_name' => $target_name]);
-        return view('source_names.show', $this->lookupProgressPayload($target_name));
+        $target->fresh();
+        \Log::info('TargetController.show', ['target' => $target]);
+        return view('targets.show', $this->lookupProgressPayload($target));
     }
 
-//    public function pause(TargetName $target_name)
+//    public function pause(Target $target)
 //    {
-//        $target = $target_name;
 //        $target->status = 'paused';
 //        $target->save();
 //        return response()->json(['ok' => true] + $this->lookupProgressPayload($target));
 //    }
 //
-//    public function resume(TargetName $target_name)
+//    public function resume(Target $target)
 //    {
-//        $target = $target_name;
 //        $target->status = 'running';
 //        $target->save();
 //
 //        // Enqueue remaining pending patterns
-//        $pending = TargetNamePattern::where('source_name_id', $target->id)
+//        $pending = TargetPattern::where('target_id', $target->id)
 //            ->where('status', 'pending')
 //            ->orderBy('popularity_rank')
 //            ->pluck('id');
@@ -70,38 +69,38 @@ class TargetNameController extends Controller
 //        return response()->json(['ok' => true] + $this->lookupProgressPayload($target));
 //    }
 
-    public function progress(TargetName $target_name)
+    public function progress(Target $target)
     {
-        return response()->json(['ok' => true] + $this->lookupProgressPayload($target_name));
+        return response()->json(['ok' => true] + $this->lookupProgressPayload($target));
     }
 
-    public function star(TargetName $target_name, Request $request)
+    public function star(Target $target, Request $request)
     {
         $data = $request->validate([
             'phrase' => ['required','string'],
         ]);
-        AlterEgo::whereHas('targetSignatureIndexedPattern.sourceNamePattern', function($q) use ($target_name){
-            $q->where('source_name_id', $target_name->id);
+        AlterEgo::whereHas('targetSignatureIndexedPattern.targetPattern', function($q) use ($target){
+            $q->where('target_id', $target->id);
         })
             ->where('phrase', $data['phrase'])
             ->update(['starred' => true]);
-        return response()->json(['ok' => true] + $this->lookupProgressPayload($target_name->fresh())) ;
+        return response()->json(['ok' => true] + $this->lookupProgressPayload($target->fresh())) ;
     }
 
-    public function unstar(TargetName $target_name, Request $request)
+    public function unstar(Target $target, Request $request)
     {
         $data = $request->validate([
             'phrase' => ['required','string'],
         ]);
-        AlterEgo::whereHas('targetSignatureIndexedPattern.sourceNamePattern', function($q) use ($target_name){
-            $q->where('source_name_id', $target_name->id);
+        AlterEgo::whereHas('targetSignatureIndexedPattern.targetPattern', function($q) use ($target){
+            $q->where('target_id', $target->id);
         })
             ->where('phrase', $data['phrase'])
             ->update(['starred' => false]);
-        return response()->json(['ok' => true] + $this->lookupProgressPayload($target_name->fresh())) ;
+        return response()->json(['ok' => true] + $this->lookupProgressPayload($target->fresh())) ;
     }
 //
-//    public function rephrase(TargetName $target_name, Request $request)
+//    public function rephrase(Target $target, Request $request)
 //    {
 //        $data = $request->validate([
 //            'from' => ['required','string'],
@@ -113,13 +112,13 @@ class TargetNameController extends Controller
 //            return response()->json(['ok' => false, 'error' => 'Empty phrase'], 422);
 //        }
 //        // Try update; if target already exists, delete the source and star the existing
-//        $existing = AlterEgo::where('source_name_id', $target_name->id)->where('phrase', $to)->first();
+//        $existing = AlterEgo::where('target_id', $target->id)->where('phrase', $to)->first();
 //        if ($existing) {
-//            AlterEgo::where('source_name_id', $target_name->id)->where('phrase', $from)->delete();
+//            AlterEgo::where('target_id', $target->id)->where('phrase', $from)->delete();
 //            $existing->starred = true; $existing->save();
 //        } else {
 //            // Update the phrase; if row not found, return 404-ish JSON
-//            $row = AlterEgo::where('source_name_id', $target_name->id)->where('phrase', $from)->first();
+//            $row = AlterEgo::where('target_id', $target->id)->where('phrase', $from)->first();
 //            if (!$row) {
 //                return response()->json(['ok' => false, 'error' => 'Original phrase not found'], 404);
 //            }
@@ -131,10 +130,10 @@ class TargetNameController extends Controller
 //                return response()->json(['ok' => false, 'error' => 'Failed to save phrase'], 500);
 //            }
 //        }
-//        return response()->json(['ok' => true] + $this->lookupProgressPayload($target_name->fresh()));
+//        return response()->json(['ok' => true] + $this->lookupProgressPayload($target->fresh()));
 //    }
 
-    private function lookupProgressPayload(TargetName $s): array
+    private function lookupProgressPayload(Target $s): array
     {
         return [
             'item' => $s,
@@ -147,11 +146,11 @@ class TargetNameController extends Controller
             'signatureIndexedPatternsCount' => $s->signatureIndexedPatterns()->count(),
             'alterEgosCount' => $s->alterEgos()->count(),
             'starred' => $s->alterEgos()->where('starred', true)->pluck('phrase')->all(),
-            'matchedWords' => $s->targetNameMatchedWords,
+            'matchedWords' => $s->targetTokenSignatureWords,
         ];
     }
 
-    private function lookupPatternPayload(string $status, TargetNamePattern $pattern): array
+    private function lookupPatternPayload(string $status, TargetPattern $pattern): array
     {
         $signatureIndexedPatterns = $pattern->signatureIndexedPatterns;
         $alterEgos = $pattern->alterEgos;
@@ -166,12 +165,12 @@ class TargetNameController extends Controller
         ];
     }
 
-    public function destroy(TargetName $target_name)
+    public function destroy(Target $target)
     {
-        // Cascade deletes handled by FK constraints; just delete the source
-        $name = $target_name->name;
-        $target_name->delete();
-        return redirect()->route('source-names.index')->with('status', "Deleted: {$name}");
+        // Cascade deletes handled by FK constraints; just delete the target
+        $name = $target->name;
+        $target->delete();
+        return redirect()->route('targets.index')->with('status', "Deleted: {$name}");
     }
 
     public function bulkDestroy(Request $request)
@@ -182,15 +181,15 @@ class TargetNameController extends Controller
         ]);
         $ids = array_values(array_unique(array_map('intval', $data['ids'])));
         if (empty($ids)) {
-            return redirect()->route('source-names.index')->with('status', 'No items selected.');
+            return redirect()->route('targets.index')->with('status', 'No items selected.');
         }
         DB::transaction(function () use ($ids) {
             // Eagerly load to allow any model events if needed
-            $toDelete = TargetName::whereIn('id', $ids)->get();
+            $toDelete = Target::whereIn('id', $ids)->get();
             foreach ($toDelete as $s) {
                 $s->delete();
             }
         });
-        return redirect()->route('source-names.index')->with('status', 'Deleted '.count($ids).' source name(s).');
+        return redirect()->route('targets.index')->with('status', 'Deleted '.count($ids).' target(s).');
     }
 }

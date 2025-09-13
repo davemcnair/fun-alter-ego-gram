@@ -2,11 +2,11 @@
 
 namespace Tests\Unit;
 
-use App\Models\AlterEgo;
+
 use App\Models\Pattern;
-use App\Models\SignatureIndexedPattern;
-use App\Models\SourceName;
-use App\Models\SourceNamePattern;
+use App\Models\TargetSignatureIndexedPattern;
+use App\Models\Target;
+use App\Models\TargetPattern;
 use App\Models\Token;
 use App\Services\PhraseBuilderService;
 use App\Services\WordMatchService;
@@ -30,22 +30,22 @@ class ExpandSignatureIndexedPatternsServiceTest extends TestCase
 
     public function test_expands_single_signatureIndexed_pattern_with_fun_preference(): void
     {
-        // Arrange: a source with one pattern {forename}{surname}
-        $source = SourceName::create([
+        // Arrange: a target with one pattern {forename}{surname}
+        $target = Target::create([
             'name' => 'Dummy',
             'signature' => 'dmmuy',
             'status' => 'running',
         ]);
         $pattern = Pattern::create(['template' => '{forename}{surname}']);
-        $snp = SourceNamePattern::create([
-            'source_name_id' => $source->id,
+        $snp = TargetPattern::create([
+            'target_id' => $target->id,
             'pattern_id' => $pattern->id,
             'popularity_rank' => 1,
             'status' => 'pending',
         ]);
         // SignatureIndexed fill to expand: Adam + Vinci
-        SignatureIndexedPattern::create([
-            'source_name_pattern_id' => $snp->id,
+        TargetSignatureIndexedPattern::create([
+            'target_pattern_id' => $snp->id,
             'pattern' => '{1:aadm}{2:ciinv}',
         ]);
 
@@ -63,7 +63,7 @@ class ExpandSignatureIndexedPatternsServiceTest extends TestCase
         // Assert: an AlterEgo was created with the fun-preferred surname and proper capitalization
         $ae = $snp->alterEgos()->first();
         $this->assertNotNull($ae, 'AlterEgo should have been created');
-        $this->assertSame($snp->id, $ae->source_name_pattern_id);
+        $this->assertSame($snp->id, $ae->target_name_pattern_id);
         // PhraseBuilderService capitalizes tokens; expect "Adam Invic"
         $this->assertSame('Adam Invic', $ae->phrase);
 
@@ -74,20 +74,20 @@ class ExpandSignatureIndexedPatternsServiceTest extends TestCase
     public function test_expands_double_surname_hyphenated_and_marks_done(): void
     {
         // Arrange: a pattern with two surnames
-        $source = SourceName::create([
+        $target = Target::create([
             'name' => 'Dummy',
             'signature' => 'dmmuy',
             'status' => 'running',
         ]);
         $pattern2 = Pattern::create(['template' => '{surname:2}']);
-        $snp = SourceNamePattern::create([
-            'source_name_id' => $source->id,
+        $snp = TargetPattern::create([
+            'target_id' => $target->id,
             'pattern_id' => $pattern2->id,
             'popularity_rank' => 1,
             'status' => 'pending',
         ]);
-        SignatureIndexedPattern::create([
-            'source_name_pattern_id' => $snp->id,
+        TargetSignatureIndexedPattern::create([
+            'target_pattern_id' => $snp->id,
             'pattern' => '{2:ary}{2:ciinv}',
         ]);
 

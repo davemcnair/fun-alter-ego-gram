@@ -19,7 +19,7 @@ class TokenWordsBuilderService
             File::makeDirectory($baseToken, 0755, true);
         }
         if (!File::isDirectory($baseAltego)) {
-            throw new \RuntimeException("Source directory not found: $baseAltego");
+            throw new \RuntimeException("Target directory not found: $baseAltego");
         }
 
         $dirs = array_values(array_filter(File::directories($baseAltego), fn($p) => File::isDirectory($p)));

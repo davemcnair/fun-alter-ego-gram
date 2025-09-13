@@ -14,20 +14,20 @@ final class DfsService
      *      emit pattern string when exact cover achieved
      *
      * @param array<int, string> $patternTokenPositions
-     * @param array<string,int> $remainingSourceLetterCountsNeeded
+     * @param array<string,int> $remainingTargetLetterCountsNeeded
      * @param array<int,string> $chosenSignatures map: pos => sig
      * @param array<int,string> $chosenTokenIds map: pos => token id
      */
     public function dfs(
         array $patternTokenPositions,
-        array $remainingSourceLetterCountsNeeded,
+        array $remainingTargetLetterCountsNeeded,
         array $candidateSignaturesByTokenId,
         array $chosenSignatures,
         array $chosenTokenIds
     ): Generator
     {
         if (empty($patternTokenPositions)) {
-            if (empty($remainingSourceLetterCountsNeeded)) {
+            if (empty($remainingTargetLetterCountsNeeded)) {
                 yield $this->buildSignatureIndexedPattern($chosenSignatures, $chosenTokenIds);
             }
             return;
@@ -46,12 +46,12 @@ final class DfsService
             $hist = (array)($candidate['hist'] ?? []);
             // Must share at least one needed letter
             $shares = false;
-            foreach ($remainingSourceLetterCountsNeeded as $ch => $n) {
+            foreach ($remainingTargetLetterCountsNeeded as $ch => $n) {
                 if (isset($hist[$ch])) { $shares = true; break; }
             }
             if (!$shares) continue;
             // Must not exceed needed counts
-            if ($this->candidateLettersExceedNeededCounts($remainingSourceLetterCountsNeeded, $hist)) continue;
+            if ($this->candidateLettersExceedNeededCounts($remainingTargetLetterCountsNeeded, $hist)) continue;
             $viableIndices[] = $i;
         }
         if (empty($viableIndices)) return; // no candidate contains any needed letter
@@ -68,8 +68,8 @@ final class DfsService
             $candidate = $candidates['signatures'][$i] ?? null;
             if ($candidate === null) continue;
             $hist = (array)($candidate['hist'] ?? []);
-            if ($this->candidateLettersExceedNeededCounts($remainingSourceLetterCountsNeeded, $hist)) continue;
-            $nextNeed = $this->subtract($remainingSourceLetterCountsNeeded, $hist);
+            if ($this->candidateLettersExceedNeededCounts($remainingTargetLetterCountsNeeded, $hist)) continue;
+            $nextNeed = $this->subtract($remainingTargetLetterCountsNeeded, $hist);
             // Additional pruning after choosing this candidate using slot-aware union (accounts for repeated tokens)
             $slotPrecomputed = [];
             foreach ($patternTokenPositions as $remPos => $remainingToken) {

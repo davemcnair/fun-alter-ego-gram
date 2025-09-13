@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
-class SourceNamePattern extends Model
+class TargetPattern extends Model
 {
 
     protected $fillable = [
@@ -17,7 +17,7 @@ class SourceNamePattern extends Model
 
     public function sourceName(): BelongsTo
     {
-        return $this->belongsTo(SourceName::class);
+        return $this->belongsTo(TargetName::class);
     }
 
     public function pattern(): BelongsTo
@@ -27,11 +27,11 @@ class SourceNamePattern extends Model
 
     public function signatureIndexedPatterns(): HasMany
     {
-        return $this->hasMany(SignatureIndexedPattern::class);
+        return $this->hasMany(TargetSignatureIndexedPattern::class);
     }
 
     public function alterEgos(): HasManyThrough
     {
-        return $this->hasManyThrough(AlterEgo::class, SignatureIndexedPattern::class);
+        return $this->hasManyThrough(AlterEgo::class, TargetSignatureIndexedPattern::class);
     }
 }

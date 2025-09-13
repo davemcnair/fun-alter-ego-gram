@@ -2,7 +2,7 @@
 
 namespace App\Enums;
 
-enum SourceNameStatus
+enum TargetNameStatus
 {
     case idle;
     case processing;

@@ -22,22 +22,22 @@ final class SignatureFillService
     use HelpsMatchWords;
 
     /**
-     * @param string $sourceSignature
+     * @param string $targetSignature
      * @param array $patternTokenPositions
      * @param array $matchingTokenSignatureWordIds
      * @return Generator
      */
     public function generateSignaturePatterns(
-        string $sourceSignature,
+        string $targetSignature,
         array  $patternTokenPositions,
         Collection $matchingTokenSignatureWords
     ): Generator
     {
-        $sourceLetterCountsNeeded = $this->letterCountsFromSignature($sourceSignature);
+        $targetLetterCountsNeeded = $this->letterCountsFromSignature($targetSignature);
         $candidatesSignaturesByTokenId = $this->precomputeCandidateSignaturesByTokenId($matchingTokenSignatureWords);
 
         $dfs = new DfsService();
-        yield from $dfs->dfs($patternTokenPositions, $sourceLetterCountsNeeded, $candidatesSignaturesByTokenId, [], []);
+        yield from $dfs->dfs($patternTokenPositions, $targetLetterCountsNeeded, $candidatesSignaturesByTokenId, [], []);
     }
 
     /** Build per-token_id candidates: signatures with precomputed histograms, per-letter maxima, and a letter index */

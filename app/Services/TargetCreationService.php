@@ -4,12 +4,12 @@ namespace App\Services;
 
 use App\Jobs\FillPatternSignaturesJob;
 use App\Models\Pattern;
-use App\Models\SourceName;
-use App\Models\SourceNamePattern;
+use App\Models\TargetName;
+use App\Models\TargetNamePattern;
 use App\Traits\HelpsMatchWords;
 use Illuminate\Support\Facades\Log;
 
-class SourceNameCreationService
+class TargetNameCreationService
 {
     use HelpsMatchWords;
 
@@ -19,45 +19,45 @@ class SourceNameCreationService
     ) {}
 
     /**
-     * Create a SourceName from the provided display name, link candidate patterns,
-     * enqueue pending fills, and return the created SourceName.
+     * Create a TargetName from the provided display name, link candidate patterns,
+     * enqueue pending fills, and return the created TargetName.
      *
-     * @return array{source: SourceName, filtered_count:int, pending_count:int}
+     * @return array{source: TargetName, filtered_count:int, pending_count:int}
      */
     public function create(string $name, bool $includeBoring = false): array
     {
         $name = trim($name);
         $signature = $this->makeSignature($name);
 
-        $source = SourceName::create([
+        $target = TargetName::create([
             'name' => $name,
             'signature' => $signature,
             'status' => 'idle',
         ]);
 
         // Step 1: store matched words and get involved token ids
-        $tokenSignatureWords = $this->wordMatchService->storeNewSourceNameMatchedTokenSignatureWords($source, $includeBoring);
+        $tokenSignatureWords = $this->wordMatchService->storeNewTargetNameMatchedTokenSignatureWords($target, $includeBoring);
 
         // Step 2: compute min lengths (id-keyed arrays)
         [$storedMinLengths, $matchedMinLengths] =
-            $this->wordMatchService->extractMatchingTokenWordMinimumLengths($source->signature, $tokenSignatureWords);
+            $this->wordMatchService->extractMatchingTokenWordMinimumLengths($target->signature, $tokenSignatureWords);
 
         // Step 3: list short-enough patterns and filter
         $standardShortEnoughPatterns = $this->patternsService->listWithinMinLength(strlen($signature));
-        $filteredPatterns = $this->patternsService->filterPatternsForSource(
+        $filteredPatterns = $this->patternsService->filterPatternsForTarget(
             $signature,
             $standardShortEnoughPatterns,
             $storedMinLengths,
             $matchedMinLengths
         );
 
-        // Step 4: bulk insert SourceNamePattern rows
+        // Step 4: bulk insert TargetNamePattern rows
         $now = now();
         Log::info('inserting filtered patterns, n= '. $filteredPatterns->count());
         /** @var Pattern $pattern */
-        $bulk = $filteredPatterns->map(function($pattern) use ($source, $now) {
+        $bulk = $filteredPatterns->map(function($pattern) use ($target, $now) {
             return [
-                'source_name_id' => $source->id,
+                'source_name_id' => $target->id,
                 'pattern_id' => $pattern->id,
                 'popularity_rank' => $pattern->popularity_rank,
                 'status' => $pattern->pattern_type == 'standard' ? 'pending' : 'deferred',
@@ -66,11 +66,11 @@ class SourceNameCreationService
             ];
         });
         if ($bulk->isNotEmpty()) {
-            SourceNamePattern::insert($bulk->toArray());
+            TargetNamePattern::insert($bulk->toArray());
         }
 
         // Step 5: dispatch fills for pending
-        $pendingIds = $source->fresh()->patterns()->where('status','pending')->pluck('id');
+        $pendingIds = $target->fresh()->patterns()->where('status','pending')->pluck('id');
         Log::info('pending ids', $pendingIds->toArray());
         $queue = config('search.queue');
         foreach ($pendingIds as $pid) {
@@ -79,11 +79,11 @@ class SourceNameCreationService
         }
 
         // Step 6: set source to running
-        $source->status = 'running';
-        $source->save();
+        $target->status = 'running';
+        $target->save();
 
         return [
-            'source' => $source,
+            'source' => $target,
             'filtered_count' => $filteredPatterns->count(),
             'pending_count' => count($pendingIds),
         ];

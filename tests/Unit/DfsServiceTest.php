@@ -100,7 +100,7 @@ class DfsServiceTest extends TestCase
         $dfs = new DfsService();
         // Pattern: 4 slots
         $slots = [0=>1, 1=>2, 2=>3, 3=>4];
-        // Build source need with some rare letters forcing pruning
+        // Build target need with some rare letters forcing pruning
         $srcSig = 'aaaaabbbbccddeeffgghhij';
         $need = $this->letterCountsFromSignature($srcSig);
         // Each token gets many candidates, but only a few contain rare letters 'j' or 'i'.

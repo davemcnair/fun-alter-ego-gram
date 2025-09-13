@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class SignatureIndexedPattern extends Model
+class TargetSignatureIndexedPattern extends Model
 {
     protected $fillable = [
         'source_name_pattern_id', 'pattern',
@@ -15,7 +15,7 @@ class SignatureIndexedPattern extends Model
 
     public function sourceNamePattern(): BelongsTo
     {
-        return $this->belongsTo(SourceNamePattern::class);
+        return $this->belongsTo(TargetNamePattern::class);
     }
 
     public function alterEgos(): HasMany

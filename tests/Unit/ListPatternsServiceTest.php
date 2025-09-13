@@ -123,7 +123,7 @@ class ListPatternsServiceTest extends TestCase
         $this->assertCount(0, $within2);
     }
 
-    public function test_filterPatternsForSource_rejects_when_required_token_has_no_matches(): void
+    public function test_filterPatternsForTarget_rejects_when_required_token_has_no_matches(): void
     {
         // Create dedicated patterns just for this test
         $pForenameOnly = Pattern::create([
@@ -167,15 +167,15 @@ class ListPatternsServiceTest extends TestCase
             // deliberately omit surname match to force rejection for patterns requiring surname
         ];
 
-        $sourceSig = 'aejn'; // makeSignature('Jane')
+        $targetSig = 'aejn'; // makeSignature('Jane')
 
-        $kept = $this->svc->filterPatternsForSource($sourceSig, $patterns, $stored, $matching);
+        $kept = $this->svc->filterPatternsForTarget($targetSig, $patterns, $stored, $matching);
 
         $this->assertTrue($kept->contains('id', $pForenameOnly->id), 'Forename-only pattern should be kept when forename matched');
         $this->assertFalse($kept->contains('id', $pBoth->id), 'Pattern requiring surname must be rejected if surname has no matches');
     }
 
-    public function test_filterPatternsForSource_respects_minimums_and_multiplicity(): void
+    public function test_filterPatternsForTarget_respects_minimums_and_multiplicity(): void
     {
         // Create a pattern with surname appearing twice
         $pMulti = Pattern::create([
@@ -201,15 +201,15 @@ class ListPatternsServiceTest extends TestCase
         $stored = [ $forenameId => 2, $surnameId => 2 ];
         $matching = [ $forenameId => 3, $surnameId => 2 ];
 
-        // Source signature length must be >= effective sum: max(2,3)*1 + max(2,2)*2 = 3 + 4 = 7
-        $sourceSig = 'aaejnry'; // makeSignature('Jane Ray')
+        // Target signature length must be >= effective sum: max(2,3)*1 + max(2,2)*2 = 3 + 4 = 7
+        $targetSig = 'aaejnry'; // makeSignature('Jane Ray')
 
-        $kept = $this->svc->filterPatternsForSource($sourceSig, $patterns, $stored, $matching);
-        $this->assertTrue($kept->contains('id', $pMulti->id), 'Pattern should be accepted when effective minima equal source length');
+        $kept = $this->svc->filterPatternsForTarget($targetSig, $patterns, $stored, $matching);
+        $this->assertTrue($kept->contains('id', $pMulti->id), 'Pattern should be accepted when effective minima equal target length');
 
-        // Now shorten source to force rejection (length 6)
+        // Now shorten target to force rejection (length 6)
         $shortSig = 'aejnry'; // makeSignature('Jean Ry')
-        $rejected = $this->svc->filterPatternsForSource($shortSig, $patterns, $stored, $matching);
-        $this->assertFalse($rejected->contains('id', $pMulti->id), 'Pattern should be rejected when effective minima exceed source length');
+        $rejected = $this->svc->filterPatternsForTarget($shortSig, $patterns, $stored, $matching);
+        $this->assertFalse($rejected->contains('id', $pMulti->id), 'Pattern should be rejected when effective minima exceed target length');
     }
 }

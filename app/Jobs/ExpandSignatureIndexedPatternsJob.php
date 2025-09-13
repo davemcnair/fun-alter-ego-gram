@@ -16,7 +16,7 @@ use Throwable;
  * ProcessPatternJob
  * ------------------
  * Purpose:
- *  Processes a single SourceNamePattern for a given SourceName by generating alter-ego phrases
+ *  Processes a single TargetNamePattern for a given TargetName by generating alter-ego phrases
  *  that fit the source name’s letters. This job is designed to run in small time/count slices so
  *  a queue worker can interleave work across many patterns without long-running tasks.
  *
@@ -25,7 +25,7 @@ use Throwable;
  *    or a count cap (phrases_per_step_cap). If a slice boundary is reached and some phrases were
  *    produced, the job re-dispatches itself to continue from where it left off (idempotent in
  *    practice because we use firstOrCreate on phrases and pattern status tracking).
- *  - Status flow: SourceNamePattern moves pending → processing → done. The parent SourceName updates
+ *  - Status flow: TargetNamePattern moves pending → processing → done. The parent TargetName updates
  *    current_pattern, patterns_searched, elapsed_seconds, and transitions to completed when no
  *    pending/processing patterns remain.
  *  - Inputs/Outputs: The job reads words matched to the source’s signature via WordMatchService,
@@ -56,7 +56,7 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
     public int $tries = 3;
 
 
-    public function __construct(public int $sourceNamePatternId)
+    public function __construct(public int $targetNamePatternId)
     {
     }
 
@@ -75,11 +75,11 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
      */
     public function tags(): array
     {
-        return ['expand-signatureIndexed-patterns', 'source-name-pattern:'.$this->sourceNamePatternId];
+        return ['expand-signatureIndexed-patterns', 'source-name-pattern:'.$this->targetNamePatternId];
     }
 
     /**
-     * Handle filling pattern signatures for the associated SourceNamePattern.
+     * Handle filling pattern signatures for the associated TargetNamePattern.
      */
     public function handle(
         PhraseBuilderService $phraseBuilderService
@@ -88,7 +88,7 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
         // Delegate to extracted service to perform the expansion logic while
         // keeping the same method signature for backwards compatibility in tests.
         app(ExpandSignatureIndexedPatternService::class)
-            ->expandWithBuilder($this->sourceNamePatternId, $phraseBuilderService);
+            ->expandWithBuilder($this->targetNamePatternId, $phraseBuilderService);
     }
 
     /**

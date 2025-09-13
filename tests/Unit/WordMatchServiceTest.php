@@ -83,27 +83,27 @@ class WordMatchServiceTest extends TestCase
         $this->svc->addTokenWord('forename', 'li', 'boring'); // new signature, not deferred
         $this->svc->addTokenWord('surname', 'ray', 'ok'); // new signature, not deferred
 
-        $sourceSig = $this->svc->makeSignature('jane li ray');
+        $targetSig = $this->svc->makeSignature('jane li ray');
 
         // Default: include_boring=false, no list filter => 2 matches (jane fun, ray ok)
-        $matches = $this->svc->findMatchingTokenSignatureWords($sourceSig);
+        $matches = $this->svc->findMatchingTokenSignatureWords($targetSig);
         $this->assertCount(2, $matches);
 
         // Include boring => should include 'li' boring (not deferred)
-        $matchesWithBoring = $this->svc->findMatchingTokenSignatureWords($sourceSig, ['include_boring' => true]);
+        $matchesWithBoring = $this->svc->findMatchingTokenSignatureWords($targetSig, ['include_boring' => true]);
         $this->assertCount(3, $matchesWithBoring);
 
         // Filter by token forename (default exclude boring)
-        $forenameMatches = $this->svc->findMatchingTokenSignatureWords($sourceSig, ['token' => 'forename']);
+        $forenameMatches = $this->svc->findMatchingTokenSignatureWords($targetSig, ['token' => 'forename']);
         $this->assertCount(1, $forenameMatches);
         $this->assertTrue($forenameMatches->every(fn($r) => $r->list_type !== 'boring'));
 
         // Filter by token forename and include boring
-        $forenameMatchesWithBoring = $this->svc->findMatchingTokenSignatureWords($sourceSig, ['token' => 'forename', 'include_boring' => true]);
+        $forenameMatchesWithBoring = $this->svc->findMatchingTokenSignatureWords($targetSig, ['token' => 'forename', 'include_boring' => true]);
         $this->assertCount(2, $forenameMatchesWithBoring);
 
         // Filter by list fun
-        $funOnly = $this->svc->findMatchingTokenSignatureWords($sourceSig, ['list' => 'fun']);
+        $funOnly = $this->svc->findMatchingTokenSignatureWords($targetSig, ['list' => 'fun']);
         $this->assertCount(1, $funOnly);
         $this->assertSame('fun', $funOnly->first()->list_type);
 
@@ -126,8 +126,8 @@ class WordMatchServiceTest extends TestCase
 
         $tsws = TokenSignatureWord::with('tokenSignature.token')->get();
 
-        $sourceSig = $this->svc->makeSignature('ann ray'); // can cover all above
-        [$stored, $matching] = $this->svc->extractMatchingTokenWordMinimumLengths($sourceSig, $tsws);
+        $targetSig = $this->svc->makeSignature('ann ray'); // can cover all above
+        [$stored, $matching] = $this->svc->extractMatchingTokenWordMinimumLengths($targetSig, $tsws);
 
         // Stored mins come from tokens table
         $forenameId = Token::where('name', 'forename')->first()->id;
@@ -135,7 +135,7 @@ class WordMatchServiceTest extends TestCase
         $this->assertSame(3, $stored[$forenameId]);
         $this->assertSame(2, $stored[$surnameId]);
 
-        // Matching min lengths: min per token of signature lengths that are subset of source signature
+        // Matching min lengths: min per token of signature lengths that are subset of target signature
         $this->assertSame(3, $matching[$forenameId]); // min(3,4) => 3
         $this->assertSame(2, $matching[$surnameId]);  // min(2,3) => 2
     }

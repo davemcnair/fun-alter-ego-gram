@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
-class SourceNameMatchedWord extends Model
+class TargetTokenSignatureWord extends Model
 {
 
     protected $fillable = [
@@ -16,7 +16,7 @@ class SourceNameMatchedWord extends Model
 
     public function sourceName(): BelongsTo
     {
-        return $this->belongsTo(SourceName::class);
+        return $this->belongsTo(TargetName::class);
     }
 
     public function tokenSignatureWord(): BelongsTo

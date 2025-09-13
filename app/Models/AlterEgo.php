@@ -15,29 +15,29 @@ class AlterEgo extends Model
 
     public function signatureIndexedPattern(): BelongsTo
     {
-        return $this->belongsTo(SignatureIndexedPattern::class);
+        return $this->belongsTo(TargetSignatureIndexedPattern::class);
     }
 
     // Computed attributes to expose denormalized relations without DB columns
-    public function getSourceNamePatternIdAttribute(): ?int
+    public function getTargetNamePatternIdAttribute(): ?int
     {
-        return $this->signatureIndexedPattern?->source_name_pattern_id;
+        return $this->signatureIndexedPattern?->target_name_pattern_id;
     }
 
-    public function getSourceNameIdAttribute(): ?int
+    public function getTargetNameIdAttribute(): ?int
     {
-        // Derive SourceName via the SourceNamePattern relation
-        $snp = $this->signatureIndexedPattern?->sourceNamePattern;
-        return $snp?->source_name_id;
+        // Derive TargetName via the TargetNamePattern relation
+        $snp = $this->signatureIndexedPattern?->targetNamePattern;
+        return $snp?->target_name_id;
     }
 
     /**
-     * Inverse many-to-many to SourceNameMatchedWord via pivot source_name_matched_words_alter_egos
+     * Inverse many-to-many to TargetNameMatchedWord via pivot source_name_matched_words_alter_egos
      */
     public function sourceNameMatchedWords(): BelongsToMany
     {
         return $this->belongsToMany(
-            SourceNameMatchedWord::class,
+            TargetNameMatchedWord::class,
             'source_name_matched_words_alter_egos',
             'alter_ego_id',
             'source_name_matched_word_id'

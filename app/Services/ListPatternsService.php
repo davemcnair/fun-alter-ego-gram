@@ -66,21 +66,21 @@ class ListPatternsService
     /**
      * Filter patterns for a given source by effective word match minimums.
      */
-    public function filterPatternsForSource(
-        string $sourceSignature,
+    public function filterPatternsForTarget(
+        string $targetSignature,
         Collection $patterns,
         array $storedWordBasedMins,
         array $matchingWordBasedMins
     ): Collection
     {
-        $sourceLength = strlen($sourceSignature);
+        $targetLength = strlen($targetSignature);
 
         $tokenIdsByName = Token::all()->pluck('id', 'name')->toArray();
 
         return $patterns->filter(function ($row) use (
             $storedWordBasedMins,
             $matchingWordBasedMins,
-            $sourceLength,
+            $targetLength,
             $tokenIdsByName
         ) {
             $dynamicMin = 0;
@@ -101,13 +101,13 @@ class ListPatternsService
                     $matched = (int)$matchingWordBasedMins[$id];
                     $effectiveMin = max($stored, $matched);
                     $dynamicMin += $effectiveMin * $count;
-                    if ($dynamicMin > $sourceLength) {
+                    if ($dynamicMin > $targetLength) {
                         return false; // early exit if already exceeds source length
                     }
                 }
             }
 
-            return $dynamicMin <= $sourceLength;
+            return $dynamicMin <= $targetLength;
         });
     }
 

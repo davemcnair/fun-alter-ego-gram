@@ -4,9 +4,9 @@ namespace App\Services;
 
 use App\Jobs\ExpandSignatureIndexedPatternsJob;
 use App\Models\Pattern;
-use App\Models\SignatureIndexedPattern;
-use App\Models\SourceName;
-use App\Models\SourceNamePattern;
+use App\Models\TargetSignatureIndexedPattern;
+use App\Models\TargetName;
+use App\Models\TargetNamePattern;
 use App\Traits\HelpsMatchWords;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -16,34 +16,34 @@ class FillPatternSignaturesService
     use HelpsMatchWords;
 
     /**
-     * Execute the fill step for a SourceNamePattern using the provided collaborator services.
+     * Execute the fill step for a TargetNamePattern using the provided collaborator services.
      */
     public function fillWithServices(
-        int $sourceNamePatternId,
+        int $targetNamePatternId,
         WordMatchService $wordMatchService,
         SignatureFillService $signatureFillService
     ): void {
-        $sourceNamePattern = SourceNamePattern::with('sourceName')
-            ->find($sourceNamePatternId);
-        if (!$sourceNamePattern) {
+        $targetNamePattern = TargetNamePattern::with('sourceName')
+            ->find($targetNamePatternId);
+        if (!$targetNamePattern) {
             return; // Nothing to do
         }
-        /** @var SourceName $source */
-        $source = $sourceNamePattern->sourceName;
+        /** @var TargetName $target */
+        $target = $targetNamePattern->targetName;
 
         // If already done, skip
-        if ($sourceNamePattern->status === 'done') return;
+        if ($targetNamePattern->status === 'done') return;
 
         // Atomically claim the pattern if it's pending
-        $sourceNamePattern->status = 'processing';
-        $sourceNamePattern->save();
+        $targetNamePattern->status = 'processing';
+        $targetNamePattern->save();
 
-        $patternTokenPositions = Pattern::parsePatternTokenSlotPositions((string)$sourceNamePattern->pattern->template);
+        $patternTokenPositions = Pattern::parsePatternTokenSlotPositions((string)$targetNamePattern->pattern->template);
 
-        $tokenSignatureWords = $wordMatchService->findMatchingTokenSignatureWords((string)$source->signature);
+        $tokenSignatureWords = $wordMatchService->findMatchingTokenSignatureWords((string)$target->signature);
         if ($tokenSignatureWords->count() === 0) {
             // Fallback: query directly if service returns no matches (defensive against test setups)
-            $srcSig = (string)$source->signature;
+            $srcSig = (string)$target->signature;
             $srcLen = strlen($srcSig);
             $tokenSignatureWords = \App\Models\TokenSignatureWord::query()
                 ->with(['tokenSignature.token'])
@@ -61,24 +61,24 @@ class FillPatternSignaturesService
         $signaturePatterns = [];
         $count = 0;
         foreach ($signatureFillService->generateSignaturePatterns(
-            (string)$source->signature,
+            (string)$target->signature,
             $patternTokenPositions,
             $tokenSignatureWords
         ) as $signaturePattern) {
             $signaturePatterns[] = [
-                'source_name_pattern_id' => $sourceNamePattern->id,
+                'source_name_pattern_id' => $targetNamePattern->id,
                 'pattern' => $signaturePattern,
             ];
             $count++;
             if ($count % 1000 === 0) {
-                try { Log::info($source->name . '/' . ((string)$sourceNamePattern->pattern->template) . ' :' . $count . ' filled'); } catch (Throwable $e) {}
-                SignatureIndexedPattern::insert($signaturePatterns);
+                try { Log::info($target->name . '/' . ((string)$targetNamePattern->pattern->template) . ' :' . $count . ' filled'); } catch (Throwable $e) {}
+                TargetSignatureIndexedPattern::insert($signaturePatterns);
                 $signaturePatterns = [];
             }
         }
         // If generator yielded nothing, try a simple greedy fallback to ensure at least one row when possible
         if ($count === 0 && !empty($patternTokenPositions)) {
-            $remaining = $this->letterCountsFromSignature((string)$source->signature);
+            $remaining = $this->letterCountsFromSignature((string)$target->signature);
             $chosen = [];
             foreach ($patternTokenPositions as $pos => $tokenId) {
                 $sig = null;
@@ -103,8 +103,8 @@ class FillPatternSignaturesService
                     $parts[] = '{'.$tokId.':'.$sig.'}';
                 }
                 $fallbackPattern = implode('', $parts);
-                SignatureIndexedPattern::insert([[
-                    'source_name_pattern_id' => $sourceNamePattern->id,
+                TargetSignatureIndexedPattern::insert([[
+                    'source_name_pattern_id' => $targetNamePattern->id,
                     'pattern' => $fallbackPattern,
                 ]]);
                 $count = 1;
@@ -112,12 +112,12 @@ class FillPatternSignaturesService
         }
         // Flush any remaining batched rows
         if (!empty($signaturePatterns)) {
-            SignatureIndexedPattern::insert($signaturePatterns);
+            TargetSignatureIndexedPattern::insert($signaturePatterns);
         }
-        try { Log::info($source->name . '/' . ((string)$sourceNamePattern->pattern->template) . ' :' . $count . ' fills completed'); } catch (Throwable $e) {}
+        try { Log::info($target->name . '/' . ((string)$targetNamePattern->pattern->template) . ' :' . $count . ' fills completed'); } catch (Throwable $e) {}
         // Dispatch expansion on the configured queue if any
         $queue = config('search.queue');
-        $dispatch = ExpandSignatureIndexedPatternsJob::dispatch($sourceNamePattern->id);
+        $dispatch = ExpandSignatureIndexedPatternsJob::dispatch($targetNamePattern->id);
         if (!empty($queue)) {
             $dispatch->onQueue($queue);
         }

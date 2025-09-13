@@ -3,9 +3,9 @@
 namespace Tests\Unit;
 
 use App\Models\Pattern;
-use App\Models\SignatureIndexedPattern;
-use App\Models\SourceName;
-use App\Models\SourceNamePattern;
+use App\Models\TargetSignatureIndexedPattern;
+use App\Models\Target;
+use App\Models\TargetPattern;
 use App\Models\Token;
 use App\Services\SignatureFillService;
 use App\Services\WordMatchService;
@@ -31,15 +31,15 @@ class FillPatternSignaturesServiceTest extends TestCase
 
     public function test_creates_signature_indexed_patterns_for_simple_template(): void
     {
-        // Arrange a source and one pattern
-        $source = SourceName::create([
+        // Arrange a target and one pattern
+        $target = Target::create([
             'name' => 'Adam Vinci',
             'signature' => 'aadmciinv',
             'status' => 'running',
         ]);
         $pattern = Pattern::create(['template' => '{forename}{surname}']);
-        $snp = SourceNamePattern::create([
-            'source_name_id' => $source->id,
+        $snp = TargetPattern::create([
+            'target_id' => $target->id,
             'pattern_id' => $pattern->id,
             'popularity_rank' => 1,
             'status' => 'pending',
@@ -56,7 +56,7 @@ class FillPatternSignaturesServiceTest extends TestCase
             ->fillWithServices($snp->id, app(WordMatchService::class), app(SignatureFillService::class));
 
         // Assert: signature-indexed patterns were considered; if any exist, format is correct
-        $rows = SignatureIndexedPattern::where('source_name_pattern_id', $snp->id)->get();
+        $rows = TargetSignatureIndexedPattern::where('target_pattern_id', $snp->id)->get();
         $this->assertGreaterThanOrEqual(0, $rows->count(), 'Fill should not error');
         if ($rows->count() > 0) {
             $this->assertMatchesRegularExpression('/\{[0-9]+:[a-z]+\}\{[0-9]+:[a-z]+\}/', $rows->first()->pattern);
@@ -65,14 +65,14 @@ class FillPatternSignaturesServiceTest extends TestCase
 
     public function test_no_matches_creates_no_rows_and_does_not_error(): void
     {
-        $source = SourceName::create([
+        $target = Target::create([
             'name' => 'Zzz',
             'signature' => 'zzz',
             'status' => 'running',
         ]);
         $pattern = Pattern::create(['template' => '{forename}{surname}']);
-        $snp = SourceNamePattern::create([
-            'source_name_id' => $source->id,
+        $snp = TargetPattern::create([
+            'target_id' => $target->id,
             'pattern_id' => $pattern->id,
             'popularity_rank' => 1,
             'status' => 'pending',
@@ -83,7 +83,7 @@ class FillPatternSignaturesServiceTest extends TestCase
         app(FillPatternSignaturesService::class)
             ->fillWithServices($snp->id, app(WordMatchService::class), app(SignatureFillService::class));
 
-        $rows = SignatureIndexedPattern::where('source_name_pattern_id', $snp->id)->count();
+        $rows = TargetSignatureIndexedPattern::where('target_pattern_id', $snp->id)->count();
         $this->assertSame(0, $rows, 'Should not create any rows when there are no matches');
     }
 }

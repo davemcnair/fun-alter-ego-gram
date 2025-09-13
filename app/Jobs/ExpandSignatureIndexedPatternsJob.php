@@ -2,12 +2,8 @@
 
 namespace App\Jobs;
 
-use App\Models\SourceName;
-use App\Models\TokenSignature;
-use App\Models\AlterEgo;
-use App\Models\Token;
 use App\Services\PhraseBuilderService;
-use App\Models\SourceNamePattern;
+use App\Services\ExpandSignatureIndexedPatternService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -89,79 +85,10 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
         PhraseBuilderService $phraseBuilderService
     ): void
     {
-        // Load SNP with parent SourceName and signatureIndexed patterns
-        $sourceNamePattern = SourceNamePattern::with(['sourceName','signatureIndexedPatterns'])
-            ->find($this->sourceNamePatternId);
-        if (!$sourceNamePattern) return;
-        /** @var SourceName $source */
-        $source = $sourceNamePattern->sourceName;
-
-        // If already done, skip
-        if ($sourceNamePattern->status === 'done') return;
-
-        // Claim the pattern for expansion (reuse existing allowed status)
-        $sourceNamePattern->status = 'processing';
-        $sourceNamePattern->save();
-
-        // Build slot order from the pattern template for formatting
-        $slotOrder = $this->buildSlotOrderFromTemplate((string)$sourceNamePattern->pattern->template);
-
-        $createdCount = 0;
-        foreach ($sourceNamePattern->signatureIndexedPatterns as $signatureIndexedPattern) {
-            $tokenIdSignaturePairs = $this->parseSignatureIndexedPattern($signatureIndexedPattern->pattern);
-
-            $slotWords = [];
-            foreach ($tokenIdSignaturePairs as $pair) {
-                $ts = TokenSignature::query()
-                    ->where('token_id', $pair['token_id'])
-                    ->where('signature', $pair['signature'])
-                    ->first();
-
-                    // Prefer 'fun' list, then 'ok', then any other; only non-deferred words
-                    $nonDeferredWords = $ts->words()
-                        ->where('is_deferred', false)
-                        ->orderByRaw("CASE list_type WHEN 'fun' THEN 0 WHEN 'ok' THEN 1 ELSE 2 END")
-                        ->pluck('word');
-                    $slotWords[] = $nonDeferredWords;
-              
-            }
-
-            $phrase = $phraseBuilderService->formatPhraseBySlots($slotWords, $slotOrder, false);
-
-            // Persist as AlterEgo (idempotent)
-            AlterEgo::firstOrCreate(
-                [
-                    'signature_indexed_pattern_id' => $signatureIndexedPattern->id,
-                    'phrase' => $phrase,
-                ],
-//                [
-//                    'source_name_id' => $source->id,
-//                ]
-            );
-            $createdCount++;
-        }
-
-        // Mark as done after expansion
-        $sourceNamePattern->status = 'done';
-        $sourceNamePattern->save();
-
-        // Update parent SourceName status only (completed when no pending/processing remain)
-        try {
-            $remaining = SourceNamePattern::where('source_name_id', $source->id)
-                ->whereIn('status', ['pending', 'processing'])
-                ->count();
-            if ($remaining === 0) {
-                $source->status = 'completed';
-            } else if ($source->status !== 'paused') {
-                $source->status = 'running';
-            }
-            $source->save();
-        } catch (Throwable $e) {
-            try { Log::warning('Failed to update SourceName status for '.$source->id.': '.$e->getMessage()); } catch (Throwable $e2) {}
-        }
-
-        // Optional log
-        try { Log::info('Expanded signatureIndexed patterns for SNP '.$sourceNamePattern->id.' => '.$createdCount.' phrase(s).'); } catch (Throwable $e) {}
+        // Delegate to extracted service to perform the expansion logic while
+        // keeping the same method signature for backwards compatibility in tests.
+        app(ExpandSignatureIndexedPatternService::class)
+            ->expandWithBuilder($this->sourceNamePatternId, $phraseBuilderService);
     }
 
     /**

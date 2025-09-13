@@ -2,7 +2,6 @@
 
 namespace Tests\Unit;
 
-use App\Jobs\ExpandSignatureIndexedPatternsJob;
 use App\Models\AlterEgo;
 use App\Models\Pattern;
 use App\Models\SignatureIndexedPattern;
@@ -11,10 +10,11 @@ use App\Models\SourceNamePattern;
 use App\Models\Token;
 use App\Services\PhraseBuilderService;
 use App\Services\WordMatchService;
+use App\Services\ExpandSignatureIndexedPatternService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-class ExpandSignatureIndexedPatternsJobTest extends TestCase
+class ExpandSignatureIndexedPatternsServiceTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -56,9 +56,9 @@ class ExpandSignatureIndexedPatternsJobTest extends TestCase
         // So we provide a single FUN representative for the surname signature.
         $wordService->addTokenWord('surname','InVic', 'fun');
 
-        // Act: run job
-        $job = new ExpandSignatureIndexedPatternsJob($snp->id);
-        $job->handle(app(PhraseBuilderService::class));
+        // Act: run expansion via service
+        app(ExpandSignatureIndexedPatternService::class)
+            ->expandWithBuilder($snp->id, app(PhraseBuilderService::class));
 
         // Assert: an AlterEgo was created with the fun-preferred surname and proper capitalization
         $ae = AlterEgo::where('signature_indexed_pattern_id', $source->id)->first();
@@ -98,9 +98,9 @@ class ExpandSignatureIndexedPatternsJobTest extends TestCase
         $wordService->addTokenWord('surname','ray', 'fun');
         $wordService->addTokenWord('surname','vinci', 'ok');
 
-        // Act
-        $job = new ExpandSignatureIndexedPatternsJob($snp->id);
-        $job->handle(app(PhraseBuilderService::class));
+        // Act via service
+        app(ExpandSignatureIndexedPatternService::class)
+            ->expandWithBuilder($snp->id, app(PhraseBuilderService::class));
 
         // Assert: hyphenated and capitalized surnames
         $ae = AlterEgo::where('source_name_id', $source->id)->first();

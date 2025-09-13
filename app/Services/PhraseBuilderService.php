@@ -22,7 +22,7 @@ final class PhraseBuilderService
     public function formatPhraseBySlots(array $slotWords, array $slotOrder, bool $displayMultipleVariants = false): string
     {
         $parts = [];
-        $wi = 0; // index into $words
+        $wi = 0; // index into $slotWords
         $n = count($slotOrder);
         for ($i = 0; $i < $n; $i++) {
             $slot = $slotOrder[$i];
@@ -30,20 +30,20 @@ final class PhraseBuilderService
 
             if (in_array($name, ['forename','surname'])) {
                 $variants = [];
-                // Collect this and any subsequent consecutive multi slots
+                // Collect this and any subsequent consecutive slots of the same token type
                 $j = $i;
                 while ($j < $n && strtolower((string)($slotOrder[$j]['name'] ?? '')) === $name) {
-                    $word = $slotWords[$wi] ?? '';
-                    // Capitalize: first letter uppercase, rest lowercase
+                    $word = $this->firstOf($slotWords[$wi] ?? '');
+                    // Capitalize: first letter uppercase, rest lowercase with in-word title casing
                     $word = $this->capitalizeWord($word);
                     if ($word !== '') $variants[] = $word;
                     $wi++; $j++;
                 }
-                // Move outer loop to the last consumed surname slot
+                // Move outer loop to the last consumed slot
                 $i = $j - 1;
                 if (!empty($variants)) {
                     if ($displayMultipleVariants && count($variants) === 2) {
-                        // If the surname block is at the end of the phrase, list both orders for display
+                        // For display, list both hyphen variants for exactly two surnames
                         $ab = $variants[0] . '-' . $variants[1];
                         $ba = $variants[1] . '-' . $variants[0];
                         $parts[] = $ab . ', ' . $ba;
@@ -52,12 +52,31 @@ final class PhraseBuilderService
                     }
                 }
             } else {
-                $word = $slotWords[$wi] ?? '';
+                $word = $this->firstOf($slotWords[$wi] ?? '');
                 if ($word !== '') $parts[] = $word;
                 $wi++;
             }
         }
         return trim(implode(' ', $parts));
+    }
+
+    /**
+     * Normalize a slot value (string|array|Traversable) to its first string element.
+     */
+    private function firstOf(mixed $value): string
+    {
+        if (is_string($value)) return $value;
+        if (is_array($value)) return (string) (array_values($value)[0] ?? '');
+        if ($value instanceof \Traversable) {
+            foreach ($value as $v) { return (string)$v; }
+            return '';
+        }
+        // Collections from Laravel also implement Traversable, but keep a safe fallback
+        if (is_object($value) && method_exists($value, 'first')) {
+            $first = $value->first();
+            return $first !== null ? (string)$first : '';
+        }
+        return '';
     }
 
     private function capitalizeWord(string $w): string

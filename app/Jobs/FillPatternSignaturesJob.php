@@ -2,11 +2,8 @@
 
 namespace App\Jobs;
 
-use App\Models\Pattern;
-use App\Models\SignatureIndexedPattern;
-use App\Models\SourceName;
+use App\Services\FillPatternSignaturesService;
 use App\Services\SignatureFillService;
-use App\Models\SourceNamePattern;
 use App\Services\WordMatchService;
 use App\Traits\HelpsMatchWords;
 use Illuminate\Bus\Queueable;
@@ -91,54 +88,9 @@ class FillPatternSignaturesJob implements ShouldQueue
         SignatureFillService $signatureFillService
     ): void
     {
-        $sourceNamePattern = SourceNamePattern::with('sourceName')
-            ->find($this->sourceNamePatternId);
-        if (!$sourceNamePattern) {
-            return; // Nothing to do
-        }
-        /** @var SourceName $source */
-        $source = $sourceNamePattern->sourceName;
-
-        // If already done, skip
-        if ($sourceNamePattern->status === 'done') return;
-
-        // Atomically claim the pattern if it's pending
-        $sourceNamePattern->status = 'processing';
-        $sourceNamePattern->save();
-
-        $patternTokenPositions = Pattern::parsePatternTokenSlotPositions((string)$sourceNamePattern->pattern->template);
-
-        $tokenSignatureWords = $wordMatchService->findMatchingTokenSignatureWords((string)$source->signature);
-
-        $signaturePatterns = [];
-        $count = 0;
-        foreach ($signatureFillService->generateSignaturePatterns(
-            (string)$source->signature,
-            $patternTokenPositions,
-            $tokenSignatureWords
-        ) as $signaturePattern) {
-            $signaturePatterns[] = [
-                'source_name_pattern_id' => $sourceNamePattern->id,
-                'pattern' => $signaturePattern,
-            ];
-            $count++;
-            if ($count % 1000 === 0) {
-                try { Log::info($source->name . '/' . ((string)$sourceNamePattern->pattern->template) . ' :' . $count . ' filled'); } catch (Throwable $e) {}
-                SignatureIndexedPattern::insert($signaturePatterns);
-                $signaturePatterns = [];
-            }
-        }
-        // Flush any remaining batched rows
-        if (!empty($signaturePatterns)) {
-            SignatureIndexedPattern::insert($signaturePatterns);
-        }
-        try { Log::info($source->name . '/' . ((string)$sourceNamePattern->pattern->template) . ' :' . $count . ' fills completed'); } catch (Throwable $e) {}
-        // Dispatch expansion on the configured queue if any
-        $queue = config('search.queue');
-        $dispatch = ExpandSignatureIndexedPatternsJob::dispatch($sourceNamePattern->id);
-        if (!empty($queue)) {
-            $dispatch->onQueue($queue);
-        }
+        // Delegate to extracted service while preserving signature for tests
+        app(FillPatternSignaturesService::class)
+            ->fillWithServices($this->sourceNamePatternId, $wordMatchService, $signatureFillService);
     }
 
 }

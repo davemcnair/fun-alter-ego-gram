@@ -86,7 +86,9 @@ class SourceNameController extends Controller
         $data = $request->validate([
             'phrase' => ['required','string'],
         ]);
-        AlterEgo::where('source_name_id', $source_name->id)
+        AlterEgo::whereHas('signatureIndexedPattern.sourceNamePattern', function($q) use ($source_name){
+            $q->where('source_name_id', $source_name->id);
+        })
             ->where('phrase', $data['phrase'])
             ->update(['starred' => true]);
         return response()->json(['ok' => true] + $this->lookupProgressPayload($source_name->fresh())) ;
@@ -97,7 +99,9 @@ class SourceNameController extends Controller
         $data = $request->validate([
             'phrase' => ['required','string'],
         ]);
-        AlterEgo::where('source_name_id', $source_name->id)
+        AlterEgo::whereHas('signatureIndexedPattern.sourceNamePattern', function($q) use ($source_name){
+            $q->where('source_name_id', $source_name->id);
+        })
             ->where('phrase', $data['phrase'])
             ->update(['starred' => false]);
         return response()->json(['ok' => true] + $this->lookupProgressPayload($source_name->fresh())) ;

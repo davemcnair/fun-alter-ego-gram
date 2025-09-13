@@ -61,7 +61,7 @@ class ExpandSignatureIndexedPatternsServiceTest extends TestCase
             ->expandWithBuilder($snp->id, app(PhraseBuilderService::class));
 
         // Assert: an AlterEgo was created with the fun-preferred surname and proper capitalization
-        $ae = AlterEgo::where('signature_indexed_pattern_id', $source->id)->first();
+        $ae = $snp->alterEgos()->first();
         $this->assertNotNull($ae, 'AlterEgo should have been created');
         $this->assertSame($snp->id, $ae->source_name_pattern_id);
         // PhraseBuilderService capitalizes tokens; expect "Adam Invic"
@@ -103,7 +103,7 @@ class ExpandSignatureIndexedPatternsServiceTest extends TestCase
             ->expandWithBuilder($snp->id, app(PhraseBuilderService::class));
 
         // Assert: hyphenated and capitalized surnames
-        $ae = AlterEgo::where('source_name_id', $source->id)->first();
+        $ae = $snp->alterEgos()->first();
         $this->assertNotNull($ae);
         $this->assertSame('Ray-Vinci', $ae->phrase);
         $this->assertSame('done', $snp->fresh()->status);

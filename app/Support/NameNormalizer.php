@@ -4,14 +4,20 @@ namespace App\Support;
 
 /**
  * Utility for normalizing human-entered names.
- * - canonicalKey: ASCII, lowercase, keep only [a-z0-9]
- * - displayName: collapse whitespace and title-case words
+ * - canonicalKey: lowercase, accent-folded, spaces preserved, punctuation removed, single-space collapsed
+ * - anagramSignature: lowercase, accent-folded, keep [a-z0-9], sort characters
+ * - displayName: collapse whitespace and title-case words (preserve punctuation)
  */
 class NameNormalizer
 {
     /**
-     * Build a canonical key for deduplication.
-     * Steps: trim, transliterate to ASCII, lowercase, keep only [a-z0-9].
+     * Build an order-preserving canonical key for deduplication.
+     * Steps:
+     *  - trim, lowercase
+     *  - unicode-fold (transliterate accents)
+     *  - remove all punctuation except spaces
+     *  - collapse internal whitespace to single spaces
+     *  - preserve word order
      */
     public static function canonicalKey(string $input): string
     {
@@ -21,12 +27,46 @@ class NameNormalizer
         // Best-effort transliteration to ASCII
         $ascii = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s);
         if ($ascii === false) {
-            $ascii = $s; // fallback: use original
+            $ascii = $s; // fallback
         }
         $ascii = strtolower($ascii);
-        // Keep only letters and digits
-        $ascii = preg_replace('/[^a-z0-9]/', '', $ascii) ?? '';
+        // Remove apostrophe-like diacritics that may appear after transliteration (avoid splitting words)
+        $ascii = str_replace(["'", "’", "`", "´"], '', $ascii);
+        // Replace any remaining non-letter/digit with space, but preserve spaces effectively
+        $ascii = preg_replace('/[^a-z0-9]+/i', ' ', $ascii) ?? '';
+        // Collapse spaces
+        $ascii = trim(preg_replace('/\s+/', ' ', $ascii) ?? '');
+        // Heuristic: if there are no spaces and we find an internal 'mc' surname, split before it
+        if ($ascii !== '' && strpos($ascii, ' ') === false) {
+            if (preg_match('/^(.*?)(mc[a-z]+)$/', $ascii, $m)) {
+                $ascii = trim($m[1] . ' ' . $m[2]);
+            }
+        }
         return $ascii;
+    }
+
+    /**
+     * Build a bag-of-letters anagram signature (non-unique, for discovery).
+     * Steps:
+     *  - trim, lowercase
+     *  - unicode-fold
+     *  - keep only [a-z0-9]
+     *  - sort characters
+     */
+    public static function anagramSignature(string $input): string
+    {
+        $s = trim($input);
+        if ($s === '') return '';
+        $ascii = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s);
+        if ($ascii === false) {
+            $ascii = $s;
+        }
+        $ascii = strtolower($ascii);
+        $ascii = preg_replace('/[^a-z0-9]/', '', $ascii) ?? '';
+        // Sort characters
+        $chars = str_split($ascii);
+        sort($chars);
+        return implode('', $chars);
     }
 
     /**

@@ -62,7 +62,7 @@ class TargetCreationServiceTest extends TestCase
         // Target was created and moved to running
         $target = $result['target']->fresh();
         $this->assertNotNull($target);
-        $this->assertSame('janeray', $target->signature); // canonical signature of "Jane Ray"
+        $this->assertSame('jane ray', $target->normalized_key); // order-preserving normalized key of "Jane Ray"
         $this->assertSame('running', $target->status);
 
         // No jobs dispatched when there are no pending patterns

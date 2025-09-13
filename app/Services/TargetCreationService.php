@@ -28,13 +28,14 @@ class TargetCreationService
     {
         $originalInput = $name;
         $name = trim($name);
-        $canonical = \App\Support\NameNormalizer::canonicalKey($name);
+        $normalized = \App\Support\NameNormalizer::canonicalKey($name);
+        $anagram = \App\Support\NameNormalizer::anagramSignature($name);
         $display = \App\Support\NameNormalizer::displayName($name);
 
-        // Validation: canonical signature must be non-empty
-        if ($canonical === '') {
+        // Validation: normalized key must be non-empty
+        if ($normalized === '') {
             \Log::warning('TargetCreationService.create invalid name after normalization', [
-                'original_input' => $originalInput,
+                'original_input' => mb_substr($originalInput, 0, 80),
             ]);
             abort(422, 'Name is invalid after normalization');
         }
@@ -42,19 +43,22 @@ class TargetCreationService
         // Log observability fields
         try {
             \Log::debug('TargetCreationService.create', [
-                'original_input' => $originalInput,
-                'canonical_signature' => $canonical,
-                'display_name' => $display,
+                'original_input' => mb_substr($originalInput, 0, 80),
+                'normalized_key' => $normalized,
+                'anagram_sig_len' => strlen($anagram),
             ]);
         } catch (\Throwable $e) {}
 
+        // Also populate legacy 'signature' column with normalized_key (order-preserving)
+        $legacySignature = $normalized;
+
         $target = Target::firstOrCreate(
-            ['signature' => $canonical],
-            ['name' => $display, 'status' => 'idle']
+            ['normalized_key' => $normalized],
+            ['name' => $display, 'anagram_signature' => $anagram, 'status' => 'idle', 'signature' => $legacySignature]
         );
 
-        // Compute sorted-letter signature from canonical for matching/filtering
-        $signature = $this->makeSignature($canonical);
+        // Compute sorted-letter signature from normalized for matching/filtering
+        $signature = $legacySignature;
 
         // Step 1: store matched words and get involved token ids
         $tokenSignatureWords = $this->wordMatchService->storeNewTargetMatchedTokenSignatureWords($target, $includeBoring);

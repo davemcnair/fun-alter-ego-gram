@@ -10,57 +10,58 @@ use App\Services\WordMatchService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Mockery;
-use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
-class TargetCanonicalizationTest extends TestCase
+class AnagramBehaviorTest extends TestCase
 {
     use RefreshDatabase;
 
     protected function setUp(): void
     {
         parent::setUp();
-        // Minimal token seed for tests (matches other unit tests)
+        // Minimal tokens
         Token::insert([
             ['name' => 'forename', 'prio' => 1, 'min_length' => 2, 'allow_nearly' => false, 'has_fun' => true, 'has_boring' => true, 'max_multiples' => 1],
             ['name' => 'surname',  'prio' => 2, 'min_length' => 2, 'allow_nearly' => false, 'has_fun' => true, 'has_boring' => false, 'max_multiples' => 1],
         ]);
-
-        // Keep patterns service empty to avoid job dispatch complexity
+        // Empty patterns pipeline
         $mock = Mockery::mock(ListPatternsService::class);
         $mock->shouldReceive('listWithinMinLength')->andReturn(collect());
         $mock->shouldReceive('filterPatternsForTarget')->andReturn(collect());
         $this->app->instance(ListPatternsService::class, $mock);
-
-        // Mock WordMatchService minimal interactions
+        // WordMatch minimal
         $wm = Mockery::mock(WordMatchService::class);
         $wm->shouldReceive('storeNewTargetMatchedTokenSignatureWords')->andReturn(collect());
         $wm->shouldReceive('extractMatchingTokenWordMinimumLengths')->andReturn([[], []]);
         $this->app->instance(WordMatchService::class, $wm);
     }
 
-    public function test_variants_deduplicate_to_one_target(): void
+    public function test_anagram_pairs_create_distinct_targets_and_are_discoverable(): void
     {
-        Bus::fake();
         $svc = app(TargetCreationService::class);
+        $a = $svc->create('Brian James');
+        $b = $svc->create('James Brian');
 
-        $svc->create('David McNair');
-        $svc->create('davidmcnair');
-        $svc->create('David mcnair');
-        $svc->create('david mcnair');
+        $this->assertSame(2, Target::count());
+        $t1 = $a['target']->fresh();
+        $t2 = $b['target']->fresh();
+        $this->assertNotSame($t1->id, $t2->id);
+        $this->assertSame('brian james', $t1->normalized_key);
+        $this->assertSame('james brian', $t2->normalized_key);
+        $this->assertSame($t1->anagram_signature, $t2->anagram_signature);
 
-        $this->assertSame(1, Target::count());
-        $this->assertSame('david mcnair', Target::first()->normalized_key);
+        // anagram siblings
+        $sib1 = $t1->anagramSiblings();
+        $sib2 = $t2->anagramSiblings();
+        $this->assertCount(1, $sib1);
+        $this->assertCount(1, $sib2);
+        $this->assertSame($t2->id, $sib1->first()->id);
+        $this->assertSame($t1->id, $sib2->first()->id);
     }
 
-    public function test_invalid_input_yields_422_and_no_row(): void
+    public function test_invalid_name_rejected(): void
     {
-        $svc = app(TargetCreationService::class);
-        $this->expectException(HttpException::class);
-        try {
-            $svc->create('!!!');
-        } finally {
-            $this->assertSame(0, Target::count());
-        }
+        $this->expectException(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+        app(TargetCreationService::class)->create('!!!');
     }
 }

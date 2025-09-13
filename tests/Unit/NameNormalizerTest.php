@@ -10,14 +10,16 @@ class NameNormalizerTest extends TestCase
     public function test_accents_are_folded_and_punctuation_preserved_in_display(): void
     {
         $input = 'José Álvarez';
-        $this->assertSame('josealvarez', NameNormalizer::canonicalKey($input));
+        $this->assertSame('jose alvarez', NameNormalizer::canonicalKey($input));
+        $this->assertSame('aaeejlorsvz', NameNormalizer::anagramSignature($input));
         $this->assertSame('José Álvarez', NameNormalizer::displayName($input));
     }
 
     public function test_punctuation_signature_and_display(): void
     {
         $input = "O’Connor-Smith"; // curly apostrophe
-        $this->assertSame('oconnorsmith', NameNormalizer::canonicalKey($input));
+        $this->assertSame('oconnor smith', NameNormalizer::canonicalKey($input));
+        $this->assertSame('chimnnooorst', NameNormalizer::anagramSignature($input));
         $this->assertSame("O’Connor-Smith", NameNormalizer::displayName($input));
     }
 }

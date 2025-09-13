@@ -146,8 +146,41 @@ class TargetController extends Controller
             'signatureIndexedPatternsCount' => $s->signatureIndexedPatterns()->count(),
             'alterEgosCount' => $s->alterEgos()->count(),
             'starred' => $s->alterEgos()->where('starred', true)->pluck('phrase')->all(),
-            'matchedWords' => $s->targetTokenSignatureWords,
+            'matchedWords' => $this->buildMatchedWords($s),
         ];
+    }
+
+    /**
+     * Build grouped token word matches for the Target Results page.
+     * Returns an array like [ tokenName => [ listType => [ [id, word], ... ] ] ]
+     */
+    private function buildMatchedWords(Target $s): array
+    {
+        // Eager load token and tokenSignature for grouping
+        $rows = $s->tokenSignatureWords()
+            ->with(['tokenSignature.token'])
+            ->get();
+        if ($rows->isEmpty()) return [];
+        $out = [];
+        foreach ($rows as $row) {
+            $token = optional($row->tokenSignature->token)->name ?? '';
+            if ($token === '') continue;
+            $list = (string)($row->list_type ?? '');
+            if ($list === '') continue;
+            if (!isset($out[$token])) $out[$token] = [];
+            if (!isset($out[$token][$list])) $out[$token][$list] = [];
+            $out[$token][$list][] = [
+                'id' => (int) $row->id,
+                'word' => (string) $row->word,
+            ];
+        }
+        // Sort words alphabetically within each group for stable UI
+        foreach ($out as $token => &$lists) {
+            foreach ($lists as $list => &$items) {
+                usort($items, function($a, $b){ return strcasecmp($a['word'] ?? '', $b['word'] ?? ''); });
+            }
+        }
+        return $out;
     }
 
     private function lookupPatternPayload(string $status, TargetPattern $pattern): array

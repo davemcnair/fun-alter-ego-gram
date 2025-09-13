@@ -39,6 +39,6 @@ class Target extends Model
             'target_token_signature_words',
             'target_id',
             'token_signature_word_id'
-        )->withTimestamps();
+        );
     }
 }

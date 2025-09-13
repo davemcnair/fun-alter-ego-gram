@@ -6,7 +6,7 @@ use App\Http\Controllers\PatternController;
 use App\Http\Controllers\WordController;
 
 Route::resource('targets', TargetController::class)->only(['index','store','show','destroy']);
-Route::post('/targets/bulk-destroy', [TargetController::class, 'bulkDestroy'])->name('target.bulk-destroy');
+Route::post('/targets/bulk-destroy', [TargetController::class, 'bulkDestroy'])->name('targets.bulk-destroy');
 
 // Pattern CRUD
 Route::resource('patterns', PatternController::class)->except(['show']);

@@ -126,30 +126,16 @@ class WordMatchService
                 return [
                     'target_id' => $target->id,
                     'token_signature_word_id' => $tsw->id,
-                    'created_at' => now(),
-                    'updated_at' => now(),
                 ];
-            });
-            DB::table('target_token_signature_words')->insert($rows->toArray());
+            })->toArray();
+            // Idempotent persistence to avoid unique constraint violations on reruns
+            DB::table('target_token_signature_words')->upsert(
+                $rows,
+                ['target_id', 'token_signature_word_id'],
+                []
+            );
         }
         return $matchingTokenSignatureWords;
-    }
-
-    /**
-     * Map TokenSignatureWord IDs to unique token_ids
-     * @param array<int,int> $tswIds
-     * @return array<int,int> list of unique token_ids
-     */
-    private function extractTokenIdsFromTsws(Collection $tsws): array
-    {
-        if (empty($tswIds)) return [];
-        $tokenIds = $tsws
-            ->pluck('token_id')
-            ->unique()
-            ->values()
-            ->all();
-        // Normalize to ints
-        return array_map('intval', $tokenIds);
     }
 
     public function extractMatchingTokenWordMinimumLengths(string $targetSignature, Collection $tokenSignatureWords): array

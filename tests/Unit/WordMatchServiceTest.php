@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Models\Target;
 use App\Models\Token;
 use App\Models\TokenSignature;
 use App\Models\TokenSignatureWord;
@@ -138,5 +139,41 @@ class WordMatchServiceTest extends TestCase
         // Matching min lengths: min per token of signature lengths that are subset of target signature
         $this->assertSame(3, $matching[$forenameId]); // min(3,4) => 3
         $this->assertSame(2, $matching[$surnameId]);  // min(2,3) => 2
+    }
+
+    public function test_auto_creates_token_when_valid_name_missing(): void
+    {
+        // Do not seed 'suffix' token; service should auto-create it when adding a word
+        $tsw = $this->svc->addTokenWord('suffix', 'jr', 'ok');
+        $this->assertInstanceOf(TokenSignatureWord::class, $tsw);
+        $this->assertTrue(Token::where('name', 'suffix')->exists(), 'Suffix token should be auto-created');
+    }
+
+    public function test_storeNewTargetMatchedTokenSignatureWords_inserts_pivot_and_respects_include_boring(): void
+    {
+        // Seed words: forename jane (fun), surname ray (ok), forename li (boring)
+        $this->svc->addTokenWord('forename', 'jane', 'fun');
+        $this->svc->addTokenWord('surname', 'ray', 'ok');
+        $this->svc->addTokenWord('forename', 'li', 'boring');
+
+        // Create first target and store matches without boring
+        $t1 = Target::create([
+            'name' => 'Jane Ray',
+            'signature' => $this->svc->makeSignature('jane ray'),
+            'status' => 'running',
+        ]);
+        $matched1 = $this->svc->storeNewTargetMatchedTokenSignatureWords($t1, false);
+        $this->assertCount(2, $matched1, 'Should return only non-boring matches');
+        $this->assertSame(2, $t1->fresh()->tokenSignatureWords()->count(), 'Pivot should contain 2 rows');
+
+        // Create second target and include boring
+        $t2 = Target::create([
+            'name' => 'Jane Li Ray',
+            'signature' => $this->svc->makeSignature('jane li ray'),
+            'status' => 'running',
+        ]);
+        $matched2 = $this->svc->storeNewTargetMatchedTokenSignatureWords($t2, true);
+        $this->assertCount(3, $matched2, 'Should include boring match when flag true');
+        $this->assertSame(3, $t2->fresh()->tokenSignatureWords()->count(), 'Pivot should contain 3 rows when including boring');
     }
 }

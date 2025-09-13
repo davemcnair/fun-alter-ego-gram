@@ -11,7 +11,9 @@ return new class extends Migration
         Schema::create('targets', function (Blueprint $table) {
             $table->id();
             $table->string('name');
-            $table->string('signature')->index();
+            // Enforce uniqueness by signature so duplicate names that map to the same
+            // signature will reuse the existing Target and skip reprocessing.
+            $table->string('signature')->unique();
             $table->string('status');
             $table->timestamps();
         });

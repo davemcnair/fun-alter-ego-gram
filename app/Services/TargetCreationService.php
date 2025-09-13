@@ -29,11 +29,10 @@ class TargetCreationService
         $name = trim($name);
         $signature = $this->makeSignature($name);
 
-        $target = Target::create([
-            'name' => $name,
-            'signature' => $signature,
-            'status' => 'idle',
-        ]);
+        $target = Target::firstOrCreate(
+            ['signature' => $signature],
+            ['name' => $name, 'status' => 'idle']
+        );
 
         // Step 1: store matched words and get involved token ids
         $tokenSignatureWords = $this->wordMatchService->storeNewTargetMatchedTokenSignatureWords($target, $includeBoring);

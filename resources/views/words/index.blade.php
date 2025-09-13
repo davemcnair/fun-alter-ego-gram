@@ -6,143 +6,199 @@
     <title>Words</title>
     <style>
         body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; padding: 0; background: #f7fafc; color: #111827; }
-        .container { max-width: 1000px; margin: 0 auto; padding: 24px; }
-        h1 { font-weight: 600; font-size: 24px; margin: 8px 0 16px; }
-        form.tools { background: #fff; border-radius: 8px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,.06); display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-        input[type=text] { padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 6px; min-width: 220px; }
-        button, a.btn { background: #2563eb; color: white; border: 0; border-radius: 6px; padding: 10px 14px; cursor: pointer; text-decoration: none; display:inline-block; }
-        button:hover, a.btn:hover { background: #1d4ed8; }
-        table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,.06); margin-top: 12px; }
-        th, td { padding: 10px 12px; border-bottom: 1px solid #e5e7eb; text-align: left; font-size: 14px; }
-        th { background: #f3f4f6; color: #374151; font-weight: 600; }
-        .row-actions { display:flex; gap:6px; }
-        nav.top { background:#111827; color:#fff; padding:8px 12px; }
-        nav.top a { color:#fff; margin-right:10px; text-decoration:none; }
-        .tag { background:#eef2ff; color:#3730a3; padding: 2px 8px; border-radius: 9999px; font-size: 12px; }
+        .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+        .card { background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,.06); margin-bottom: 16px; }
+        nav { background:#111827; color:#fff; padding:8px 12px; }
+        nav a { color:#fff; margin-right:10px; text-decoration:none; }
+        .muted { color: #6b7280; }
+        .tag { background: #eef2ff; color: #3730a3; padding: 2px 8px; border-radius: 9999px; font-size: 12px; }
+        table { width:100%; border-collapse: collapse; }
+        th, td { text-align: left; border-bottom: 1px solid #e5e7eb; padding: 8px; }
+        .btn { background: #2563eb; color: white; border: 0; border-radius: 6px; padding: 8px 12px; cursor: pointer; text-decoration:none; display:inline-block; }
+        .btn:hover { background: #1d4ed8; }
+        .btn-link { background:none; border:0; color:#2563eb; cursor:pointer; padding:0; }
+        .danger { background: #dc2626; }
+        .danger:hover { background: #b91c1c; }
+        .badge { display:inline-block; padding:2px 6px; border-radius:9999px; font-size:12px; }
+        .badge-green { background:#dcfce7; color:#166534; }
+        .badge-yellow { background:#fef9c3; color:#a16207; }
+        .flex { display:flex; gap:8px; align-items:center; }
+        .filters-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+        @media (max-width: 900px) { .filters-grid { grid-template-columns: 1fr 1fr; } }
     </style>
 </head>
 <body>
-<nav class="top">
-    <a href="{{ route('targets.index') }}">Source Names</a>
+<nav>
+    <a href="{{ route('targets.index') }}"><strong>Source Names</strong></a>
     <a href="{{ route('patterns.index') }}">Patterns</a>
-    <a href="{{ route('words.index') }}"><strong>Words</strong></a>
+    <a href="{{ route('words.index') }}">Words</a>
 </nav>
 <div class="container">
-    <div style="display:flex; justify-content:space-between; align-items:center; gap: 10px; flex-wrap:wrap;">
-        <h1>Words</h1>
-        <div style="display:flex; gap:8px; align-items:center;">
-            <a class="btn" style="background:#10b981;" href="{{ route('words.create') }}">New Word</a>
+    <div class="card">
+        <div class="flex" style="justify-content: space-between;">
+            <h2 style="margin:0;">Words</h2>
+            <a href="{{ route('words.create') }}" class="btn">Add word</a>
         </div>
     </div>
 
-    @if(session('status'))
-        <div style="margin:10px 0; padding:10px 12px; background:#ecfeff; color:#155e75; border:1px solid #67e8f9; border-radius:6px;">{{ session('status') }}</div>
-    @endif
+    <div class="card">
+        <form method="get" action="{{ route('words.index') }}" class="filters">
+            <div class="filters-grid">
+                <div>
+                    <label class="muted" for="q">Search</label>
+                    <input id="q" name="q" type="text" value="{{ $q }}" style="width:100%; padding:6px 8px; border:1px solid #d1d5db; border-radius:6px;">
+                    <label style="display:block; margin-top:6px; font-size:14px;"><input type="checkbox" name="exact" value="1" {{ $exact ? 'checked' : '' }}> Exact match</label>
+                </div>
+                <div>
+                    <label class="muted" for="token">Token</label>
+                    <select id="token" name="token" style="width:100%; padding:6px 8px; border:1px solid #d1d5db; border-radius:6px;">
+                        <option value="">All</option>
+                        @foreach($tokenOptions as $opt)
+                            <option value="{{ $opt }}" {{ $token === $opt ? 'selected' : '' }}>{{ $opt }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="muted" for="list">List</label>
+                    <select id="list" name="list" style="width:100%; padding:6px 8px; border:1px solid #d1d5db; border-radius:6px;">
+                        <option value="">All</option>
+                        @foreach($listOptions as $opt)
+                            <option value="{{ $opt }}" {{ $list === $opt ? 'selected' : '' }}>{{ $opt }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="muted" for="per_page">Per page</label>
+                    <select id="per_page" name="per_page" style="width:100%; padding:6px 8px; border:1px solid #d1d5db; border-radius:6px;">
+                        @foreach([10,25,50,100] as $pp)
+                            <option value="{{ $pp }}" {{ (int)$perPage === (int)$pp ? 'selected' : '' }}>{{ $pp }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="muted" style="display:block;">&nbsp;</label>
+                    <label style="display:block; margin-top:6px; font-size:14px;"><input type="checkbox" name="has_anags" value="1" {{ $hasAnags ? 'checked' : '' }}> Has anagrams</label>
+                </div>
+                <div style="align-self:end;">
+                    <button type="submit" class="btn">Filter</button>
+                </div>
+            </div>
+        </form>
+    </div>
 
-    <form class="tools" method="get" action="{{ route('words.index') }}">
-        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-            <input type="text" name="q" value="{{ $q }}" placeholder="Search word...">
-            <label style="display:flex; align-items:center; gap:6px;">
-                <input type="checkbox" name="exact" value="1" {{ !empty($exact) ? 'checked' : '' }}> Exact
-            </label>
-            <select name="token" style="padding:10px 12px; border:1px solid #d1d5db; border-radius:6px; min-width: 160px;">
-                <option value="">All tokens</option>
-                @foreach(($tokenOptions ?? []) as $opt)
-                    <option value="{{ $opt }}" {{ ($token === $opt) ? 'selected' : '' }}>{{ ucfirst($opt) }}</option>
-                @endforeach
-            </select>
-            <select name="list" style="padding:10px 12px; border:1px solid #d1d5db; border-radius:6px; min-width: 160px;">
-                <option value="">All lists</option>
-                @foreach(($listOptions ?? []) as $opt)
-                    <option value="{{ $opt }}" {{ ($list === $opt) ? 'selected' : '' }}>{{ ucfirst($opt) }}</option>
-                @endforeach
-            </select>
-            <label style="display:flex; align-items:center; gap:6px;">
-                <input type="checkbox" name="has_anags" value="1" {{ !empty($hasAnags) ? 'checked' : '' }}> Only with anagrams
-            </label>
-            <button type="submit">Filter</button>
+    <div class="card">
+        @if(session('status'))
+            <div class="badge badge-green" style="margin-bottom:10px;">{{ session('status') }}</div>
+        @endif
+        <div style="overflow:auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Word</th>
+                        <th>Token</th>
+                        <th>List</th>
+                        <th>Signature</th>
+                        <th>Search rep?</th>
+                        <th>Anagrams</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($items as $w)
+                        <tr data-id="{{ $w->id }}">
+                            <td>{{ $w->id }}</td>
+                            <td>{{ $w->word }}</td>
+                            <td>{{ $w->token_type }}</td>
+                            <td>
+                                {{ $w->list_type }}
+                                @if(strtolower($w->list_type) === 'fun')
+                                    <span class="badge badge-yellow">fun</span>
+                                @endif
+                            </td>
+                            <td>{{ $w->signature }}</td>
+                            <td>{!! $w->use_for_search ? '<span class="badge badge-green">yes</span>' : '<span class="muted">no</span>' !!}</td>
+                            <td>
+                                @php $hasA = (bool)($hasAnagsMap[$w->id] ?? false); @endphp
+                                @if($hasA)
+                                    <details>
+                                        <summary>Show ({{ count($anagsListMap[$w->id] ?? []) }})</summary>
+                                        <div>
+                                            @foreach(($anagsListMap[$w->id] ?? []) as $a)
+                                                <div class="flex" style="gap:6px; margin:3px 0;">
+                                                    <span>{{ $a['word'] }}</span>
+                                                    <button class="btn-link js-toggle-search" data-target="{{ $a['id'] }}">Make search</button>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    </details>
+                                @else
+                                    <span class="muted">None</span>
+                                @endif
+                            </td>
+                            <td>
+                                <a class="btn" href="{{ route('words.edit', $w) }}">Edit</a>
+                                <form method="post" action="{{ route('words.destroy', $w) }}" style="display:inline;" onsubmit="return confirm('Delete this word?');">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="btn danger">Delete</button>
+                                </form>
+                                @php $funAble = in_array(strtolower($w->token_type), ['forename','surname'], true); @endphp
+                                @if($funAble && strtolower($w->list_type) !== 'fun')
+                                    <button class="btn-link js-promote" data-id="{{ $w->id }}">Promote to fun</button>
+                                @endif
+                            </td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
         </div>
-    </form>
-
-    <table>
-        <thead>
-        <tr>
-            <th>Word</th>
-            <th>Token</th>
-            <th>List</th>
-            <th>Has anags</th>
-            <th></th>
-        </tr>
-        </thead>
-        <tbody>
-        @forelse($items as $w)
-            @php $has = (bool) (($hasAnagsMap[$w->id] ?? false)); $anags = $anagsListMap[$w->id] ?? []; $rowId = 'row-'.$w->id; @endphp
-            <tr>
-                <td>
-                    {{ $w->word }}
-                    @php $has = (bool) (($hasAnagsMap[$w->id] ?? false)); @endphp
-                    @if($has)
-                        @if(!empty($w->use_for_search))
-                            <span class="tag" style="margin-left:6px; background:#e0f2fe; color:#0369a1;">Search</span>
-                        @else
-                            <span class="tag" style="margin-left:6px; background:#fef3c7; color:#92400e;">Build</span>
-                        @endif
-                    @endif
-                </td>
-                <td>{{ $w->token_type }}</td>
-                <td>{{ $w->list_type }}</td>
-                <td>
-                    @if($has)
-                        <span class="tag" style="background:#dcfce7; color:#065f46;">Yes</span>
-                        @if(empty($w->use_for_search))
-                            <button type="button" class="link" style="border:0;background:none;color:#2563eb;cursor:pointer;padding:0; margin-left:8px;" onclick="makeSearch({{ $w->id }})">make search</button>
-                        @endif
-                        <button type="button" class="link" style="border:0;background:none;color:#2563eb;cursor:pointer;padding:0; margin-left:8px;" onclick="toggleAnags('{{ $rowId }}', true)">show</button>
-                    @else
-                        <span class="tag" style="background:#fee2e2; color:#991b1b;">No</span>
-                    @endif
-                </td>
-                <td class="row-actions">
-                    <a class="btn" href="{{ route('words.edit', $w) }}">Edit</a>
-                    <form method="post" action="{{ route('words.destroy', $w) }}" onsubmit="return confirm('Delete this word?');">
-                        @csrf
-                        @method('DELETE')
-                        <button type="submit" style="background:#dc2626;">Delete</button>
-                    </form>
-                </td>
-            </tr>
-            @if($has)
-                <tr id="{{ $rowId }}" style="display:none; background:#f9fafb;">
-                    <td colspan="5">
-                        <div><strong>Anagrams:</strong> <button type="button" class="link" style="border:0;background:none;color:#2563eb;cursor:pointer;padding:0;" onclick="toggleAnags('{{ $rowId }}', false)">hide</button></div>
-                        <div style="margin-top:6px; display:flex; gap:8px; flex-wrap:wrap;">
-                            @foreach($anags as $a)
-                                <span class="tag">{{ $a['word'] }}</span>
-                            @endforeach
-                        </div>
-                    </td>
-                </tr>
-            @endif
-        @empty
-            <tr><td colspan="5">No words found.</td></tr>
-        @endforelse
-        </tbody>
-    </table>
-    <div style="margin-top: 12px;">{{ $items->links() }}</div>
-
-    <script>
-        function toggleAnags(id, show){
-            try{ var el = document.getElementById(id); if(!el) return; el.style.display = show ? 'table-row' : 'none'; } catch(e){}
-        }
-        async function makeSearch(id){
-            try{
-                const res = await fetch("" + id + "/toggle-search".replace(/^/, '/words/'), { method:'POST', headers:{'X-Requested-With':'XMLHttpRequest','X-CSRF-TOKEN':'{{ csrf_token() }}'} });
-                const j = await res.json();
-                if (j && j.ok) { window.location.reload(); }
-                else { alert('Failed to update search representative' + (j && j.error ? (': ' + j.error) : '')); }
-            }catch(e){ alert('Error updating search representative.'); }
-        }
-    </script>
+        <div style="margin-top:10px;">
+            {{ $items->links() }}
+        </div>
+    </div>
 </div>
+<script>
+(function(){
+    function postJson(url, body) {
+        return fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify(body || {})
+        }).then(r => r.json());
+    }
+
+    document.querySelectorAll('.js-promote').forEach(btn => {
+        btn.addEventListener('click', function(){
+            const id = this.dataset.id;
+            const url = '{{ route('words.promote', ['word' => 'WORD_ID']) }}'.replace('WORD_ID', String(id));
+            postJson(url, {}).then(res => {
+                if (res && res.ok) {
+                    location.reload();
+                } else {
+                    alert(res.error || 'Failed to promote');
+                }
+            }).catch(() => alert('Failed to promote'));
+        });
+    });
+
+    document.querySelectorAll('.js-toggle-search').forEach(btn => {
+        btn.addEventListener('click', function(){
+            const id = this.dataset.target;
+            const url = '{{ route('words.toggle-search', ['word' => 'WORD_ID']) }}'.replace('WORD_ID', String(id));
+            postJson(url, {}).then(res => {
+                if (res && res.ok) {
+                    location.reload();
+                } else {
+                    alert(res.error || 'Failed to set as search representative');
+                }
+            }).catch(() => alert('Failed to set'));
+        });
+    });
+})();
+</script>
 </body>
 </html>

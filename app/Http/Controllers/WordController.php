@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Word;
+use App\Models\TokenSignature;
+use App\Models\TokenSignatureWord;
+use App\Services\WordMatchService;
 use App\Traits\HelpsMatchWords;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class WordController extends Controller
 {
@@ -19,36 +22,48 @@ class WordController extends Controller
         $hasAnags = (bool) $request->boolean('has_anags', false);
         $perPage = max(1, (int) $request->get('per_page', 25));
 
-        // Build base query
-        $query = Word::query()->orderBy('id');
+        // Build base query on token_signature_words joined to token_signatures and tokens
+        $query = TokenSignatureWord::query()
+            ->join('token_signatures', 'token_signatures.id', '=', 'token_signature_words.token_signature_id')
+            ->join('tokens', 'tokens.id', '=', 'token_signatures.token_id')
+            ->select([
+                'token_signature_words.id',
+                'token_signature_words.word',
+                'token_signature_words.list_type',
+                'token_signature_words.is_deferred',
+                'token_signatures.signature as signature',
+                'token_signatures.id as token_signature_id',
+                'tokens.name as token_type',
+                DB::raw('(CASE WHEN token_signature_words.is_deferred = 0 THEN 1 ELSE 0 END) as use_for_search'),
+            ])
+            ->orderBy('token_signature_words.id');
         if ($q !== '') {
             if ($exact) {
-                $query->where('word', $q);
+                $query->where('token_signature_words.word', $q);
             } else {
                 $like = '%'.$q.'%';
-                $query->where('word', 'like', $like);
+                $query->where('token_signature_words.word', 'like', $like);
             }
         }
         if ($token !== '') {
-            $query->where('token_type', $token);
+            $query->where('tokens.name', $token);
         }
         if ($list !== '') {
-            $query->where('list_type', $list);
+            $query->where('token_signature_words.list_type', $list);
         }
         if ($hasAnags) {
-            // Only rows that have at least one other word with same signature and token_type
+            // Only rows that have at least one other word in the same token_signature
             $query->whereExists(function ($q2) {
                 $q2->selectRaw('1')
-                    ->from('words as w2')
-                    ->whereColumn('w2.signature', 'words.signature')
-                    ->whereColumn('w2.token_type', 'words.token_type')
-                    ->whereColumn('w2.id', '!=', 'words.id');
+                    ->from('token_signature_words as tsw2')
+                    ->whereColumn('tsw2.token_signature_id', 'token_signature_words.token_signature_id')
+                    ->whereColumn('tsw2.id', '!=', 'token_signature_words.id');
             });
         }
 
         // Fetch dropdown options (distinct token/list types)
-        $tokenOptions = Word::query()->select('token_type')->distinct()->orderBy('token_type')->pluck('token_type')->toArray();
-        $listOptions = Word::query()->select('list_type')->distinct()->orderBy('list_type')->pluck('list_type')->toArray();
+        $tokenOptions = DB::table('tokens')->orderBy('name')->pluck('name')->toArray();
+        $listOptions = TokenSignatureWord::query()->select('list_type')->distinct()->orderBy('list_type')->pluck('list_type')->toArray();
 
         $items = $query->paginate($perPage)->appends([
             'q'=>$q,
@@ -59,36 +74,27 @@ class WordController extends Controller
             'has_anags'=>$hasAnags ? 1 : 0
         ]);
 
-        // Prepare anagram lists for current page efficiently
-        $sigTokPairs = [];
+        // Prepare anagram lists for current page efficiently keyed by token_signature_id
+        $tsIds = [];
         foreach ($items as $it) {
-            $sig = (string) ($it->signature ?? '');
-            $tok = (string) ($it->token_type ?? '');
-            if ($sig !== '' && $tok !== '') {
-                $sigTokPairs[$tok.'|'.$sig] = ['token'=>$tok,'signature'=>$sig];
-            }
+            $tsIds[(int)($it->token_signature_id)] = true;
         }
-        $anagsByKey = [];
-        if (!empty($sigTokPairs)) {
-            $tokens = array_values(array_unique(array_map(fn($r) => $r['token'], $sigTokPairs)));
-            // Query all anagrams for these signatures per token_type
-            $queryAnags = Word::query()
-                ->whereIn('token_type', $tokens)
-                ->whereIn('signature', array_values(array_unique(array_map(fn($r) => $r['signature'], $sigTokPairs))))
-                ->orderBy('word');
-            $rows = $queryAnags->get(['id','word','token_type','signature']);
+        $anagsByTs = [];
+        if (!empty($tsIds)) {
+            $rows = TokenSignatureWord::query()
+                ->whereIn('token_signature_id', array_keys($tsIds))
+                ->orderBy('word')
+                ->get(['id','word','token_signature_id']);
             foreach ($rows as $row) {
-                $key = ($row->token_type ?? '').'|'.($row->signature ?? '');
-                $anagsByKey[$key] = $anagsByKey[$key] ?? [];
-                $anagsByKey[$key][] = ['id' => (int)$row->id, 'word' => (string)$row->word];
+                $anagsByTs[(int)$row->token_signature_id] = $anagsByTs[(int)$row->token_signature_id] ?? [];
+                $anagsByTs[(int)$row->token_signature_id][] = ['id' => (int)$row->id, 'word' => (string)$row->word];
             }
         }
         // Attach helper maps: has anags and list per id excluding itself
         $hasAnagsMap = [];
         $anagsListMap = [];
         foreach ($items as $it) {
-            $key = (string)($it->token_type).'|'.(string)($it->signature);
-            $listAll = $anagsByKey[$key] ?? [];
+            $listAll = $anagsByTs[(int)$it->token_signature_id] ?? [];
             // Exclude self
             $list = array_values(array_filter($listAll, fn($r) => (int)$r['id'] !== (int)$it->id));
             $hasAnagsMap[$it->id] = count($list) > 0;
@@ -100,14 +106,14 @@ class WordController extends Controller
 
     public function create()
     {
-        $word = new Word();
+        // minimal placeholder for form binding
+        $word = (object) ['word' => '', 'token_type' => '', 'list_type' => ''];
         return view('words.create', compact('word'));
     }
 
     public function store(Request $request)
     {
         $data = $this->validateData($request);
-        // Auto-generate signature if not provided or mismatched
         $signature = $this->makeSignature($data['word'] ?? '');
         if ($signature === '') {
             return back()->withErrors(['word' => 'Please include at least one letter.'])->withInput();
@@ -115,16 +121,23 @@ class WordController extends Controller
         $token = strtolower((string)$data['token_type']);
         $list = (string)$data['list_type'];
 
-        // If confirmation step not provided, show the anagram set for selection
+        // Locate token_signature for this token+signature
+        $tokenSignature = TokenSignature::query()
+            ->join('tokens', 'tokens.id', '=', 'token_signatures.token_id')
+            ->where('tokens.name', $token)
+            ->where('token_signatures.signature', $signature)
+            ->select('token_signatures.*')
+            ->first();
+
         if (!$request->boolean('confirm', false)) {
-            $existing = Word::query()
-                ->where('token_type', $token)
-                ->where('signature', $signature)
-                ->orderBy('word')
-                ->get();
-            if ($existing->count() > 0) {
-                // Preselect existing search word if any
-                $selectedId = $existing->firstWhere('use_for_search', true)->id ?? null;
+            if ($tokenSignature) {
+                $existing = TokenSignatureWord::query()
+                    ->where('token_signature_id', $tokenSignature->id)
+                    ->orderBy('word')
+                    ->get();
+                $selectedId = optional($existing->firstWhere('is_deferred', false))->id;
+                // Synthesize use_for_search flag for the view
+                foreach ($existing as $ex) { $ex->use_for_search = !$ex->is_deferred; }
                 return view('words.confirm_anagrams', [
                     'token_type' => $token,
                     'signature' => $signature,
@@ -132,102 +145,109 @@ class WordController extends Controller
                     'existing' => $existing,
                     'selected_id' => $selectedId,
                 ]);
-            } else {
-                // No existing anagrams; create immediately as search representative
-                Word::create([
-                    'word' => $data['word'],
-                    'token_type' => $token,
-                    'list_type' => $list,
-                    'signature' => $signature,
-                    'use_for_search' => true,
-                ]);
-                return redirect()->route('words.index')->with('status', 'Word created.');
             }
+            // No existing anagrams; create immediately
+            $svc = app(WordMatchService::class);
+            $svc->addTokenWord($token, $data['word'], $list);
+            return redirect()->route('words.index')->with('status', 'Word created.');
         }
 
         // Confirmation submitted
         $choice = (string)$request->get('search_choice', 'new');
-        $existing = Word::query()
-            ->where('token_type', $token)
-            ->where('signature', $signature)
-            ->get();
-
         $selectedExistingId = null;
         if (str_starts_with($choice, 'existing:')) {
             $selectedExistingId = (int)substr($choice, strlen('existing:'));
         }
 
-        $createdId = null;
+        $created = null;
         if ($selectedExistingId === null && $choice === 'new') {
-            // Create the new word (phrase-only initially; will set flag below)
-            $row = Word::create([
-                'word' => $data['word'],
-                'token_type' => $token,
-                'list_type' => $list,
-                'signature' => $signature,
-                'use_for_search' => false,
-            ]);
-            $createdId = (int)$row->id;
+            $svc = app(WordMatchService::class);
+            $created = $svc->addTokenWord($token, $data['word'], $list);
         }
 
-        // Toggle flags: one search word per (token, signature)
-        // First, reset all existing in set to phrase-only
-        Word::query()->where('token_type', $token)->where('signature', $signature)->update(['use_for_search' => false]);
-
-        // Determine final search id
-        $searchId = $selectedExistingId ?? $createdId;
-        if ($searchId) {
-            Word::query()->where('id', $searchId)->update(['use_for_search' => true]);
-        } else {
-            // If somehow none selected, fallback to: set newly created (if any) or the first existing as search
-            $fallback = $createdId ?: ($existing->first()->id ?? null);
-            if ($fallback) {
-                Word::query()->where('id', $fallback)->update(['use_for_search' => true]);
+        // Designate representative within this token_signature: is_deferred=false for chosen, true for others
+        $tsId = $tokenSignature?->id;
+        if (!$tsId) {
+            // Resolve again in case it was just created
+            $ts = TokenSignature::query()
+                ->join('tokens', 'tokens.id', '=', 'token_signatures.token_id')
+                ->where('tokens.name', $token)
+                ->where('token_signatures.signature', $signature)
+                ->select('token_signatures.*')
+                ->first();
+            $tsId = $ts?->id;
+        }
+        if ($tsId) {
+            TokenSignatureWord::query()->where('token_signature_id', $tsId)->update(['is_deferred' => true]);
+            $finalId = $selectedExistingId ?? ($created?->id ?? null);
+            if ($finalId) {
+                TokenSignatureWord::query()->where('id', $finalId)->update(['is_deferred' => false]);
             }
         }
 
-        return redirect()->route('words.index')->with('status', 'Word saved with anagram search designation.');
+        return redirect()->route('words.index')->with('status', 'Word saved.');
     }
 
-    public function edit(Word $word)
+    public function edit(TokenSignatureWord $word)
     {
+        // attach token_type for the form
+        $ts = $word->tokenSignature()->with('token')->first();
+        $word->token_type = $ts?->token?->name ?? '';
         return view('words.edit', compact('word'));
     }
 
-    public function update(Request $request, Word $word)
+    public function update(Request $request, TokenSignatureWord $word)
     {
         $data = $this->validateData($request, $word->id);
-        $data['signature'] = $this->makeSignature($data['word'] ?? '');
-        $word->update($data);
+        $newToken = strtolower((string)$data['token_type']);
+        $newWord = (string)$data['word'];
+        $newList = (string)$data['list_type'];
+
+        // Recreate via service for simplicity if anything changes substantially
+        $svc = app(WordMatchService::class);
+        $created = $svc->addTokenWord($newToken, $newWord, $newList);
+        if ($created) {
+            // remove the old row if different id
+            if ((int)$created->id !== (int)$word->id) {
+                $word->delete();
+            } else {
+                // same row, update list_type if needed
+                $word->list_type = $newList;
+                $word->word = $newWord;
+                $word->save();
+            }
+        }
         return redirect()->route('words.index')->with('status', 'Word updated.');
     }
 
-    public function destroy(Word $word)
+    public function destroy(TokenSignatureWord $word)
     {
         $word->delete();
         return redirect()->route('words.index')->with('status', 'Word deleted.');
     }
 
     // Toggle use_for_search representative within an anagram set (AJAX)
-    public function toggleSearch(Request $request, Word $word)
+    public function toggleSearch(Request $request, TokenSignatureWord $word)
     {
         // Only makes sense if there are anagrams (at least one other in set)
-        $count = Word::query()->where('token_type', $word->token_type)->where('signature', $word->signature)->where('id', '!=', $word->id)->count();
+        $count = TokenSignatureWord::query()->where('token_signature_id', $word->token_signature_id)->where('id', '!=', $word->id)->count();
         if ($count === 0) {
             return response()->json(['ok' => false, 'error' => 'No anagrams to designate representative for.'], 400);
         }
-        // Reset others to phrase-only and set this one as search
-        Word::query()->where('token_type', $word->token_type)->where('signature', $word->signature)->update(['use_for_search' => false]);
-        $word->use_for_search = true; $word->save();
+        // Reset others to deferred and set this one as active (not deferred)
+        TokenSignatureWord::query()->where('token_signature_id', $word->token_signature_id)->update(['is_deferred' => true]);
+        $word->is_deferred = false; $word->save();
         return response()->json(['ok' => true]);
     }
 
     // Promote a word from OK to FUN (AJAX)
-    public function promote(Request $request, Word $word)
+    public function promote(Request $request, TokenSignatureWord $word)
     {
-        // Only allow promotion for fun-able tokens
+        // Only allow promotion for fun-able tokens (based on token name)
+        $ts = $word->tokenSignature()->with('token')->first();
+        $tokenName = strtolower((string)($ts?->token?->name ?? ''));
         $funAble = ['forename', 'surname'];
-        if (!in_array(strtolower((string)$word->token_type), $funAble, true)) {
+        if (!in_array($tokenName, $funAble, true)) {
             return response()->json(['ok' => false, 'error' => 'Token not fun-able'], 400);
         }
         // No-op if already fun
@@ -241,10 +261,8 @@ class WordController extends Controller
 
     private function validateData(Request $request, ?int $ignoreId = null): array
     {
-        $unique = 'unique:words,word';
-        if ($ignoreId) { $unique .= ',' . $ignoreId; }
         return $request->validate([
-            'word' => ['required','string','max:100',$unique],
+            'word' => ['required','string','max:100'],
             'token_type' => ['required','string','max:50'],
             'list_type' => ['required','string','max:50'],
         ], [], [

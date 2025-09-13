@@ -45,7 +45,7 @@
     <div class="card">
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items:center;">
             <div>
-                <div>Status: <span id="status" class="tag">{{ $item->status }}</span></div>
+                <!-- Status display removed per request -->
                 <div id="patternsRow" style="margin-top:6px;">Patterns searched: <strong id="patternsSearched">0</strong> / <strong id="patternsTotal">0</strong></div>
                 <div style="margin-top:6px;">Alter egos found: <strong id="alterEgosFound">{{$alterEgosCount}}</strong> <span class="muted">in <span id="patternsWithAE">0</span> patterns</span></div>
                 <div style="margin-top:6px;">Fun alter egos found: <strong id="funAlterEgosFound">0</strong> <span class="muted">in <span id="patternsWithFunAE">0</span> patterns</span></div>
@@ -225,7 +225,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
     const id = {{ $item->id }};
     let paused = false;
     let completed = {{ $item->status === 'completed' ? 'true' : 'false' }};
-    const statusEl = document.getElementById('status');
+    const statusEl = document.getElementById('status'); // may be null if status display is hidden
     const wordFilterStatus = document.getElementById('wordFilterStatus');
     const pattRow = document.getElementById('patternsRow');
     const showPatternSelectionLink = document.getElementById('showPatternSelection');
@@ -900,7 +900,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
     function render(p) {
         __lastProgress = p;
         const status = (p && p.item && p.item.status) ? p.item.status : (p.status || '');
-        statusEl.textContent = status;
+        if (statusEl) statusEl.textContent = status;
         // Build groups from new backend payload
         const groupsArr = Array.isArray(p && p.patternsLive) ? (p.patternsLive.map(function(pl){
             const tmpl = pl && (pl.template || (pl.signatureIndexedPatterns && pl.signatureIndexedPatterns[0] && pl.signatureIndexedPatterns[0].pattern) || '');

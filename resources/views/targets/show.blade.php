@@ -81,8 +81,8 @@
                     @if($count > 0)
                         @php $hasAny = true; @endphp
                         <div style="margin-bottom:10px;">
-                            <div><strong>{{ $p['template'] ?? '' }}</strong> <span class="tag">{{ $count }} found</span></div>
-                            <ul style="margin-top:6px;">
+                            <div><strong>{{ $p['template'] ?? '' }}</strong> <span class="tag">{{ $count }}</span></div>
+                            <ul style="margin-top:6px; max-height:240px; overflow:auto; border:1px solid #eee; border-radius:6px; padding:4px 8px; list-style:none; padding-left:0;">
                                 @foreach($alterEgos as $ae)
                                     @php $phrase = is_array($ae) ? ($ae['phrase'] ?? '') : (is_object($ae) ? ($ae->phrase ?? '') : ''); @endphp
                                     <li>{{ $phrase }}</li>
@@ -246,12 +246,15 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
     const starredCount = document.getElementById('starredCount');
     const URL_STAR = "{{ route('targets.star', $item) }}";
     const URL_UNSTAR = "{{ route('targets.unstar', $item) }}";
+    const GROUP_INIT_LIMIT = 5;
+    const groupExpanded = Object.create(null); // pattern string -> boolean
     let onlyFun = false;
     let onlyStarred = false;
     let onlyUsed = true;
     let renderedOnce = false;
     let wordFilter = { word: null, token: null };
     let starredSet = new Set();
+    let __lastProgress = null;
 
     if (onlyFunToggle) {
         try {
@@ -540,20 +543,59 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
         const title = isStar ? 'Unstar' : 'Star';
         const icon = isStar ? '★' : '☆';
         const pEsc = phrase.replace(/'/g, "\\'");
-        return '<button type="button" class="' + cls + '" title="' + title + '" onclick="window.toggleStar(\'' + pEsc + '\')">' + icon + '</button>';
+        return '<button type="button" class="' + cls + '" data-phrase="' + escAttr(phrase) + '" title="' + title + '" onclick="window.toggleStar(\'' + pEsc + '\')">' + icon + '</button>';
     }
 
     window.toggleStar = async function(phrase){
+        // Optimistic UI: toggle immediately
+        const wasStar = starredSet.has(phrase);
+        if (wasStar) starredSet.delete(phrase); else starredSet.add(phrase);
         try {
-            const isStar = starredSet.has(phrase);
-            const url = isStar ? URL_UNSTAR : URL_STAR;
+            // Update all star buttons for this phrase
+            document.querySelectorAll('button.star-btn[data-phrase]')?.forEach(function(btn){
+                if (btn.getAttribute('data-phrase') === phrase) {
+                    const nowStar = starredSet.has(phrase);
+                    btn.classList.toggle('starred', nowStar);
+                    btn.textContent = nowStar ? '★' : '☆';
+                    btn.title = nowStar ? 'Unstar' : 'Star';
+                }
+            });
+        } catch (e) { /* ignore */ }
+        // Fire request in background
+        try {
+            const url = wasStar ? URL_UNSTAR : URL_STAR;
             const res = await callJson(url, { phrase: phrase });
             if (res && res.ok) {
+                // Server is source of truth; re-render to sync starred list/counts
                 render(res);
             } else {
+                // Revert on failure
+                if (wasStar) starredSet.add(phrase); else starredSet.delete(phrase);
+                try {
+                    document.querySelectorAll('button.star-btn[data-phrase]')?.forEach(function(btn){
+                        if (btn.getAttribute('data-phrase') === phrase) {
+                            const nowStar = starredSet.has(phrase);
+                            btn.classList.toggle('starred', nowStar);
+                            btn.textContent = nowStar ? '★' : '☆';
+                            btn.title = nowStar ? 'Unstar' : 'Star';
+                        }
+                    });
+                } catch (e2) { /* ignore */ }
                 alert('Failed to update favourite.');
             }
         } catch (e) {
+            // Revert on error
+            if (wasStar) starredSet.add(phrase); else starredSet.delete(phrase);
+            try {
+                document.querySelectorAll('button.star-btn[data-phrase]')?.forEach(function(btn){
+                    if (btn.getAttribute('data-phrase') === phrase) {
+                        const nowStar = starredSet.has(phrase);
+                        btn.classList.toggle('starred', nowStar);
+                        btn.textContent = nowStar ? '★' : '☆';
+                        btn.title = nowStar ? 'Unstar' : 'Star';
+                    }
+                });
+            } catch (e2) { /* ignore */ }
             alert('Error updating favourite.');
         }
     }
@@ -618,23 +660,32 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
         const head = document.createElement('div');
         const strong = document.createElement('strong');
         strong.textContent = g.pattern;
-        const rank = document.createElement('span');
-        rank.className = 'tag';
-        rank.style.marginLeft = '6px';
-        rank.textContent = list.length + ' found';
         head.appendChild(strong);
-        head.appendChild(rank);
+        // count pill
+        const cnt = document.createElement('span');
+        cnt.className = 'tag';
+        cnt.style.marginLeft = '6px';
+        cnt.textContent = String(list.length);
+        head.appendChild(cnt);
         wrap.appendChild(head);
+        const pane = document.createElement('div');
+        pane.style.cssText = 'margin-top:6px; max-height:240px; overflow:auto; border:1px solid #eee; border-radius:6px; padding:4px 8px;';
         const ul = document.createElement('ul');
-        ul.style.marginTop = '6px';
-        list.forEach(function (ph) {
+        ul.style.margin = '0';
+        ul.style.listStyle = 'none';
+        ul.style.paddingLeft = '0';
+        const visible = list; // render all items; pane is scrollable
+        visible.forEach(function (ph) {
             const li = document.createElement('li');
             li.setAttribute('data-phrase', ph);
             li.setAttribute('data-pattern', g.pattern);
-            li.innerHTML = starBtnHTML(ph) + ' ' + '<span class="phrase-text">' + highlightPhraseDisplay(ph, g.pattern) + '</span>' + ' <button type="button" class="link save-order-btn" style="border:0;background:none;color:#2563eb;cursor:pointer;padding:0; display:none;" title="Save this order">save</button>';
+            const pEsc = ph.replace(/'/g, "\\'");
+            li.innerHTML = starBtnHTML(ph) + ' ' + '<span class="phrase-text">' + highlightPhraseDisplay(ph, g.pattern) + '</span>' +
+                ' <button type="button" class="link save-order-btn" style="border:0;background:none;color:#2563eb;cursor:pointer;padding:0; display:none;" title="Save this order">save</button>';
             ul.appendChild(li);
         });
-        wrap.appendChild(ul);
+        pane.appendChild(ul);
+        wrap.appendChild(pane);
         groupsEl.appendChild(wrap);
         return true;
     }
@@ -668,6 +719,12 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
             wordFilterStatus.textContent = '';
         }
     }
+
+    window.toggleGroupExpand = function(pattern, expand){
+        try { groupExpanded[String(pattern)] = !!expand; } catch (e) { /* ignore */ }
+        if (__lastProgress) { render(__lastProgress); }
+    }
+    window.rerender = function(){ if (__lastProgress) { render(__lastProgress); } }
 
     function computeUsedWordSetsFromGroups(groups) {
         const usedForename = new Set();
@@ -826,6 +883,8 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
                     if (starredCount) starredCount.textContent = String(arr.length);
                     if (starredList) {
                         starredList.innerHTML = '';
+                        starredList.style.listStyle = 'none';
+                        starredList.style.paddingLeft = '0';
                         arr.forEach(function(ph){
                             const li = document.createElement('li');
                             li.innerHTML = starBtnHTML(ph) + ' ' + escHtml(ph);
@@ -839,6 +898,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
 
 
     function render(p) {
+        __lastProgress = p;
         const status = (p && p.item && p.item.status) ? p.item.status : (p.status || '');
         statusEl.textContent = status;
         // Build groups from new backend payload

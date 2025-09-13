@@ -4,19 +4,17 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class TargetTokenSignatureWord extends Model
 {
-
     protected $fillable = [
-        'source_name_id',
+        'target_id',
         'token_signature_word_id',
     ];
 
-    public function sourceName(): BelongsTo
+    public function target(): BelongsTo
     {
-        return $this->belongsTo(TargetName::class);
+        return $this->belongsTo(Target::class);
     }
 
     public function tokenSignatureWord(): BelongsTo
@@ -24,16 +22,4 @@ class TargetTokenSignatureWord extends Model
         return $this->belongsTo(TokenSignatureWord::class);
     }
 
-    /**
-     * Many-to-Many: Matched Word <-> Alter Ego via pivot source_name_matched_words_alter_egos
-     */
-    public function alterEgos(): BelongsToMany
-    {
-        return $this->belongsToMany(
-            AlterEgo::class,
-            'source_name_matched_words_alter_egos',
-            'source_name_matched_word_id',
-            'alter_ego_id'
-        );
-    }
 }

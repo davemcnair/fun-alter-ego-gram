@@ -13,7 +13,7 @@ use Illuminate\Support\Collection;
  * Purpose:
  *  Given a source signature, pattern token positions, and a list of matchingTokenSignatureWord ids,
  *  it fills the positions with candidates whose signatures collectively match the source letters.
- *  For each complete fill, it emits a compact "signatureIndexedPattern" string
+ *  For each complete fill, it emits a compact "targetSignatureIndexedPattern" string
  *  such as "{1:a}{2:adn}{5:aciinv}" in token position order.
  *
  */

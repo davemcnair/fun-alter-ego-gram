@@ -2,7 +2,7 @@
 
 namespace App\Enums;
 
-enum TargetNamePatternStatus
+enum TargetPatternStatus
 {
     case pending;
     case processing;

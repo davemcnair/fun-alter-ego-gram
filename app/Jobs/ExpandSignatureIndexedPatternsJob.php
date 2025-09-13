@@ -75,7 +75,7 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
      */
     public function tags(): array
     {
-        return ['expand-signatureIndexed-patterns', 'source-name-pattern:'.$this->targetNamePatternId];
+        return ['expand-signatureIndexed-patterns', 'source-name-pattern:' . $this->targetNamePatternId];
     }
 
     /**
@@ -91,46 +91,4 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
             ->expandWithBuilder($this->targetNamePatternId, $phraseBuilderService);
     }
 
-    /**
-     * Parse a signatureIndexedPattern string like "{forename:aadm}{surname:ciinv}" into an ordered list of
-     * [ ['token'=>'forename','signature'=>'aadm'], ... ]
-     * @return array<int,array{token:string,signature:string}>
-     */
-    private function parseSignatureIndexedPattern(string $s): array
-    {
-        $out = [];
-        // Expect patterns like {1:aadm}{4:ciinv}
-        if (preg_match_all('/\{([0-9]+):([a-z]+)\}/i', $s, $m, PREG_SET_ORDER)) {
-            foreach ($m as $match) {
-                $tokenId = (int)$match[1];
-                $signature = strtolower($match[2]);
-
-                $out[] = [ 'token_id' => $tokenId, 'signature' => $signature ];
-
-            }
-        }
-        return $out;
-    }
-
-    /**
-     * Build a slot order array from a pattern template, suitable for PhraseBuilderService.
-     * Example input: "{title}{forename}{surname:2}" ->
-     *   [ ['name'=>'title','pos'=>0], ['name'=>'forename','pos'=>1], ['name'=>'surname','pos'=>2], ['name'=>'surname','pos'=>3] ]
-     * @return array<int,array{name:string,pos:int}>
-     */
-    private function buildSlotOrderFromTemplate(string $template): array
-    {
-        $slotOrder = [];
-        $pos = 0;
-        if (preg_match_all('/\{([a-z]+)(?::(\d+))?\}/i', $template, $m, PREG_SET_ORDER)) {
-            foreach ($m as $match) {
-                $name = strtolower($match[1]);
-                $count = isset($match[2]) && ctype_digit($match[2]) ? max(1, (int)$match[2]) : 1;
-                for ($i = 0; $i < $count; $i++) {
-                    $slotOrder[] = ['name' => $name, 'pos' => $pos++];
-                }
-            }
-        }
-        return $slotOrder;
-    }
 }

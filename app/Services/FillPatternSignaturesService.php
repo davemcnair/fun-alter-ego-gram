@@ -5,8 +5,8 @@ namespace App\Services;
 use App\Jobs\ExpandSignatureIndexedPatternsJob;
 use App\Models\Pattern;
 use App\Models\TargetSignatureIndexedPattern;
-use App\Models\TargetName;
-use App\Models\TargetNamePattern;
+use App\Models\Target;
+use App\Models\TargetPattern;
 use App\Traits\HelpsMatchWords;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -19,26 +19,26 @@ class FillPatternSignaturesService
      * Execute the fill step for a TargetNamePattern using the provided collaborator services.
      */
     public function fillWithServices(
-        int $targetNamePatternId,
+        int $targetPatternId,
         WordMatchService $wordMatchService,
         SignatureFillService $signatureFillService
     ): void {
-        $targetNamePattern = TargetNamePattern::with('sourceName')
-            ->find($targetNamePatternId);
-        if (!$targetNamePattern) {
+        $targetPattern = TargetPattern::with('target')
+            ->find($targetPatternId);
+        if (!$targetPattern) {
             return; // Nothing to do
         }
-        /** @var TargetName $target */
-        $target = $targetNamePattern->targetName;
+        /** @var Target $target */
+        $target = $targetPattern->target;
 
         // If already done, skip
-        if ($targetNamePattern->status === 'done') return;
+        if ($targetPattern->status === 'done') return;
 
         // Atomically claim the pattern if it's pending
-        $targetNamePattern->status = 'processing';
-        $targetNamePattern->save();
+        $targetPattern->status = 'processing';
+        $targetPattern->save();
 
-        $patternTokenPositions = Pattern::parsePatternTokenSlotPositions((string)$targetNamePattern->pattern->template);
+        $patternTokenPositions = Pattern::parsePatternTokenSlotPositions((string)$targetPattern->pattern->template);
 
         $tokenSignatureWords = $wordMatchService->findMatchingTokenSignatureWords((string)$target->signature);
         if ($tokenSignatureWords->count() === 0) {
@@ -66,12 +66,12 @@ class FillPatternSignaturesService
             $tokenSignatureWords
         ) as $signaturePattern) {
             $signaturePatterns[] = [
-                'source_name_pattern_id' => $targetNamePattern->id,
+                'target_pattern_id' => $targetPattern->id,
                 'pattern' => $signaturePattern,
             ];
             $count++;
             if ($count % 1000 === 0) {
-                try { Log::info($target->name . '/' . ((string)$targetNamePattern->pattern->template) . ' :' . $count . ' filled'); } catch (Throwable $e) {}
+                try { Log::info($target->name . '/' . ((string)$targetPattern->pattern->template) . ' :' . $count . ' filled'); } catch (Throwable $e) {}
                 TargetSignatureIndexedPattern::insert($signaturePatterns);
                 $signaturePatterns = [];
             }
@@ -104,7 +104,7 @@ class FillPatternSignaturesService
                 }
                 $fallbackPattern = implode('', $parts);
                 TargetSignatureIndexedPattern::insert([[
-                    'source_name_pattern_id' => $targetNamePattern->id,
+                    'target_pattern_id' => $targetPattern->id,
                     'pattern' => $fallbackPattern,
                 ]]);
                 $count = 1;
@@ -114,10 +114,10 @@ class FillPatternSignaturesService
         if (!empty($signaturePatterns)) {
             TargetSignatureIndexedPattern::insert($signaturePatterns);
         }
-        try { Log::info($target->name . '/' . ((string)$targetNamePattern->pattern->template) . ' :' . $count . ' fills completed'); } catch (Throwable $e) {}
+        try { Log::info($target->name . '/' . ((string)$targetPattern->pattern->template) . ' :' . $count . ' fills completed'); } catch (Throwable $e) {}
         // Dispatch expansion on the configured queue if any
         $queue = config('search.queue');
-        $dispatch = ExpandSignatureIndexedPatternsJob::dispatch($targetNamePattern->id);
+        $dispatch = ExpandSignatureIndexedPatternsJob::dispatch($targetPattern->id);
         if (!empty($queue)) {
             $dispatch->onQueue($queue);
         }

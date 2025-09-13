@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -10,12 +9,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class TargetSignatureIndexedPattern extends Model
 {
     protected $fillable = [
-        'source_name_pattern_id', 'pattern',
+        'target_pattern_id', 'pattern',
     ];
 
-    public function sourceNamePattern(): BelongsTo
+    public function targetPattern(): BelongsTo
     {
-        return $this->belongsTo(TargetNamePattern::class);
+        return $this->belongsTo(TargetPattern::class);
     }
 
     public function alterEgos(): HasMany

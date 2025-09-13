@@ -4,12 +4,12 @@ namespace App\Services;
 
 use App\Jobs\FillPatternSignaturesJob;
 use App\Models\Pattern;
-use App\Models\TargetName;
-use App\Models\TargetNamePattern;
+use App\Models\Target;
+use App\Models\TargetPattern;
 use App\Traits\HelpsMatchWords;
 use Illuminate\Support\Facades\Log;
 
-class TargetNameCreationService
+class TargetCreationService
 {
     use HelpsMatchWords;
 
@@ -19,24 +19,24 @@ class TargetNameCreationService
     ) {}
 
     /**
-     * Create a TargetName from the provided display name, link candidate patterns,
-     * enqueue pending fills, and return the created TargetName.
+     * Create a Target from the provided display name, link candidate patterns,
+     * enqueue pending fills, and return the created Target.
      *
-     * @return array{source: TargetName, filtered_count:int, pending_count:int}
+     * @return array{source: Target, filtered_count:int, pending_count:int}
      */
     public function create(string $name, bool $includeBoring = false): array
     {
         $name = trim($name);
         $signature = $this->makeSignature($name);
 
-        $target = TargetName::create([
+        $target = Target::create([
             'name' => $name,
             'signature' => $signature,
             'status' => 'idle',
         ]);
 
         // Step 1: store matched words and get involved token ids
-        $tokenSignatureWords = $this->wordMatchService->storeNewTargetNameMatchedTokenSignatureWords($target, $includeBoring);
+        $tokenSignatureWords = $this->wordMatchService->storeNewTargetMatchedTokenSignatureWords($target, $includeBoring);
 
         // Step 2: compute min lengths (id-keyed arrays)
         [$storedMinLengths, $matchedMinLengths] =
@@ -51,13 +51,13 @@ class TargetNameCreationService
             $matchedMinLengths
         );
 
-        // Step 4: bulk insert TargetNamePattern rows
+        // Step 4: bulk insert TargetPattern rows
         $now = now();
         Log::info('inserting filtered patterns, n= '. $filteredPatterns->count());
         /** @var Pattern $pattern */
         $bulk = $filteredPatterns->map(function($pattern) use ($target, $now) {
             return [
-                'source_name_id' => $target->id,
+                'target_id' => $target->id,
                 'pattern_id' => $pattern->id,
                 'popularity_rank' => $pattern->popularity_rank,
                 'status' => $pattern->pattern_type == 'standard' ? 'pending' : 'deferred',
@@ -66,7 +66,7 @@ class TargetNameCreationService
             ];
         });
         if ($bulk->isNotEmpty()) {
-            TargetNamePattern::insert($bulk->toArray());
+            TargetPattern::insert($bulk->toArray());
         }
 
         // Step 5: dispatch fills for pending
@@ -78,12 +78,12 @@ class TargetNameCreationService
             if (!empty($queue)) { $dispatch->onQueue($queue); }
         }
 
-        // Step 6: set source to running
+        // Step 6: set target to running
         $target->status = 'running';
         $target->save();
 
         return [
-            'source' => $target,
+            'target' => $target,
             'filtered_count' => $filteredPatterns->count(),
             'pending_count' => count($pendingIds),
         ];

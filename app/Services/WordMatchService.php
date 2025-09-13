@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Models\TargetName;
+use App\Models\Target;
 use App\Models\Token;
 use App\Models\TokenSignature;
 use App\Models\TokenSignatureWord;
@@ -118,21 +118,20 @@ class WordMatchService
         return $matches;
     }
 
-    public function storeNewTargetNameMatchedTokenSignatureWords(TargetName $targetName, bool $includeBoring = false): Collection
+    public function storeNewTargetMatchedTokenSignatureWords(Target $target, bool $includeBoring = false): Collection
     {
-        $matchingTokenSignatureWords = $this->findMatchingTokenSignatureWords($targetName->signature, ['include_boring' => $includeBoring]);
+        $matchingTokenSignatureWords = $this->findMatchingTokenSignatureWords($target->signature, ['include_boring' => $includeBoring]);
         if ($matchingTokenSignatureWords->count()) {
-
-            $targetNameMatchedWords = $matchingTokenSignatureWords->map(function ($tsw) use ($targetName) {
+            $rows = $matchingTokenSignatureWords->map(function ($tsw) use ($target) {
                 return [
-                    'source_name_id' => $targetName->id,
+                    'target_id' => $target->id,
                     'token_signature_word_id' => $tsw->id,
+                    'created_at' => now(),
+                    'updated_at' => now(),
                 ];
             });
-
-            DB::table('source_name_matched_words')->insert($targetNameMatchedWords->toArray());
+            DB::table('target_token_signature_words')->insert($rows->toArray());
         }
-
         return $matchingTokenSignatureWords;
     }
 

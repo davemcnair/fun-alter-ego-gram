@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -10,14 +9,13 @@ use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 class TargetPattern extends Model
 {
-
     protected $fillable = [
-        'source_name_id', 'pattern_id', 'popularity_rank', 'status'
+        'target_id', 'pattern_id', 'popularity_rank', 'status'
     ];
 
-    public function sourceName(): BelongsTo
+    public function target(): BelongsTo
     {
-        return $this->belongsTo(TargetName::class);
+        return $this->belongsTo(Target::class);
     }
 
     public function pattern(): BelongsTo

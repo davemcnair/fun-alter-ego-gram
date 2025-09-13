@@ -80,7 +80,7 @@ class TargetNameController extends Controller
         $data = $request->validate([
             'phrase' => ['required','string'],
         ]);
-        AlterEgo::whereHas('signatureIndexedPattern.sourceNamePattern', function($q) use ($target_name){
+        AlterEgo::whereHas('targetSignatureIndexedPattern.sourceNamePattern', function($q) use ($target_name){
             $q->where('source_name_id', $target_name->id);
         })
             ->where('phrase', $data['phrase'])
@@ -93,7 +93,7 @@ class TargetNameController extends Controller
         $data = $request->validate([
             'phrase' => ['required','string'],
         ]);
-        AlterEgo::whereHas('signatureIndexedPattern.sourceNamePattern', function($q) use ($target_name){
+        AlterEgo::whereHas('targetSignatureIndexedPattern.sourceNamePattern', function($q) use ($target_name){
             $q->where('source_name_id', $target_name->id);
         })
             ->where('phrase', $data['phrase'])

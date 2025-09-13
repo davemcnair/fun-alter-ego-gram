@@ -3,39 +3,39 @@
 namespace App\Services;
 
 use App\Models\AlterEgo;
-use App\Models\TargetName;
-use App\Models\TargetNamePattern;
+use App\Models\Target;
+use App\Models\TargetPattern;
 use App\Models\TokenSignature;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
- * Service that expands SignatureIndexedPatterns for a given TargetNamePattern
+ * Service that expands SignatureIndexedPatterns for a given TargetPattern
  * into concrete AlterEgo phrases.
  */
 final class ExpandSignatureIndexedPatternService
 {
-    public function expandWithBuilder(int $targetNamePatternId, PhraseBuilderService $phraseBuilderService): void
+    public function expandWithBuilder(int $targetPatternId, PhraseBuilderService $phraseBuilderService): void
     {
-        // Load SNP with parent TargetName and signatureIndexed patterns
-        $targetNamePattern = TargetNamePattern::with(['sourceName','signatureIndexedPatterns', 'pattern'])
-            ->find($targetNamePatternId);
-        if (!$targetNamePattern) return;
-        /** @var TargetName $target */
-        $target = $targetNamePattern->targetName;
+        // Load TP with parent Target and signatureIndexed patterns
+        $targetPattern = TargetPattern::with(['target','signatureIndexedPatterns', 'pattern'])
+            ->find($targetPatternId);
+        if (!$targetPattern) return;
+        /** @var Target $target */
+        $target = $targetPattern->target;
 
         // If already done, skip
-        if ($targetNamePattern->status === 'done') return;
+        if ($targetPattern->status === 'done') return;
 
         // Claim the pattern for expansion (reuse existing allowed status)
-        $targetNamePattern->status = 'processing';
-        $targetNamePattern->save();
+        $targetPattern->status = 'processing';
+        $targetPattern->save();
 
         // Build slot order from the pattern template for formatting
-        $slotOrder = $this->buildSlotOrderFromTemplate((string)$targetNamePattern->pattern->template);
+        $slotOrder = $this->buildSlotOrderFromTemplate((string)$targetPattern->pattern->template);
 
         $createdCount = 0;
-        foreach ($targetNamePattern->signatureIndexedPatterns as $signatureIndexedPattern) {
+        foreach ($targetPattern->signatureIndexedPatterns as $signatureIndexedPattern) {
             $tokenIdSignaturePairs = $this->parseSignatureIndexedPattern($signatureIndexedPattern->pattern);
 
             $slotWords = [];
@@ -62,23 +62,20 @@ final class ExpandSignatureIndexedPatternService
             // Persist as AlterEgo (idempotent)
             AlterEgo::firstOrCreate(
                 [
-                    'signature_indexed_pattern_id' => $signatureIndexedPattern->id,
+                    'target_signature_indexed_pattern_id' => $signatureIndexedPattern->id,
                     'phrase' => $phrase,
-                ],
-                [
-                    'source_name_id' => $target->id,
                 ]
             );
             $createdCount++;
         }
 
         // Mark as done after expansion
-        $targetNamePattern->status = 'done';
-        $targetNamePattern->save();
+        $targetPattern->status = 'done';
+        $targetPattern->save();
 
-        // Update parent TargetName status only (completed when no pending/processing remain)
+        // Update parent Target status only (completed when no pending/processing remain)
         try {
-            $remaining = TargetNamePattern::where('source_name_id', $target->id)
+            $remaining = TargetPattern::where('target_id', $target->id)
                 ->whereIn('status', ['pending', 'processing'])
                 ->count();
             if ($remaining === 0) {
@@ -88,15 +85,15 @@ final class ExpandSignatureIndexedPatternService
             }
             $target->save();
         } catch (Throwable $e) {
-            try { Log::warning('Failed to update TargetName status for '.$target->id.': '.$e->getMessage()); } catch (Throwable $e2) {}
+            try { Log::warning('Failed to update Target status for '.$target->id.': '.$e->getMessage()); } catch (Throwable $e2) {}
         }
 
         // Optional log
-        try { Log::info('Expanded signatureIndexed patterns for SNP '.$targetNamePattern->id.' => '.$createdCount.' phrase(s).'); } catch (Throwable $e) {}
+        try { Log::info('Expanded signatureIndexed patterns for TP '.$targetPattern->id.' => '.$createdCount.' phrase(s).'); } catch (Throwable $e) {}
     }
 
     /**
-     * Parse a signatureIndexedPattern string like "{forename:aadm}{surname:ciinv}" into an ordered list of
+     * Parse a targetSignatureIndexedPattern string like "{forename:aadm}{surname:ciinv}" into an ordered list of
      * [ ['token_id'=>1,'signature'=>'aadm'], ... ]
      * @return array<int,array{token_id:int,signature:string}>
      */

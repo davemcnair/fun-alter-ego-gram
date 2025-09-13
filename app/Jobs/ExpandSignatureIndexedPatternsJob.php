@@ -110,25 +110,23 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
         foreach ($sourceNamePattern->signatureIndexedPatterns as $signatureIndexedPattern) {
             $tokenIdSignaturePairs = $this->parseSignatureIndexedPattern($signatureIndexedPattern->pattern);
 
-            $words = [];
+            $slotWords = [];
             foreach ($tokenIdSignaturePairs as $pair) {
                 $ts = TokenSignature::query()
                     ->where('token_id', $pair['token_id'])
                     ->where('signature', $pair['signature'])
                     ->first();
-                if ($ts) {
+
                     // Prefer 'fun' list, then 'ok', then any other; only non-deferred words
-                    $word = $ts->words()
+                    $nonDeferredWords = $ts->words()
                         ->where('is_deferred', false)
                         ->orderByRaw("CASE list_type WHEN 'fun' THEN 0 WHEN 'ok' THEN 1 ELSE 2 END")
-                        ->value('word');
-                    $words[] = (string)($word ?? '');
-                } else {
-                    $words[] = '';
-                }
+                        ->pluck('word');
+                    $slotWords[] = $nonDeferredWords;
+              
             }
 
-            $phrase = $phraseBuilderService->formatPhraseBySlots($words, $slotOrder, false);
+            $phrase = $phraseBuilderService->formatPhraseBySlots($slotWords, $slotOrder, false);
 
             // Persist as AlterEgo (idempotent)
             AlterEgo::firstOrCreate(
@@ -136,9 +134,9 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
                     'signature_indexed_pattern_id' => $signatureIndexedPattern->id,
                     'phrase' => $phrase,
                 ],
-                [
-                    'source_name_id' => $source->id,
-                ]
+//                [
+//                    'source_name_id' => $source->id,
+//                ]
             );
             $createdCount++;
         }

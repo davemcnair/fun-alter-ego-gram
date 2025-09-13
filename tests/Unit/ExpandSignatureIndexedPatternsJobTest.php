@@ -8,6 +8,7 @@ use App\Models\Pattern;
 use App\Models\SignatureIndexedPattern;
 use App\Models\SourceName;
 use App\Models\SourceNamePattern;
+use App\Models\Token;
 use App\Services\PhraseBuilderService;
 use App\Services\WordMatchService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -17,6 +18,15 @@ class ExpandSignatureIndexedPatternsJobTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // Seed required tokens used by Pattern::parsePatternTokenSlotPositions
+        Token::insert([
+            ['name' => 'forename', 'prio' => 1, 'min_length' => 2],
+            ['name' => 'surname', 'prio' => 2, 'min_length' => 2],
+        ]);
+    }
 
     public function test_expands_single_signatureIndexed_pattern_with_fun_preference(): void
     {

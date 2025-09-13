@@ -15,11 +15,11 @@ final class PhraseBuilderService
      * the surname token will list both hyphen variants comma-separated (e.g., "Dim-Vinci, Vinci-Dim").
      * For any other run length, the canonical single hyphen chain is produced.
      *
-     * @param array<int,string> $words      Words in the original slot order (one per slot)
+     * @param array<int,string> $slotWords      Words in the original slot order (one per slot)
      * @param array<int,array{name:string,pos:int}> $slotOrder Slot definitions in the original order
      * @param bool $displayMultipleVariants If true, lists both variants for double-surname runs (display-only)
      */
-    public function formatPhraseBySlots(array $words, array $slotOrder, bool $displayMultipleVariants = false): string
+    public function formatPhraseBySlots(array $slotWords, array $slotOrder, bool $displayMultipleVariants = false): string
     {
         $parts = [];
         $wi = 0; // index into $words
@@ -33,7 +33,7 @@ final class PhraseBuilderService
                 // Collect this and any subsequent consecutive multi slots
                 $j = $i;
                 while ($j < $n && strtolower((string)($slotOrder[$j]['name'] ?? '')) === $name) {
-                    $word = $words[$wi] ?? '';
+                    $word = $slotWords[$wi] ?? '';
                     // Capitalize: first letter uppercase, rest lowercase
                     $word = $this->capitalizeWord($word);
                     if ($word !== '') $variants[] = $word;
@@ -52,7 +52,7 @@ final class PhraseBuilderService
                     }
                 }
             } else {
-                $word = $words[$wi] ?? '';
+                $word = $slotWords[$wi] ?? '';
                 if ($word !== '') $parts[] = $word;
                 $wi++;
             }

@@ -8,6 +8,7 @@ use App\Models\SourceName;
 use App\Services\SignatureFillService;
 use App\Models\SourceNamePattern;
 use App\Services\WordMatchService;
+use App\Traits\HelpsMatchWords;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -47,7 +48,7 @@ use Throwable;
  */
 class FillPatternSignaturesJob implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, HelpsMatchWords;
 
     /**
      * Maximum seconds a worker may allow this job to run before timing out.

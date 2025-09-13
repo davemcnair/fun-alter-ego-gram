@@ -79,6 +79,29 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
     }
 
     /**
+     * Customize the console/Horizon display name to include context.
+     */
+    public function displayName(): string
+    {
+        try {
+            $tp = \App\Models\TargetPattern::with(['target', 'pattern'])->find($this->targetNamePatternId);
+            if ($tp) {
+                $target = $tp->target?->name ?? 'unknown-target';
+                $template = (string)($tp->pattern->template ?? '');
+                return sprintf(
+                    'ExpandSignatureIndexed [TP:%d "%s" for "%s"]',
+                    $tp->id,
+                    $template,
+                    $target
+                );
+            }
+        } catch (\Throwable $e) {
+            // ignore and fall back
+        }
+        return 'ExpandSignatureIndexed [TP:'.$this->targetNamePatternId.']';
+    }
+
+    /**
      * Handle filling pattern signatures for the associated TargetNamePattern.
      */
     public function handle(

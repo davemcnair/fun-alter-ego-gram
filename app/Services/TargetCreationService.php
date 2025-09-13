@@ -26,20 +26,42 @@ class TargetCreationService
      */
     public function create(string $name, bool $includeBoring = false): array
     {
+        $originalInput = $name;
         $name = trim($name);
-        $signature = $this->makeSignature($name);
+        $canonical = \App\Support\NameNormalizer::canonicalKey($name);
+        $display = \App\Support\NameNormalizer::displayName($name);
+
+        // Validation: canonical signature must be non-empty
+        if ($canonical === '') {
+            \Log::warning('TargetCreationService.create invalid name after normalization', [
+                'original_input' => $originalInput,
+            ]);
+            abort(422, 'Name is invalid after normalization');
+        }
+
+        // Log observability fields
+        try {
+            \Log::debug('TargetCreationService.create', [
+                'original_input' => $originalInput,
+                'canonical_signature' => $canonical,
+                'display_name' => $display,
+            ]);
+        } catch (\Throwable $e) {}
 
         $target = Target::firstOrCreate(
-            ['signature' => $signature],
-            ['name' => $name, 'status' => 'idle']
+            ['signature' => $canonical],
+            ['name' => $display, 'status' => 'idle']
         );
+
+        // Compute sorted-letter signature from canonical for matching/filtering
+        $signature = $this->makeSignature($canonical);
 
         // Step 1: store matched words and get involved token ids
         $tokenSignatureWords = $this->wordMatchService->storeNewTargetMatchedTokenSignatureWords($target, $includeBoring);
 
         // Step 2: compute min lengths (id-keyed arrays)
         [$storedMinLengths, $matchedMinLengths] =
-            $this->wordMatchService->extractMatchingTokenWordMinimumLengths($target->signature, $tokenSignatureWords);
+            $this->wordMatchService->extractMatchingTokenWordMinimumLengths($signature, $tokenSignatureWords);
 
         // Step 3: list short-enough patterns and filter
         $standardShortEnoughPatterns = $this->patternsService->listWithinMinLength(strlen($signature));

@@ -23,10 +23,16 @@ class TargetController extends Controller
     public function store(Request $request, TargetCreationService $createService)
     {
         $data = $request->validate([
-            'name' => ['required','string','min:5','max:25', "regex:/^[A-Za-z .,\-']+$/"],
+            'name' => ['required','string','min:1','max:100'],
             'allow_boring' => ['nullable','boolean'],
         ]);
         $includeBoring = (bool)($data['allow_boring'] ?? false);
+
+        // Ensure normalization yields a non-empty signature
+        $canonical = \App\Support\NameNormalizer::canonicalKey($data['name']);
+        if ($canonical === '') {
+            return response()->json(['message' => 'Name is invalid after normalization'], 422);
+        }
 
         $result = $createService->create($data['name'], $includeBoring);
         /** @var Target $target */

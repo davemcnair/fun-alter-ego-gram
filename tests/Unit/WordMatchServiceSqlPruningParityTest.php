@@ -109,9 +109,4 @@ class WordMatchServiceSqlPruningParityTest extends TestCase
         $sqlOk = $this->sqlPrunedQuery($targetSig, ['list' => 'ok'])->get();
         $this->assertEqualsCanonicalizing($phpOk->pluck('id')->all(), $sqlOk->pluck('id')->all());
     }
-
-    public function test_token_filter_is_respected_in_sql_and_php_paths(): void
-    {
-        $this->markTestSkipped('Token-filter parity requires deeper inspection; core parity and list/boring tests implemented.');
-    }
 }

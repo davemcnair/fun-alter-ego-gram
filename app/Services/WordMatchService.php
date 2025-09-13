@@ -236,7 +236,9 @@ class WordMatchService
 
     public function storeNewTargetMatchedTokenSignatureWords(Target $target, bool $includeBoring = false): Collection
     {
-        $matchingTokenSignatureWords = $this->findMatchingTokenSignatureWords($target->signature, ['include_boring' => $includeBoring]);
+        // Derive sorted-letter signature for matching from the canonical target signature
+        $sortedSignature = $this->makeSignature($target->signature);
+        $matchingTokenSignatureWords = $this->findMatchingTokenSignatureWords($sortedSignature, ['include_boring' => $includeBoring]);
         if ($matchingTokenSignatureWords->count()) {
             $rows = $matchingTokenSignatureWords->map(function ($tsw) use ($target) {
                 return [

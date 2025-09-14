@@ -10,6 +10,7 @@ use App\Services\WordMatchService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Mockery;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
 class AnagramBehaviorTest extends TestCase
@@ -43,12 +44,12 @@ class AnagramBehaviorTest extends TestCase
         $b = $svc->create('James Brian');
 
         $this->assertSame(2, Target::count());
-        $t1 = $a['target']->fresh();
-        $t2 = $b['target']->fresh();
+        $t1 = $a['target'];
+        $t2 = $b['target'];
         $this->assertNotSame($t1->id, $t2->id);
         $this->assertSame('brian james', $t1->normalized_key);
         $this->assertSame('james brian', $t2->normalized_key);
-        $this->assertSame($t1->anagram_signature, $t2->anagram_signature);
+        $this->assertSame($t1->signature, $t2->signature);
 
         // anagram siblings
         $sib1 = $t1->anagramSiblings();
@@ -61,7 +62,7 @@ class AnagramBehaviorTest extends TestCase
 
     public function test_invalid_name_rejected(): void
     {
-        $this->expectException(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+        $this->expectException(HttpException::class);
         app(TargetCreationService::class)->create('!!!');
     }
 }

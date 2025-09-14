@@ -160,6 +160,7 @@ class WordMatchServiceTest extends TestCase
         $t1 = Target::create([
             'name' => 'Jane Ray',
             'signature' => $this->svc->makeSignature('jane ray'),
+            'normalized_key' => 'jane ray',
             'status' => 'running',
         ]);
         $matched1 = $this->svc->storeNewTargetMatchedTokenSignatureWords($t1, false);
@@ -170,6 +171,7 @@ class WordMatchServiceTest extends TestCase
         $t2 = Target::create([
             'name' => 'Jane Li Ray',
             'signature' => $this->svc->makeSignature('jane li ray'),
+            'normalized_key' => 'jane li ray',
             'status' => 'running',
         ]);
         $matched2 = $this->svc->storeNewTargetMatchedTokenSignatureWords($t2, true);

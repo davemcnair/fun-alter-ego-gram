@@ -35,6 +35,7 @@ class FillPatternSignaturesServiceTest extends TestCase
         $target = Target::create([
             'name' => 'Adam Vinci',
             'signature' => 'aadmciinv',
+            'normalized_key' => 'adamvinci',
             'status' => 'running',
         ]);
         $pattern = Pattern::create(['template' => '{forename}{surname}']);
@@ -68,6 +69,7 @@ class FillPatternSignaturesServiceTest extends TestCase
         $target = Target::create([
             'name' => 'Zzz',
             'signature' => 'zzz',
+            'normalized_key' => 'zzz',
             'status' => 'running',
         ]);
         $pattern = Pattern::create(['template' => '{forename}{surname}']);

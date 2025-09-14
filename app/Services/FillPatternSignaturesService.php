@@ -44,22 +44,6 @@ class FillPatternSignaturesService
         $patternTokenPositions = Pattern::parsePatternTokenSlotPositions((string)$targetPattern->pattern->template);
 
         $tokenSignatureWords = $wordMatchService->findMatchingTokenSignatureWords((string)$target->signature);
-        if ($tokenSignatureWords->count() === 0) {
-            // Fallback: query directly if service returns no matches (defensive against test setups)
-            $srcSig = (string)$target->signature;
-            $srcLen = strlen($srcSig);
-            $tokenSignatureWords = \App\Models\TokenSignatureWord::query()
-                ->with(['tokenSignature.token'])
-                ->where('is_deferred', false)
-                ->whereHas('tokenSignature', function ($q) use ($srcLen) {
-                    $q->whereRaw('LENGTH(signature) <= ?', [$srcLen]);
-                })
-                ->get()
-                ->filter(function ($tsw) use ($srcSig) {
-                    return $this->isSubset($tsw->tokenSignature->signature, $srcSig);
-                })
-                ->values();
-        }
 
         $candCount = $tokenSignatureWords->count();
         try { Log::info('FillPatternSignaturesService: candidates=' . $candCount); } catch (\Throwable $e) {}
@@ -120,40 +104,7 @@ class FillPatternSignaturesService
                 $signaturePatterns = [];
             }
         }
-        // If generator yielded nothing, try a simple greedy fallback to ensure at least one row when possible
-        if ($count === 0 && !empty($patternTokenPositions)) {
-            $remaining = $this->letterCountsFromSignature((string)$target->signature);
-            $chosen = [];
-            foreach ($patternTokenPositions as $pos => $tokenId) {
-                $sig = null;
-                foreach ($tokenSignatureWords as $tsw) {
-                    if ($tsw->tokenSignature->token_id !== $tokenId) continue;
-                    $candidate = $tsw->tokenSignature->signature;
-                    $hist = $this->letterCountsFromSignature($candidate);
-                    if (!$this->candidateLettersExceedNeededCounts($remaining, $hist)) {
-                        $remaining = $this->subtract($remaining, $hist);
-                        $sig = $candidate;
-                        break;
-                    }
-                }
-                if ($sig === null) { $chosen = []; break; }
-                $chosen[$pos] = $sig;
-            }
-            if (!empty($chosen) && empty($remaining)) {
-                ksort($chosen);
-                $parts = [];
-                foreach ($chosen as $pos => $sig) {
-                    $tokId = (string)($patternTokenPositions[$pos] ?? '');
-                    $parts[] = '{'.$tokId.':'.$sig.'}';
-                }
-                $fallbackPattern = implode('', $parts);
-                TargetSignatureIndexedPattern::insert([[
-                    'target_pattern_id' => $targetPattern->id,
-                    'pattern' => $fallbackPattern,
-                ]]);
-                $count = 1;
-            }
-        }
+
         // Flush any remaining batched rows
         if (!empty($signaturePatterns)) {
             TargetSignatureIndexedPattern::insert($signaturePatterns);

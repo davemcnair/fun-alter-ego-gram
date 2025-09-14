@@ -28,6 +28,9 @@ Route::post('/words/{word}/toggle-search', [WordController::class, 'toggleSearch
 //Route::post('/targets/{target}/pause', [TargetController::class, 'pause'])->name('targets.pause');
 //Route::post('/targets/{target}/resume', [TargetController::class, 'resume'])->name('targets.resume');
 Route::get('/targets/{target}/progress', [TargetController::class, 'progress'])->name('targets.progress');
+// New matches endpoints
+Route::get('/targets/{target}/new-matches', [TargetController::class, 'newMatches'])->name('targets.new-matches');
+Route::post('/targets/{target}/process-new-matches', [TargetController::class, 'processNewMatches'])->name('targets.process-new-matches');
 //Route::post('/targets/{target}/start', [TargetController::class, 'start'])->name('targets.start');
 // Star / Unstar phrase for this target
 Route::post('/targets/{target}/star', [TargetController::class, 'star'])->name('targets.star');

@@ -8,6 +8,7 @@ use App\Services\WordMatchService;
 use App\Traits\HelpsMatchWords;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Events\TokenWordAdded;
 
 class WordController extends Controller
 {
@@ -148,7 +149,11 @@ class WordController extends Controller
             }
             // No existing anagrams; create immediately
             $svc = app(WordMatchService::class);
-            $svc->addTokenWord($token, $data['word'], $list);
+            $created = $svc->addTokenWord($token, $data['word'], $list);
+            // Emit event only on store action when eligible (fun/ok and not deferred)
+            if ($created && in_array((string)$created->list_type, ['fun','ok'], true) && !$created->is_deferred) {
+                try { event(new TokenWordAdded((int)$created->id)); } catch (\Throwable $e) { /* swallow */ }
+            }
             return redirect()->route('words.index')->with('status', 'Word created.');
         }
 
@@ -166,6 +171,7 @@ class WordController extends Controller
         }
 
         // Designate representative within this token_signature: is_deferred=false for chosen, true for others
+        $finalId = null;
         $tsId = $tokenSignature?->id;
         if (!$tsId) {
             // Resolve again in case it was just created
@@ -182,6 +188,13 @@ class WordController extends Controller
             $finalId = $selectedExistingId ?? ($created?->id ?? null);
             if ($finalId) {
                 TokenSignatureWord::query()->where('id', $finalId)->update(['is_deferred' => false]);
+            }
+        }
+        // Emit event only when a new word was created and selected as representative (non-deferred) and eligible
+        if ($created && $finalId && (int)$finalId === (int)$created->id) {
+            $fresh = TokenSignatureWord::find((int)$created->id);
+            if ($fresh && in_array((string)$fresh->list_type, ['fun','ok'], true) && !$fresh->is_deferred) {
+                try { event(new TokenWordAdded((int)$fresh->id)); } catch (\Throwable $e) { /* swallow */ }
             }
         }
 

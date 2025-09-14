@@ -35,6 +35,7 @@ class ExpandSignatureIndexedPatternsServiceTest extends TestCase
         $target = Target::create([
             'name' => 'Dummy',
             'signature' => 'dmmuy',
+            'normalized_key' => 'dummy',
             'status' => 'running',
         ]);
         $pattern = Pattern::create(['template' => '{forename}{surname}']);
@@ -78,6 +79,7 @@ class ExpandSignatureIndexedPatternsServiceTest extends TestCase
         $target = Target::create([
             'name' => 'Dummy',
             'signature' => 'dmmuy',
+            'normalized_key' => 'dummy',
             'status' => 'running',
         ]);
         $pattern2 = Pattern::create(['template' => '{surname:2}']);

@@ -6,7 +6,9 @@ use App\Models\Target;
 use App\Models\TargetPattern;
 use App\Models\AlterEgo;
 use App\Services\TargetCreationService;
+use App\Support\NameNormalizer;
 use App\Traits\HelpsMatchWords;
+use App\Jobs\FillPatternSignaturesJob;
 use DB;
 use Illuminate\Http\Request;
 
@@ -29,7 +31,7 @@ class TargetController extends Controller
         $includeBoring = (bool)($data['allow_boring'] ?? false);
 
         // Ensure normalization yields a non-empty signature
-        $canonical = \App\Support\NameNormalizer::canonicalKey($data['name']);
+        $canonical = NameNormalizer::canonicalKey($data['name']);
         if ($canonical === '') {
             return response()->json(['message' => 'Name is invalid after normalization'], 422);
         }
@@ -78,6 +80,72 @@ class TargetController extends Controller
     public function progress(Target $target)
     {
         return response()->json(['ok' => true] + $this->lookupProgressPayload($target));
+    }
+
+    public function newMatches(Target $target)
+    {
+        $rows = DB::table('target_token_signature_words as t')
+            ->join('token_signature_words as w', 'w.id', '=', 't.token_signature_word_id')
+            ->join('token_signatures as s', 's.id', '=', 'w.token_signature_id')
+            ->join('tokens as tok', 'tok.id', '=', 's.token_id')
+            ->where('t.target_id', $target->id)
+            ->where('t.is_new', true)
+            ->orderBy('tok.name')
+            ->orderBy('w.list_type')
+            ->orderBy('w.word')
+            ->get(['w.id as id', 'tok.name as token', 'w.list_type', 'w.word']);
+        return response()->json([
+            'ok' => true,
+            'count' => $rows->count(),
+            'items' => $rows,
+        ]);
+    }
+
+    public function processNewMatches(Target $target)
+    {
+        // Basic rate-limit: avoid rapid reprocessing within 30 seconds
+        $key = 'target:'.$target->id.':process_new_matches_at';
+        $now = time();
+        try {
+            $last = (int) (cache()->get($key) ?? 0);
+            if ($last && ($now - $last) < 30) {
+                return response()->json(['ok' => false, 'error' => 'Please wait before retrying'], 429);
+            }
+        } catch (\Throwable $e) { /* ignore cache errors */ }
+
+        $ids = DB::table('target_token_signature_words')
+            ->where('target_id', $target->id)
+            ->where('is_new', true)
+            ->pluck('token_signature_word_id')
+            ->all();
+        $count = count($ids);
+        if ($count === 0) {
+            return response()->json(['ok' => true, 'patterns_attempted' => 0, 'alter_egos_created' => 0]);
+        }
+
+        // Mark-as-consumed strategy (A): mark as not new before queueing to keep idempotency
+        DB::table('target_token_signature_words')
+            ->where('target_id', $target->id)
+            ->whereIn('token_signature_word_id', $ids)
+            ->update(['is_new' => false]);
+
+        // Enqueue fill/expand for each target pattern. In a future enhancement, constrain by $ids.
+        $patterns = TargetPattern::where('target_id', $target->id)->orderBy('popularity_rank')->pluck('id')->all();
+        $attempted = 0;
+        foreach ($patterns as $pid) {
+            $attempted++;
+            $dispatch = FillPatternSignaturesJob::dispatch((int)$pid);
+            $queue = config('search.queue');
+            if (!empty($queue)) { $dispatch->onQueue($queue); }
+        }
+
+        try { cache()->put($key, $now, 60); } catch (\Throwable $e) {}
+
+        return response()->json([
+            'ok' => true,
+            'patterns_attempted' => $attempted,
+            'alter_egos_created' => 0,
+        ]);
     }
 
     public function star(Target $target, Request $request)

@@ -219,8 +219,13 @@ class WordMatchService
         if ($cacheEnabled) {
             try {
                 $ids = $matches->pluck('id')->values()->all();
-                Cache::put($cacheKey, $ids, $ttl);
-                Log::info('WordMatchService: cache_store ids=' . count($ids) . ' ttl_s=' . $ttl);
+                // Do not cache empty results to avoid "sticky" emptiness on first-run before data import
+                if (!empty($ids)) {
+                    Cache::put($cacheKey, $ids, $ttl);
+                    Log::info('WordMatchService: cache_store ids=' . count($ids) . ' ttl_s=' . $ttl);
+                } else {
+                    Log::info('WordMatchService: cache_skip_empty=1');
+                }
             } catch (\Throwable $e) {
                 // ignore cache errors
             }
@@ -236,9 +241,7 @@ class WordMatchService
 
     public function storeNewTargetMatchedTokenSignatureWords(Target $target, bool $includeBoring = false): Collection
     {
-        // Derive sorted-letter signature for matching from the canonical target signature
-        $sortedSignature = $this->makeSignature($target->signature);
-        $matchingTokenSignatureWords = $this->findMatchingTokenSignatureWords($sortedSignature, ['include_boring' => $includeBoring]);
+        $matchingTokenSignatureWords = $this->findMatchingTokenSignatureWords($target->signature, ['include_boring' => $includeBoring]);
         if ($matchingTokenSignatureWords->count()) {
             $rows = $matchingTokenSignatureWords->map(function ($tsw) use ($target) {
                 return [
@@ -247,11 +250,8 @@ class WordMatchService
                 ];
             })->toArray();
             // Idempotent persistence to avoid unique constraint violations on reruns
-            DB::table('target_token_signature_words')->upsert(
-                $rows,
-                ['target_id', 'token_signature_word_id'],
-                []
-            );
+            // Use insertOrIgnore for SQLite compatibility (upsert with empty update set may degrade to INSERT).
+            DB::table('target_token_signature_words')->insertOrIgnore($rows);
         }
         return $matchingTokenSignatureWords;
     }

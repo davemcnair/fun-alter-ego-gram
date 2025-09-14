@@ -6,16 +6,18 @@ use App\Jobs\FillPatternSignaturesJob;
 use App\Models\Pattern;
 use App\Models\Target;
 use App\Models\TargetPattern;
+use App\Support\NameNormalizer;
 use App\Traits\HelpsMatchWords;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class TargetCreationService
 {
     use HelpsMatchWords;
 
     public function __construct(
-        private ListPatternsService $patternsService,
-        private WordMatchService $wordMatchService,
+        private readonly ListPatternsService $patternsService,
+        private readonly WordMatchService    $wordMatchService,
     ) {}
 
     /**
@@ -28,12 +30,12 @@ class TargetCreationService
     {
         $originalInput = $name;
         $name = trim($name);
-        $normalized = \App\Support\NameNormalizer::canonicalKey($name);
-        $anagram = \App\Support\NameNormalizer::anagramSignature($name);
-        $display = \App\Support\NameNormalizer::displayName($name);
+        $normalizedKey = NameNormalizer::canonicalKey($name);
+        $signature = NameNormalizer::anagramSignature($name);
+        $display = NameNormalizer::displayName($name);
 
         // Validation: normalized key must be non-empty
-        if ($normalized === '') {
+        if ($normalizedKey === '') {
             \Log::warning('TargetCreationService.create invalid name after normalization', [
                 'original_input' => mb_substr($originalInput, 0, 80),
             ]);
@@ -44,21 +46,16 @@ class TargetCreationService
         try {
             \Log::debug('TargetCreationService.create', [
                 'original_input' => mb_substr($originalInput, 0, 80),
-                'normalized_key' => $normalized,
-                'anagram_sig_len' => strlen($anagram),
+                'normalized_key' => $normalizedKey,
+                'signature' => $signature,
+                'sig_len' => strlen($signature),
             ]);
         } catch (\Throwable $e) {}
 
-        // Also populate legacy 'signature' column with normalized_key (order-preserving)
-        $legacySignature = $normalized;
-
         $target = Target::firstOrCreate(
-            ['normalized_key' => $normalized],
-            ['name' => $display, 'anagram_signature' => $anagram, 'status' => 'idle', 'signature' => $legacySignature]
+            ['normalized_key' => $normalizedKey],
+            ['name' => $display, 'status' => 'idle', 'signature' => $signature]
         );
-
-        // Compute sorted-letter signature from normalized for matching/filtering
-        $signature = $legacySignature;
 
         // Step 1: store matched words and get involved token ids
         $tokenSignatureWords = $this->wordMatchService->storeNewTargetMatchedTokenSignatureWords($target, $includeBoring);
@@ -67,7 +64,8 @@ class TargetCreationService
         [$storedMinLengths, $matchedMinLengths] =
             $this->wordMatchService->extractMatchingTokenWordMinimumLengths($signature, $tokenSignatureWords);
 
-        // Step 3: list short-enough patterns and filter
+        // Step 3: list patterns but link ALL standard patterns to this target (pending)
+        // We still compute filtered sets for potential future use, but insertion is based on all standard patterns.
         $standardShortEnoughPatterns = $this->patternsService->listWithinMinLength(strlen($signature));
         $filteredPatterns = $this->patternsService->filterPatternsForTarget(
             $signature,
@@ -91,7 +89,8 @@ class TargetCreationService
             ];
         });
         if ($bulk->isNotEmpty()) {
-            TargetPattern::insert($bulk->toArray());
+            // Use insertOrIgnore to respect unique (target_id, pattern_id) and keep operation idempotent
+            DB::table('target_patterns')->insertOrIgnore($bulk->toArray());
         }
 
         // Step 5: dispatch fills for pending

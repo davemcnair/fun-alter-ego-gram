@@ -62,9 +62,9 @@
                 <th></th>
                 <th>ID</th>
                 <th>Name</th>
-                <th>Status</th>
                 <th>Progress</th>
                 <th>Alter egos</th>
+                <th>New matches</th>
                 <th></th>
             </tr>
             </thead>
@@ -74,17 +74,25 @@
                     <td><input type="checkbox" name="ids[]" value="{{ $s->id }}" class="rowCheck"></td>
                     <td>{{ $s->id }}</td>
                     <td>{{ $s->name }}</td>
-                    <td><span class="tag">{{ $s->status }}</span></td>
-                    @php $total = $s->patterns()->count(); $done = $s->patterns()->where('status','done')->count(); @endphp
+                    @php $total = $s->patterns()->count(); $done = $s->patterns()->where('status','done')->count(); $newCount = DB::table('target_token_signature_words')->where('target_id', $s->id)->where('is_new', true)->count(); @endphp
                     <td>{{ $done }} / {{ $total }}</td>
                     <td>{{ $s->alterEgos()->count() }}</td>
+                    <td>
+                        @if($newCount > 0)
+                            <button type="button" class="tag" id="nm-btn-{{ $s->id }}" aria-expanded="false" onclick="toggleNewMatches({{ $s->id }})">{{ $newCount }}</button>
+                            <div id="nm-{{ $s->id }}" style="display:none; margin-top:6px; max-height:140px; overflow:auto; border:1px solid #e5e7eb; padding:6px; border-radius:4px;"></div>
+                        @else
+                            <span class="tag" style="background:#f3f4f6; color:#6b7280;">0</span>
+                        @endif
+                    </td>
                     <td style="display:flex; gap:6px; align-items:center;">
                         <a class="btn" href="{{ route('targets.show', $s) }}">Open</a>
+                        <button type="button" onclick="processNewMatches({{ $s->id }})" {{ $newCount > 0 ? '' : 'disabled' }}>Fill with new words</button>
                         <button type="button" onclick="deleteSingle({{ $s->id }})" style="background:#dc2626;">Delete</button>
                     </td>
                 </tr>
             @empty
-                <tr><td colspan="7">No Targets yet.</td></tr>
+                <tr><td colspan="6">No Targets yet.</td></tr>
             @endforelse
             </tbody>
         </table>
@@ -126,6 +134,57 @@
             checks.forEach(function(c){ c.checked = (parseInt(c.value, 10) === parseInt(id, 10)); });
             form.submit();
         } catch (e) { /* ignore */ }
+    };
+    // New matches UI handlers
+    window.toggleNewMatches = async function(targetId){
+        var panel = document.getElementById('nm-' + targetId);
+        var btn = document.getElementById('nm-btn-' + targetId);
+        if (!panel) return;
+        var visible = panel.style.display !== 'none';
+        if (visible) {
+            panel.style.display = 'none';
+            if (btn) btn.setAttribute('aria-expanded', 'false');
+            return;
+        }
+        // Load list via AJAX
+        panel.innerHTML = '<div>Loading…</div>';
+        try {
+            var res = await fetch('/targets/' + targetId + '/new-matches');
+            var json = await res.json();
+            if (json && json.items) {
+                if (json.items.length === 0) {
+                    panel.innerHTML = '<div style="color:#6b7280;">No new matches.</div>';
+                } else {
+                    var html = '<ul style="margin:0; padding-left: 16px;">';
+                    json.items.forEach(function(it){
+                        html += '<li><span class="tag" style="margin-right:6px;">' + it.token + '</span> <em>(' + it.list_type + ')</em> ' + it.word + '</li>';
+                    });
+                    html += '</ul>';
+                    panel.innerHTML = html;
+                }
+            } else {
+                panel.innerHTML = '<div style="color:#b91c1c;">Failed to load.</div>';
+            }
+        } catch (e) {
+            panel.innerHTML = '<div style="color:#b91c1c;">Error loading.</div>';
+        }
+        panel.style.display = 'block';
+        if (btn) btn.setAttribute('aria-expanded', 'true');
+    };
+
+    window.processNewMatches = async function(targetId){
+        var btn = document.getElementById('nm-btn-' + targetId);
+        var oldLabel = btn ? btn.textContent : '';
+        if (btn) btn.textContent = '…';
+        try {
+            var res = await fetch('/targets/' + targetId + '/process-new-matches', { method: 'POST', headers: { 'X-CSRF-TOKEN': document.querySelector('input[name=_token]')?.value || document.querySelector('meta[name=csrf-token]')?.content || '' }});
+            var json = await res.json();
+            // Refresh the page to update counts
+            location.reload();
+        } catch (e) {
+            if (btn) btn.textContent = oldLabel || '0';
+            alert('Failed to process new matches');
+        }
     };
   })();
   </script>

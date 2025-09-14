@@ -3,6 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Search: {{ $item->name }}</title>
     <style>
         body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; padding: 0; background: #f7fafc; color: #111827; }
@@ -98,12 +99,43 @@
         </div>
 
         <div>
+            <div class="card" id="addWordCard">
+                <h3 style="margin-top:0; display:flex; align-items:center; gap:10px;">Add a word</h3>
+                <form id="addWordForm" method="POST" action="{{ route('targets.add-word', $item) }}" aria-describedby="addWordErrors" style="display:grid; grid-template-columns: 1fr 1fr 1fr auto; gap:8px; align-items:end;">
+                                    @csrf
+                    <div>
+                        <label for="tokenType" style="display:block; font-size:14px; margin-bottom:4px;">Token type</label>
+                        <select id="tokenType" name="token_type" class="input" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px;">
+                            <option value="">Select token</option>
+                            @foreach(\App\Models\Token::NAMES as $tok)
+                                <option value="{{ $tok }}">{{ $tok }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label for="wordInput" style="display:block; font-size:14px; margin-bottom:4px;">Word</label>
+                        <input id="wordInput" name="word" type="text" required class="input" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px;"/>
+                    </div>
+                    <div>
+                        <label for="listType" style="display:block; font-size:14px; margin-bottom:4px;">List</label>
+                        <select id="listType" name="list_type" class="input" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px;">
+                            <option value="ok">ok</option>
+                            <option value="fun">fun</option>
+                        </select>
+                    </div>
+                    <div>
+                        <button id="addWordBtn" type="submit" aria-busy="false">Add word</button>
+                    </div>
+                </form>
+                <div id="addWordErrors" class="muted" aria-live="polite" hidden style="margin-top:6px;"></div>
+            </div>
             <div class="card">
                 <h3 style="margin-top:0; display:flex; align-items:center; gap:10px;">Token word matches
                     <label style="margin-left:auto; font-weight:normal; display:flex; align-items:center; gap:6px; font-size:14px;">
                         <input type="checkbox" id="onlyUsedToggle" checked> Only used
                     </label>
                 </h3>
+                <div id="tokenMatchesContainer">
                 @php
                     $groups = is_array($matchedWords) ? $matchedWords : [];
                     if (!empty($groups)) {
@@ -175,6 +207,7 @@
                         </tbody>
                     </table>
                 @endif
+                </div>
             </div>
 
         </div>
@@ -222,6 +255,21 @@ const ALL_SURNAME = new Set(@json(array_keys($allSurname)));
 const ALL_FORENAME = new Set(@json(array_keys($allForename)));
 
 (function(){
+    try { console.log('[UI] Target page script boot'); } catch (e) {}
+    // Global error hooks to surface any silent JS errors
+    try {
+        window.onerror = function(msg, src, line, col, err){ try { console.error('[UI] window.onerror', msg, src, line, col, err); } catch(e){} };
+        window.onunhandledrejection = function(ev){ try { console.error('[UI] unhandledrejection', ev && ev.reason ? ev.reason : ev); } catch(e){} };
+    } catch (e) {}
+    // Ping backend to verify connectivity and logging
+    try {
+        fetch("{{ route('debug.ping') }}", { headers: { 'X-Requested-With':'XMLHttpRequest', 'Accept':'application/json' }, credentials:'same-origin' })
+            .then(r => r.json()).then(j => { try { console.log('[UI] ping result', j); } catch(e){} })
+            .catch(err => { try { console.warn('[UI] ping failed', err); } catch(e){} });
+        fetch("{{ route('targets.debug', $item) }}", { headers: { 'X-Requested-With':'XMLHttpRequest', 'Accept':'application/json' }, credentials:'same-origin' })
+            .then(r => r.json()).then(j => { try { console.log('[UI] target.debug result', j); } catch(e){} })
+            .catch(err => { try { console.warn('[UI] target.debug failed', err); } catch(e){} });
+    } catch (e) {}
     const id = {{ $item->id }};
     let paused = false;
     let completed = {{ $item->status === 'completed' ? 'true' : 'false' }};
@@ -246,6 +294,14 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
     const starredCount = document.getElementById('starredCount');
     const URL_STAR = "{{ route('targets.star', $item) }}";
     const URL_UNSTAR = "{{ route('targets.unstar', $item) }}";
+    const URL_ADD_WORD = "{{ route('targets.add-word', $item) }}";
+    window.ADD_WORD_URL = function(){
+        try {
+            if (URL_ADD_WORD && String(URL_ADD_WORD).length > 1) return URL_ADD_WORD;
+        } catch (e) {}
+        try { if (typeof id !== 'undefined' && id) return '/targets/' + id + '/add-word'; } catch (e) {}
+        return '/debug/404-add-word';
+    }
     const GROUP_INIT_LIMIT = 5;
     const groupExpanded = Object.create(null); // pattern string -> boolean
     let onlyFun = false;
@@ -513,21 +569,62 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
     }
 
     async function call(url, method = 'POST') {
-        const res = await fetch(url, {method, headers: {'X-Requested-With':'XMLHttpRequest','X-CSRF-TOKEN': '{{ csrf_token() }}' }});
-        return await res.json();
+        const res = await fetch(url, {
+            method,
+            credentials: 'same-origin',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'Accept': 'application/json'
+            }
+        });
+        let data = null;
+        try { data = await res.json(); } catch (e) { /* non-JSON response */ }
+        if (res.ok && data) return data;
+        // Fallbacks for non-JSON or error statuses
+        if (res.status === 419 || res.status === 401) {
+            return { ok: false, error: 'Your session expired or CSRF token is invalid. Please reload the page and try again.' };
+        }
+        if (res.redirected) {
+            return { ok: false, error: 'Request was redirected. Please reload the page and try again.' };
+        }
+        let text = '';
+        try { if (!data) { text = await res.text(); } } catch (e2) {}
+        // If server still returned structured error
+        if (data && typeof data === 'object' && ('ok' in data || 'error' in data)) {
+            return Object.assign({ ok: false }, data);
+        }
+        return { ok: false, error: text || ('Request failed with status ' + res.status) };
     }
     async function callJson(url, body) {
         const res = await fetch(url, {
             method: 'POST',
+            credentials: 'same-origin',
             headers: {
                 'Content-Type': 'application/json',
                 'X-Requested-With':'XMLHttpRequest',
-                'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'Accept': 'application/json'
             },
             body: JSON.stringify(body || {})
         });
-        return await res.json();
+        let data = null;
+        try { data = await res.json(); } catch (e) { /* non-JSON response */ }
+        if (res.ok && data) return data;
+        if (res.status === 419 || res.status === 401) {
+            return { ok: false, error: 'Your session expired or CSRF token is invalid. Please reload the page and try again.' };
+        }
+        if (res.redirected) {
+            return { ok: false, error: 'Request was redirected. Please reload the page and try again.' };
+        }
+        let text = '';
+        try { if (!data) { text = await res.text(); } } catch (e2) {}
+        if (data && typeof data === 'object' && ('ok' in data || 'error' in data)) {
+            return Object.assign({ ok: false }, data);
+        }
+        return { ok: false, error: text || ('Request failed with status ' + res.status) };
     }
+        try { window.callJson = callJson; window.call = call; } catch (e) {}
 
     function escAttr(s) {
         return String(s).replace(/["'\\]/g, function(c){
@@ -898,6 +995,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
 
 
     function render(p) {
+        try { renderMatchedWords(p && p.matchedWords ? p.matchedWords : {}); } catch (e) { /* ignore */ }
         __lastProgress = p;
         const status = (p && p.item && p.item.status) ? p.item.status : (p.status || '');
         if (statusEl) statusEl.textContent = status;
@@ -962,6 +1060,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
         } catch (e) { /* ignore */ }
         completed = String(status || '').toLowerCase() === 'completed';
     }
+    try { window.render = render; } catch (e) {}
 
 
     // Expose as global to work with inline onclick handlers in the table
@@ -1013,6 +1112,157 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
         matchedWords: @json($matchedWords),
     };
     render(initialProgress);
+})();
+// Add Word form handling and matched words re-rendering
+(function(){
+  const form = document.getElementById('addWordForm');
+  const tokenSel = document.getElementById('tokenType');
+  const wordInput = document.getElementById('wordInput');
+  const listSel = document.getElementById('listType');
+  const btn = document.getElementById('addWordBtn');
+  const errorsEl = document.getElementById('addWordErrors');
+  function setBusy(b){ if (!btn) return; btn.disabled = !!b; btn.setAttribute('aria-busy', b ? 'true' : 'false'); }
+  function showToast(msg){ try { alert(String(msg)); } catch(e) {} }
+  function safe(s){ return String(s || ''); }
+  function esc(s){ return safe(s).replace(/[&<>]/g, function(c){ return c==='&'?'&amp;':(c==='<'?'&lt;':'&gt;'); }); }
+  function setError(msg, source){
+    if (!errorsEl) return;
+    const text = String(msg || '').trim();
+    const src = String(source || '').trim();
+    const full = src ? (src + ': ' + text) : text;
+    errorsEl.textContent = full;
+    try {
+      if (src) { errorsEl.setAttribute('data-error-source', src); } else { errorsEl.removeAttribute('data-error-source'); }
+    } catch (e) { /* ignore */ }
+    try {
+      if (full) { errorsEl.removeAttribute('hidden'); }
+      else { errorsEl.setAttribute('hidden','hidden'); }
+    } catch (e) { /* ignore */ }
+  }
+  window.renderMatchedWords = function(mw){
+    const wrap = document.getElementById('tokenMatchesContainer');
+    if (!wrap) return;
+    try {
+      const groups = mw && typeof mw === 'object' ? mw : {};
+      const tokens = Object.keys(groups);
+      // Sort tokens with surname first, then alpha
+      tokens.sort(function(a,b){ if (a==='surname' && b!=='surname') return -1; if (b==='surname' && a!=='surname') return 1; return a.localeCompare(b); });
+      if (tokens.length === 0) { wrap.innerHTML = '<div class="muted">No word matches found.</div>'; return; }
+      let html = '';
+      html += '<table style="width:100%; border-collapse: collapse;">';
+      html += '<thead><tr>' +
+        '<th style="text-align:left; padding:8px; background:#f3f4f6;">Token</th>' +
+        '<th style="text-align:left; padding:8px; background:#f3f4f6;">List</th>' +
+        '<th style="text-align:left; padding:8px; background:#f3f4f6;">Count</th>' +
+        '<th style="text-align:left; padding:8px; background:#f3f4f6;">Sample</th>' +
+      '</tr></thead><tbody>';
+      tokens.forEach(function(token){
+        const byList = groups[token] || {};
+        const lists = Object.keys(byList).sort();
+        lists.forEach(function(listType){
+          const items = byList[listType] || [];
+          const count = items.length;
+          const sample = items.slice(0, 5);
+          const rowId = (typeof btoa === 'function' ? btoa(token + '|' + listType).replace(/=+$/,'') : (token + '|' + listType).replace(/[^a-zA-Z0-9]+/g,'_'));
+          html += '<tr id="row-' + rowId + '" data-rowid="' + rowId + '" data-token="' + esc(token) + '" data-list="' + esc(listType) + '" data-total="' + count + '" style="border-bottom:1px solid #e5e7eb;">';
+          html += '<td style="padding:8px;">' + esc(token) + '</td>';
+          html += '<td style="padding:8px;"><span class="tag">' + esc(listType) + '</span></td>';
+          html += '<td style="padding:8px;"><span id="count-' + rowId + '">' + count + '</span></td>';
+          html += '<td style="padding:8px;" class="muted">';
+          html += '<div id="sample-' + rowId + '" style="display:none;">';
+          sample.forEach(function(it){
+            const wid = parseInt(it && it.id || 0, 10) || 0;
+            const w = safe(it && it.word);
+            if ((token==='forename' || token==='surname') && listType==='ok') {
+              html += '<span class="tok-word" data-token="' + esc(token) + '" data-word="' + esc(w) + '" style="display:inline-block; margin-right:6px; cursor:pointer; text-decoration:underline;" onclick="promoteOkWord(' + wid + ', \'' + w.replace(/'/g, "\\'") + '\')" title="Promote to fun">' + esc(w) + '</span>';
+              html += '<button type="button" class="link" style="border:0;background:none;color:#2563eb;cursor:pointer;padding:0;" onclick="window.setWordFilter(\'' + w.replace(/'/g, "\\'") + '\',\'' + token + '\')"></button>';
+            } else if (token==='forename' || token==='surname') {
+              html += '<span class="tok-word" data-token="' + esc(token) + '" data-word="' + esc(w) + '" style="display:inline-block; margin-right:6px; cursor:pointer; color:#2563eb; text-decoration:underline;" onclick="window.setWordFilter(\'' + w.replace(/'/g, "\\'") + '\',\'' + token + '\')">' + esc(w) + '</span>';
+            } else {
+              html += '<span class="tok-word" data-token="' + esc(token) + '" data-word="' + esc(w) + '" style="display:inline-block; margin-right:6px;">' + esc(w) + '</span>';
+            }
+          });
+          if (count > sample.length) {
+            html += '<button type="button" class="link" style="border:0;background:none;color:#2563eb;cursor:pointer;padding:0;" onclick="toggleWords(\'' + rowId + '\', true)">show all (' + count + ')</button>';
+          }
+          html += '</div>';
+          html += '<div id="all-' + rowId + '" style="display:block; max-height:160px; overflow:auto;">';
+          items.forEach(function(it){
+            const wid = parseInt(it && it.id || 0, 10) || 0;
+            const w = safe(it && it.word);
+            if ((token==='forename' || token==='surname') && listType==='ok') {
+              html += '<span class="tok-word" data-token="' + esc(token) + '" data-word="' + esc(w) + '" style="display:inline-block; margin-right:6px; cursor:pointer; text-decoration:underline;" onclick="promoteOkWord(' + wid + ', \'' + w.replace(/'/g, "\\'") + '\')" title="Promote to fun">' + esc(w) + '</span>';
+              html += '<button type="button" class="link" style="border:0;background:none;color:#2563eb;cursor:pointer;padding:0;" onclick="window.setWordFilter(\'' + w.replace(/'/g, "\\'") + '\',\'' + token + '\')"></button>';
+            } else if (token==='forename' || token==='surname') {
+              html += '<span class="tok-word" data-token="' + esc(token) + '" data-word="' + esc(w) + '" style="display:inline-block; margin-right:6px; cursor:pointer; color:#2563eb; text-decoration:underline;" onclick="window.setWordFilter(\'' + w.replace(/'/g, "\\'") + '\',\'' + token + '\')">' + esc(w) + '</span>';
+            } else {
+              html += '<span class="tok-word" data-token="' + esc(token) + '" data-word="' + esc(w) + '" style="display:inline-block; margin-right:6px;">' + esc(w) + '</span>';
+            }
+          });
+          html += '<div><button type="button" class="link" style="border:0;background:none;color:#2563eb;cursor:pointer;padding:0;" onclick="toggleWords(\'' + rowId + '\', false)">show less</button></div>';
+          html += '</div>';
+          html += '</td></tr>';
+        });
+      });
+      html += '</tbody></table>';
+      wrap.innerHTML = html;
+    } catch (e) { /* ignore */ }
+  };
+  // Unified submit handler that can be called from inline onsubmit and from addEventListener
+  async function __handleAddWordSubmit(ev){
+    if (ev && typeof ev.preventDefault === 'function') ev.preventDefault();
+    if (!btn) return false;
+    setError('');
+    setBusy(true);
+    const payload = {
+      token_type: (tokenSel && tokenSel.value ? String(tokenSel.value) : '').trim(),
+      word: (wordInput && wordInput.value ? String(wordInput.value) : '').trim(),
+      list_type: (listSel && listSel.value ? String(listSel.value) : 'ok').trim()
+    };
+    if (!payload.word) { setError('Please enter a word.', 'Client validation'); setBusy(false); if (wordInput) wordInput.focus(); return false; }
+    if (!payload.token_type) { setError('Please select a token type.', 'Client validation'); setBusy(false); if (tokenSel) tokenSel.focus(); return false; }
+    try {
+      try { console.log('[UI] POST add-word', ADD_WORD_URL(), payload); } catch (e) {}
+      const res = await callJson(ADD_WORD_URL(), payload);
+      if (res && res.ok) {
+        try { wordInput.value = ''; wordInput.focus(); } catch (e) {}
+        setError('');
+        showToast('Word added and results updated.');
+        render(res);
+      } else {
+        let reason = 'Server';
+        let msg = res && res.error ? String(res.error) : 'Could not add word. Please try again.';
+        // Surface first field-specific validation error if present
+        try {
+          if (res && res.errors && typeof res.errors === 'object') {
+            const firstKey = Object.keys(res.errors)[0];
+            if (firstKey && Array.isArray(res.errors[firstKey]) && res.errors[firstKey].length) {
+              msg = res.errors[firstKey][0];
+              reason = 'Server validation';
+            }
+          }
+        } catch (e) { /* ignore */ }
+        // Classify common auth/CSRF responses
+        try {
+          const m = (msg || '').toLowerCase();
+          if (m.includes('csrf') || m.includes('session')) { reason = 'Auth/CSRF'; }
+        } catch (e) { /* ignore */ }
+        try { console.warn('[UI] Add word failed', { reason, res }); } catch (e) {}
+        setError(msg, reason);
+      }
+    } catch (e) {
+      try { console.error('[UI] Add word network error', e); } catch (_e) {}
+      setError('Could not add word. Please try again.', 'Network');
+    } finally {
+      setBusy(false);
+    }
+    return false; // prevent default form submission
+  }
+  // Expose for inline onsubmit fallback
+  window.__onAddWordSubmit = __handleAddWordSubmit;
+  if (form) {
+    form.addEventListener('submit', __handleAddWordSubmit);
+  }
 })();
 </script>
 <script>

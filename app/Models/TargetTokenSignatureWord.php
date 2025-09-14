@@ -25,23 +25,46 @@ class TargetTokenSignatureWord extends Model
     }
 
     /**
+     * Link provided TokenSignatureWord rows to the target.
+     * Newly linked rows will be flagged as is_new=true. Existing links are left untouched.
+     *
      * @param Target $target
      * @param Collection<TokenSignatureWord> $tokenSignatureWords
      * @return Collection<TokenSignatureWord, TargetTokenSignatureWord>
      */
     public static function bulkInsertOrIgnore(Target $target , Collection $tokenSignatureWords): Collection
     {
-        $rows = $tokenSignatureWords->map(function ($tsw) use ($target) {
-            return [
-                'target_id' => $target->id,
-                'token_signature_word_id' => $tsw->id,
-            ];
-        })->toArray();
-        if (!empty($rows)) {
-            // Idempotent persistence to avoid unique constraint violations on reruns
-            // Use insertOrIgnore for SQLite compatibility (upsert with empty update set may degrade to INSERT).
-            DB::table('target_token_signature_words')->insertOrIgnore($rows);
+        if ($tokenSignatureWords->isEmpty()) {
+            return $target->fresh()->matchingTokenSignatureWords;
         }
+
+        $wordIds = $tokenSignatureWords->pluck('id')->map(fn($v) => (int)$v)->values();
+
+        // Determine which links already exist
+        $existing = DB::table('target_token_signature_words')
+            ->where('target_id', $target->id)
+            ->whereIn('token_signature_word_id', $wordIds)
+            ->pluck('token_signature_word_id')
+            ->map(fn($v) => (int)$v)
+            ->all();
+        $existingSet = array_flip($existing);
+
+        $now = now();
+        $newRows = [];
+        foreach ($wordIds as $wid) {
+            if (!isset($existingSet[$wid])) {
+                $newRows[] = [
+                    'target_id' => $target->id,
+                    'token_signature_word_id' => $wid,
+                    'is_new' => true,
+                ];
+            }
+        }
+
+        if (!empty($newRows)) {
+            DB::table('target_token_signature_words')->insert($newRows);
+        }
+
         return $target->fresh()->matchingTokenSignatureWords;
     }
 

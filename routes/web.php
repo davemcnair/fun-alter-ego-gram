@@ -1,12 +1,20 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\TargetController;
 use App\Http\Controllers\PatternController;
 use App\Http\Controllers\WordController;
 
 Route::resource('targets', TargetController::class)->only(['index','store','show','destroy']);
 Route::post('/targets/bulk-destroy', [TargetController::class, 'bulkDestroy'])->name('targets.bulk-destroy');
+
+// Simple debug/ping endpoints for troubleshooting frontend/backend connectivity
+Route::get('/debug/ping', function(){
+    try { Log::info('debug.ping: request received'); } catch (\Throwable $e) {}
+    return response()->json(['ok' => true, 'pong' => true]);
+})->name('debug.ping');
+Route::get('/targets/{target}/debug', [TargetController::class, 'debug'])->name('targets.debug');
 
 // Pattern CRUD
 Route::resource('patterns', PatternController::class)->except(['show']);
@@ -30,6 +38,8 @@ Route::post('/words/{word}/toggle-search', [WordController::class, 'toggleSearch
 // New matches endpoints
 Route::get('/targets/{target}/new-matches', [TargetController::class, 'newMatches'])->name('targets.new-matches');
 Route::post('/targets/{target}/process-new-matches', [TargetController::class, 'processNewMatches'])->name('targets.process-new-matches');
+// Add word in context of a target and trigger immediate generation
+Route::post('/targets/{target}/add-word', [TargetController::class, 'addWord'])->name('targets.add-word');
 //Route::post('/targets/{target}/start', [TargetController::class, 'start'])->name('targets.start');
 // Star / Unstar phrase for this target
 Route::post('/targets/{target}/star', [TargetController::class, 'star'])->name('targets.star');

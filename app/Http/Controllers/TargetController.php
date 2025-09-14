@@ -18,6 +18,107 @@ class TargetController extends Controller
 {
     use HelpsMatchWords;
 
+    public function debug(Target $target, Request $request)
+    {
+        \Log::info('TargetController.debug: request received', [
+            'target_id' => $target->id,
+            'route' => $request->path(),
+            'ajax' => $request->ajax(),
+        ]);
+        return response()->json(['ok' => true, 'target_id' => $target->id]);
+    }
+
+    public function addWord(Target $target, Request $request)
+    {
+        \Log::info('TargetController.addWord: request received', [
+            'target_id' => $target->id,
+            'ajax' => $request->ajax(),
+            'route' => $request->path(),
+            'headers' => [
+                'x-requested-with' => $request->header('X-Requested-With'),
+                'accept' => $request->header('Accept'),
+            ],
+            'payload_preview' => [
+                'token_type' => (string)($request->input('token_type')),
+                'word_len' => strlen((string)$request->input('word', '')),
+                'list_type' => (string)$request->input('list_type'),
+            ],
+        ]);
+        // Perform explicit validation so we can return a consistent JSON error shape on failure
+        $validator = \Validator::make($request->all(), [
+            'token_type' => ['required','string'],
+            'word' => ['required','string','min:1'],
+            'list_type' => ['nullable','string'],
+        ]);
+        if ($validator->fails()) {
+            $errors = $validator->errors()->toArray();
+            \Log::warning('TargetController.addWord: validation failed', [
+                'target_id' => $target->id,
+                'errors' => $errors,
+                'input' => $request->only(['token_type','word','list_type']),
+            ]);
+            return response()->json([
+                'ok' => false,
+                'error' => 'Validation failed.',
+                'errors' => $errors,
+            ], 422);
+        }
+        $data = $validator->validated();
+
+        // Normalize and validate list type (default to ok)
+        $list = strtolower(trim((string)($data['list_type'] ?? 'ok')));
+        if ($list === '' || $list === 'new') { $list = 'ok'; }
+        if (!in_array($list, ['ok','fun','boring'], true)) {
+            return response()->json(['ok' => false, 'error' => 'Invalid list_type'], 422);
+        }
+
+        // Ensure target has a non-empty signature
+        if (trim((string)$target->signature) === '') {
+            return response()->json(['ok' => false, 'error' => 'Empty target signature'], 422);
+        }
+
+        // Create the word using existing domain logic; be tolerant of failures
+        /** @var \App\Services\WordStoreService $store */
+        $store = app(\App\Services\WordStoreService::class);
+        try {
+            $created = $store->createNewWordAndMaybeDispatch((string)$data['token_type'], (string)$data['word'], $list);
+        } catch (\Throwable $e) {
+            $created = null; // tolerate and continue to refresh UI
+        }
+
+        // Find matches and link to this target (mark new)
+        /** @var \App\Services\WordMatchService $matcher */
+        $matcher = app(\App\Services\WordMatchService::class);
+        $matches = $matcher->findMatchingTokenSignatureWords($target->signature, ['include_boring' => true]);
+        \App\Models\TargetTokenSignatureWord::bulkInsertOrIgnore($target, $matches);
+
+        // If there are any new rows, mark consumed and enqueue fills for this target
+        $newIds = DB::table('target_token_signature_words')
+            ->where('target_id', $target->id)
+            ->where('is_new', true)
+            ->pluck('token_signature_word_id')
+            ->all();
+
+        if (!empty($newIds)) {
+            DB::table('target_token_signature_words')
+                ->where('target_id', $target->id)
+                ->whereIn('token_signature_word_id', $newIds)
+                ->update(['is_new' => false]);
+
+            $patternIds = \App\Models\TargetPattern::where('target_id', $target->id)
+                ->orderBy('popularity_rank')
+                ->pluck('id')
+                ->all();
+            foreach ($patternIds as $pid) {
+                $dispatch = FillPatternSignaturesJob::dispatch((int)$pid);
+                $queue = config('search.queue');
+                if (!empty($queue)) { $dispatch->onQueue($queue); }
+            }
+        }
+
+        return response()->json(['ok' => true] + $this->lookupProgressPayload($target->fresh()));
+    }
+
     public function index()
     {
         $items = Target::paginate(15);
@@ -82,6 +183,9 @@ class TargetController extends Controller
 
     public function newMatches(Target $target)
     {
+        \Log::info('TargetController.newMatches: request received', [
+            'target_id' => $target->id,
+        ]);
         $rows = DB::table('target_token_signature_words as t')
             ->join('token_signature_words as w', 'w.id', '=', 't.token_signature_word_id')
             ->join('token_signatures as s', 's.id', '=', 'w.token_signature_id')
@@ -101,6 +205,9 @@ class TargetController extends Controller
 
     public function processNewMatches(Target $target)
     {
+        \Log::info('TargetController.processNewMatches: request received', [
+            'target_id' => $target->id,
+        ]);
         // Basic rate-limit: avoid rapid reprocessing within 30 seconds
         $key = 'target:'.$target->id.':process_new_matches_at';
         $now = time();
@@ -148,6 +255,15 @@ class TargetController extends Controller
 
     public function star(Target $target, Request $request)
     {
+        \Log::info('TargetController.star: request received', [
+            'target_id' => $target->id,
+            'ajax' => $request->ajax(),
+            'headers' => [
+                'x-requested-with' => $request->header('X-Requested-With'),
+                'accept' => $request->header('Accept'),
+            ],
+            'payload_preview' => [ 'phrase_len' => strlen((string)$request->input('phrase','')) ],
+        ]);
         $data = $request->validate([
             'phrase' => ['required','string'],
         ]);

@@ -158,7 +158,7 @@ class WordMatchService
         $totalMs = (int) round((microtime(true) - $t0) * 1000);
 
         try {
-            Log::info('WordMatchService: sql_subset_pruning_only=1 count=' . $count . ' query_ms=' . $queryMs . ' total_ms=' . $totalMs);
+            Log::info('WordMatchService: count=' . $count . ' query_ms=' . $queryMs . ' total_ms=' . $totalMs);
         } catch (\Throwable $e) {}
 
         if ($cacheEnabled) {

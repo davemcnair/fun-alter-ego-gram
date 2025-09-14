@@ -43,31 +43,10 @@ class FillPatternSignaturesService
 
         $patternTokenPositions = Pattern::parsePatternTokenSlotPositions((string)$targetPattern->pattern->template);
 
-        // Algorithmic pruning and ordering (Proposed change 3)
+        // Algorithmic ordering
         $targetSig = (string)$target->signature;
-        $targetLen = strlen($targetSig);
-        // 1) Early min-length pruning using WordMatchService helper
-        [$storedTokenMins, $matchingWordBasedMins] =
-            $wordMatchService->extractTargetTokenSignatureWordMinimumLengths($target->matchingTokenSignatureWords);
-        $minSum = 0;
-        $unsatisfiable = false;
-        foreach ($patternTokenPositions as $pos => $tokenId) {
-            $mwMin = $matchingWordBasedMins[$tokenId] ?? null;
-            if ($mwMin === null) { $unsatisfiable = true; break; }
-            $tokMin = (int)($storedTokenMins[$tokenId] ?? 0);
-            $minSum += max($tokMin, (int)$mwMin);
-        }
-        try { \Log::info('FillPatternSignaturesService: minSum='.$minSum.' targetLen='.$targetLen.' unsat=' . ($unsatisfiable ? '1' : '0')); } catch (\Throwable $e) {}
-        if ($unsatisfiable || $minSum > $targetLen) {
-            // No possible fills; skip DFS and expansion scheduling for this pattern
-            try { \Log::info($target->name . '/' . ((string)$targetPattern->pattern->template) . ' : early-pruned by min-length'); } catch (\Throwable $e) {}
-            // Still mark as processed to avoid endless retries
-            $targetPattern->status = 'done';
-            $targetPattern->save();
-            return;
-        }
 
-        // 2) Rarity-first slot ordering: order by ascending candidate count per token
+        // Rarity-first slot ordering: order by ascending candidate count per token
         $candidateCounts = [];
         foreach ($target->matchingTokenSignatureWords as $tokenSignatureWord) {
             $tid = (int)$tokenSignatureWord->tokenSignature->token_id;

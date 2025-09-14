@@ -2,13 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\TokenSignature;
 use App\Models\TokenSignatureWord;
 use App\Services\WordMatchService;
 use App\Traits\HelpsMatchWords;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use App\Events\TokenWordAdded;
 
 class WordController extends Controller
 {
@@ -122,23 +120,12 @@ class WordController extends Controller
         $token = strtolower((string)$data['token_type']);
         $list = (string)$data['list_type'];
 
-        // Locate token_signature for this token+signature
-        $tokenSignature = TokenSignature::query()
-            ->join('tokens', 'tokens.id', '=', 'token_signatures.token_id')
-            ->where('tokens.name', $token)
-            ->where('token_signatures.signature', $signature)
-            ->select('token_signatures.*')
-            ->first();
+        $store = app(\App\Services\WordStoreService::class);
 
         if (!$request->boolean('confirm', false)) {
-            if ($tokenSignature) {
-                $existing = TokenSignatureWord::query()
-                    ->where('token_signature_id', $tokenSignature->id)
-                    ->orderBy('word')
-                    ->get();
-                $selectedId = optional($existing->firstWhere('is_deferred', false))->id;
-                // Synthesize use_for_search flag for the view
-                foreach ($existing as $ex) { $ex->use_for_search = !$ex->is_deferred; }
+            // If there are existing anagrams for this token/signature, show confirmation
+            [$existing, $selectedId] = $store->getExistingAnagrams($token, $signature);
+            if ($existing->isNotEmpty()) {
                 return view('words.confirm_anagrams', [
                     'token_type' => $token,
                     'signature' => $signature,
@@ -147,13 +134,8 @@ class WordController extends Controller
                     'selected_id' => $selectedId,
                 ]);
             }
-            // No existing anagrams; create immediately
-            $svc = app(WordMatchService::class);
-            $created = $svc->addTokenWord($token, $data['word'], $list);
-            // Emit event only on store action when eligible (fun/ok and not deferred)
-            if ($created && in_array((string)$created->list_type, ['fun','ok'], true) && !$created->is_deferred) {
-                try { event(new TokenWordAdded((int)$created->id)); } catch (\Throwable $e) { /* swallow */ }
-            }
+            // No existing anagrams; create immediately via service (emits event if eligible)
+            $store->createNewWordAndMaybeDispatch($token, $data['word'], $list);
             return redirect()->route('words.index')->with('status', 'Word created.');
         }
 
@@ -166,37 +148,11 @@ class WordController extends Controller
 
         $created = null;
         if ($selectedExistingId === null && $choice === 'new') {
-            $svc = app(WordMatchService::class);
-            $created = $svc->addTokenWord($token, $data['word'], $list);
+            $created = $store->createNewWordAndMaybeDispatch($token, $data['word'], $list);
         }
 
-        // Designate representative within this token_signature: is_deferred=false for chosen, true for others
-        $finalId = null;
-        $tsId = $tokenSignature?->id;
-        if (!$tsId) {
-            // Resolve again in case it was just created
-            $ts = TokenSignature::query()
-                ->join('tokens', 'tokens.id', '=', 'token_signatures.token_id')
-                ->where('tokens.name', $token)
-                ->where('token_signatures.signature', $signature)
-                ->select('token_signatures.*')
-                ->first();
-            $tsId = $ts?->id;
-        }
-        if ($tsId) {
-            TokenSignatureWord::query()->where('token_signature_id', $tsId)->update(['is_deferred' => true]);
-            $finalId = $selectedExistingId ?? ($created?->id ?? null);
-            if ($finalId) {
-                TokenSignatureWord::query()->where('id', $finalId)->update(['is_deferred' => false]);
-            }
-        }
-        // Emit event only when a new word was created and selected as representative (non-deferred) and eligible
-        if ($created && $finalId && (int)$finalId === (int)$created->id) {
-            $fresh = TokenSignatureWord::find((int)$created->id);
-            if ($fresh && in_array((string)$fresh->list_type, ['fun','ok'], true) && !$fresh->is_deferred) {
-                try { event(new TokenWordAdded((int)$fresh->id)); } catch (\Throwable $e) { /* swallow */ }
-            }
-        }
+        // Designate representative and possibly emit event if newly created rep is eligible
+        $store->designateRepresentativeAndMaybeDispatch($token, $signature, $selectedExistingId, $created);
 
         return redirect()->route('words.index')->with('status', 'Word saved.');
     }

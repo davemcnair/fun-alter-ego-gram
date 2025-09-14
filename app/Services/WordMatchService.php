@@ -2,13 +2,10 @@
 
 namespace App\Services;
 
-use App\Models\Target;
-use App\Models\TargetTokenSignatureWord;
 use App\Models\Token;
 use App\Models\TokenSignature;
 use App\Models\TokenSignatureWord;
 use App\Traits\HelpsMatchWords;
-use DB;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
@@ -98,23 +95,18 @@ class WordMatchService
         $includeBoring = (bool)($options['include_boring'] ?? false);
         $srcLen = strlen($targetSignature);
 
-        // Flags context for observability (may not alter behavior here)
-        $sqlSubsetPruning = (bool) config('search.sql_subset_pruning', false);
-        $verifyInPhp = (bool) config('search.verify_subset_in_php', true);
-
-        // Caching key depends on target signature and filters
         $cacheEnabled = (bool) config('search.enable_match_cache', false);
-        $ttl = (int) config('search.match_cache_ttl', 120);
-        $cacheKey = 'match:' . $targetSignature . ':b=' . ($includeBoring ? '1' : '0') . ':list=' . $filterList . ':tok=' . $filterToken;
 
         if ($cacheEnabled) {
+            $ttl = (int) config('search.match_cache_ttl', 120);
+            $cacheKey = $this->buildCacheKey($targetSignature, $includeBoring, $filterList, $filterToken);
+
             $ids = Cache::get($cacheKey);
             if (is_array($ids)) {
                 if (empty($ids)) {
                     try { Log::info('WordMatchService: cache_hit=1 empty=1'); } catch (\Throwable $e) {}
                     return collect();
                 }
-                // Rehydrate models with required relations
                 $tRh0 = microtime(true);
                 $models = TokenSignatureWord::query()
                     ->with(['tokenSignature.token'])
@@ -128,28 +120,29 @@ class WordMatchService
             }
         }
 
-        // Build an Eloquent query that returns TokenSignatureWord models with relations,
-        // so downstream services (SignatureFillService) can access tokenSignature->signature/token_id.
+        // Build an Eloquent query that returns exact subset candidates using precomputed counts (pure SQL pruning)
+        $counts = $this->letterCountsFromSignature($targetSignature);
+
         $query = TokenSignatureWord::query()
             ->with(['tokenSignature.token'])
             ->where('is_deferred', false)
-            ->whereHas('tokenSignature', function ($q) use ($srcLen, $filterToken, $sqlSubsetPruning, $targetSignature) {
-                if ($sqlSubsetPruning) {
-                    // Use precomputed numeric columns for exact subset pruning
-                    $q->where('sig_len', '<=', $srcLen);
-                    // Build letter predicates: letters present must be <= target counts; absent letters must be 0
-                    $counts = $this->letterCountsFromSignature($targetSignature);
-                    foreach (range('a','z') as $ch) {
-                        $n = (int)($counts[$ch] ?? 0);
-                        if ($n > 0) {
-                            $q->where($ch . '_count', '<=', $n);
-                        } else {
-                            $q->where($ch . '_count', '=', 0);
-                        }
+            ->when($filterList !== '', function($q) use ($filterList) {
+                $q->where('list_type', $filterList);
+            }, function($q) use ($includeBoring) {
+                if (!$includeBoring) {
+                    $q->where('list_type', '!=', 'boring');
+                }
+            })
+            ->whereHas('tokenSignature', function ($q) use ($srcLen, $counts, $filterToken) {
+                $q->where('sig_len', '<=', $srcLen);
+                // Exact subset constraints for every letter
+                foreach (range('a','z') as $ch) {
+                    $n = (int)($counts[$ch] ?? 0);
+                    if ($n > 0) {
+                        $q->where($ch . '_count', '<=', $n);
+                    } else {
+                        $q->where($ch . '_count', '=', 0);
                     }
-                } else {
-                    // Fallback to legacy length filter (string length)
-                    $q->whereRaw('LENGTH(signature) <= ?', [$srcLen]);
                 }
                 if ($filterToken !== '') {
                     $q->whereHas('token', function ($t) use ($filterToken) {
@@ -158,69 +151,19 @@ class WordMatchService
                 }
             });
 
-        if ($filterList !== '') {
-            $query->where('list_type', $filterList);
-        } elseif (!$includeBoring) {
-            $query->where('list_type', '!=', 'boring');
-        }
-
-        // Fetch models and optionally filter by subset relation of signatures in PHP
         $tQ0 = microtime(true);
-        $all = $query->get();
+        $matches = $query->get();
         $queryMs = (int) round((microtime(true) - $tQ0) * 1000);
-        $preCount = $all->count();
-
-        // If SQL-pruned path yielded nothing, defensively fall back to legacy length-only filtering
-        // to accommodate environments where counts weren't backfilled yet.
-        if ($preCount === 0 && $sqlSubsetPruning) {
-            try { Log::warning('WordMatchService: sql_pruning_empty_fallback=1 (falling back to legacy LENGTH(signature) filter)'); } catch (\Throwable $e) {}
-            $fallbackQuery = TokenSignatureWord::query()
-                ->with(['tokenSignature.token'])
-                ->where('is_deferred', false)
-                ->when($filterList !== '', function($q) use ($filterList) {
-                    $q->where('list_type', $filterList);
-                }, function($q) use ($includeBoring) {
-                    if (!$includeBoring) {
-                        $q->where('list_type', '!=', 'boring');
-                    }
-                })
-                ->whereHas('tokenSignature', function ($q) use ($srcLen, $filterToken) {
-                    $q->whereRaw('LENGTH(signature) <= ?', [$srcLen]);
-                    if ($filterToken !== '') {
-                        $q->whereHas('token', function ($t) use ($filterToken) {
-                            $t->where('name', $filterToken);
-                        });
-                    }
-                });
-            $tQ1 = microtime(true);
-            $all = $fallbackQuery->get();
-            $queryMs = (int) round((microtime(true) - $tQ1) * 1000);
-            $preCount = $all->count();
-        }
-
-        if ($verifyInPhp || $sqlSubsetPruning) {
-            // Always verify subset when coming from SQL-pruned path or explicitly requested
-            $tF0 = microtime(true);
-            $matches = $all->filter(function (TokenSignatureWord $tsw) use ($targetSignature) {
-                return $this->isSubset($tsw->tokenSignature->signature, $targetSignature);
-            })->values();
-            $filterMs = (int) round((microtime(true) - $tF0) * 1000);
-        } else {
-            $matches = $all->values();
-            $filterMs = 0;
-        }
-
-        $postCount = $matches->count();
+        $count = $matches->count();
         $totalMs = (int) round((microtime(true) - $t0) * 1000);
+
         try {
-            Log::info('WordMatchService: flags sql_subset_pruning=' . ($sqlSubsetPruning ? '1' : '0') . ' verify_subset_in_php=' . ($verifyInPhp ? '1' : '0'));
-            Log::info('WordMatchService: pre_count=' . $preCount . ' post_count=' . $postCount . ' query_ms=' . $queryMs . ' filter_ms=' . $filterMs . ' total_ms=' . $totalMs);
+            Log::info('WordMatchService: sql_subset_pruning_only=1 count=' . $count . ' query_ms=' . $queryMs . ' total_ms=' . $totalMs);
         } catch (\Throwable $e) {}
 
         if ($cacheEnabled) {
             try {
                 $ids = $matches->pluck('id')->values()->all();
-                // Do not cache empty results to avoid "sticky" emptiness on first-run before data import
                 if (!empty($ids)) {
                     Cache::put($cacheKey, $ids, $ttl);
                     Log::info('WordMatchService: cache_store ids=' . count($ids) . ' ttl_s=' . $ttl);
@@ -232,12 +175,13 @@ class WordMatchService
             }
         }
 
-        // Helpful hint if the dataset is empty in dev environments
-        if ($preCount === 0 && TokenSignatureWord::query()->count() === 0) {
-            try { Log::warning('WordMatchService: no TokenSignatureWord rows found. Did you import word lists? Try: php artisan words:import base=resources/token_words'); } catch (\Throwable $e) {}
-        }
-
         return $matches;
+    }
+
+    private function buildCacheKey(string $targetSignature, bool $includeBoring, string $filterList, string $filterToken): string
+    {
+        // Caching key depends on target signature and filters
+        return 'match:' . $targetSignature . ':b=' . ($includeBoring ? '1' : '0') . ':list=' . $filterList . ':tok=' . $filterToken;
     }
 
     /**

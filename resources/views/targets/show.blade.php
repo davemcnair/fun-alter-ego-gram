@@ -265,7 +265,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
                 onlyFun = !!onlyFunToggle.checked;
                 try { localStorage.setItem('onlyFunToggle', onlyFun ? '1' : '0'); } catch (e) {}
                 // Re-render using last known progress if available
-                call("{{ route('targets.progress', $item) }}", 'GET').then(render).catch(function(){});
+                window.rerender && window.rerender();
             });
         } catch (e) { /* ignore */ }
     }
@@ -277,7 +277,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
             onlyStarredToggle.addEventListener('change', function(){
                 onlyStarred = !!onlyStarredToggle.checked;
                 try { localStorage.setItem('onlyStarredToggle', onlyStarred ? '1' : '0'); } catch (e) {}
-                call("{{ route('targets.progress', $item) }}", 'GET').then(render).catch(function(){});
+                window.rerender && window.rerender();
             });
         } catch (e) { /* ignore */ }
     }
@@ -290,8 +290,8 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
             onlyUsedToggle.addEventListener('change', function(){
                 onlyUsed = !!onlyUsedToggle.checked;
                 try { localStorage.setItem('onlyUsedToggle', onlyUsed ? '1' : '0'); } catch (e) {}
-                // Refresh UI against latest progress to recompute used sets
-                call("{{ route('targets.progress', $item) }}", 'GET').then(render).catch(function(){});
+                // Refresh UI after toggling Only used
+                window.rerender && window.rerender();
             });
         } catch (e) { /* ignore */ }
     }
@@ -702,8 +702,8 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
                     wordFilter = { word: w, token: (t === 'surname' || t === 'forename') ? t : null };
                 }
             }
-            // Re-render based on latest progress to refresh highlighting
-            call("{{ route('targets.progress', $item) }}", 'GET').then(render).catch(function(){});
+            // Re-render based on latest state to refresh highlighting
+            window.rerender && window.rerender();
         } catch (e) { /* ignore */ }
     }
     function clearWordFilter(){ setWordFilter('', ''); }
@@ -963,22 +963,6 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
         completed = String(status || '').toLowerCase() === 'completed';
     }
 
-    // Fixed poll delay (5s)
-    function getPollDelayMs() {
-        return 5000;
-    }
-
-    async function stepLoop() {
-        if (completed) return;
-        try {
-            // Async poll progress; background workers should process jobs
-            const p = await call("{{ route('targets.progress', $item) }}", 'GET');
-            render(p);
-        } catch (e) { /* ignore */ }
-        if (!completed) {
-            setTimeout(stepLoop, getPollDelayMs());
-        }
-    }
 
     // Expose as global to work with inline onclick handlers in the table
     window.toggleWords = function(id, expand) {
@@ -1016,20 +1000,19 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
     // Selection UI and manual start removed because start is handled in store()
     // (function(){ /* no-op */ })();
 
-    // Auto-start behavior
-    const initialStatus = '{{ $item->status }}';
-    if (!completed) {
-        // Already running -> start the loop
-        stepLoop();
-    } else if (initialStatus === 'idle') {
-        // If idle, do not auto-start (store handles starting); just fetch progress once
-        call("{{ route('targets.progress', $item) }}", 'GET')
-            .then(function(p){ render(p); })
-            .catch(function(){});
-    } else {
-        // ensure UI state reflects current status when paused/completed
-        call("{{ route('targets.progress', $item) }}", 'GET').then(render).catch(function(){});
-    }
+    // Initial render using server-provided data (no progress endpoint)
+    const initialProgress = {
+        item: @json($item),
+        patternsProcessedCount: {{ $patternsProcessedCount }},
+        patternsCount: {{ $patternsCount }},
+        patternsLive: @json($patternsLive),
+        patternsWaiting: @json($patternsWaiting),
+        signatureIndexedPatternsCount: {{ $signatureIndexedPatternsCount }},
+        alterEgosCount: {{ $alterEgosCount }},
+        starred: @json($starred),
+        matchedWords: @json($matchedWords),
+    };
+    render(initialProgress);
 })();
 </script>
 <script>

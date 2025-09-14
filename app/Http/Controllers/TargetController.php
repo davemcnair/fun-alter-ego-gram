@@ -79,10 +79,6 @@ class TargetController extends Controller
 //        return response()->json(['ok' => true] + $this->lookupProgressPayload($target));
 //    }
 
-    public function progress(Target $target)
-    {
-        return response()->json(['ok' => true] + $this->lookupProgressPayload($target));
-    }
 
     public function newMatches(Target $target)
     {

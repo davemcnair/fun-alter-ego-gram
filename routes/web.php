@@ -27,7 +27,6 @@ Route::post('/words/{word}/toggle-search', [WordController::class, 'toggleSearch
 // Search control endpoints (pause/resume/progress/run-step/start)
 //Route::post('/targets/{target}/pause', [TargetController::class, 'pause'])->name('targets.pause');
 //Route::post('/targets/{target}/resume', [TargetController::class, 'resume'])->name('targets.resume');
-Route::get('/targets/{target}/progress', [TargetController::class, 'progress'])->name('targets.progress');
 // New matches endpoints
 Route::get('/targets/{target}/new-matches', [TargetController::class, 'newMatches'])->name('targets.new-matches');
 Route::post('/targets/{target}/process-new-matches', [TargetController::class, 'processNewMatches'])->name('targets.process-new-matches');
@@ -37,6 +36,3 @@ Route::post('/targets/{target}/star', [TargetController::class, 'star'])->name('
 Route::post('/targets/{target}/unstar', [TargetController::class, 'unstar'])->name('targets.unstar');
 // Persist a reordered phrase variant
 Route::post('/targets/{target}/rephrase', [TargetController::class, 'rephrase'])->name('targets.rephrase');
-
-// Docs: progress choices (static view)
-Route::view('/docs/progress_choices', 'docs.progress_choices')->name('docs.progress_choices');

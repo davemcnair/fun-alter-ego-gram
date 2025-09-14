@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Target;
+use App\Models\TargetTokenSignatureWord;
 use App\Models\Token;
 use App\Models\TokenSignature;
 use App\Models\TokenSignatureWord;
@@ -239,34 +240,19 @@ class WordMatchService
         return $matches;
     }
 
-    public function storeNewTargetMatchedTokenSignatureWords(Target $target, bool $includeBoring = false): Collection
-    {
-        $matchingTokenSignatureWords = $this->findMatchingTokenSignatureWords($target->signature, ['include_boring' => $includeBoring]);
-        if ($matchingTokenSignatureWords->count()) {
-            $rows = $matchingTokenSignatureWords->map(function ($tsw) use ($target) {
-                return [
-                    'target_id' => $target->id,
-                    'token_signature_word_id' => $tsw->id,
-                ];
-            })->toArray();
-            // Idempotent persistence to avoid unique constraint violations on reruns
-            // Use insertOrIgnore for SQLite compatibility (upsert with empty update set may degrade to INSERT).
-            DB::table('target_token_signature_words')->insertOrIgnore($rows);
-        }
-        return $matchingTokenSignatureWords;
-    }
-
-    public function extractMatchingTokenWordMinimumLengths(string $targetSignature, Collection $tokenSignatureWords): array
+    /**
+     * @param Collection<TokenSignatureWord> $matchingTokenSignatureWords
+     * @return array[]
+     */
+    public function extractTargetTokenSignatureWordMinimumLengths(Collection $matchingTokenSignatureWords): array
     {
         $storedWordBasedMins = [];
         $matchingWordBasedMins = [];
-        /** @var TokenSignatureWord $matchedWord */
-        foreach($tokenSignatureWords as $matchedWord) {
-            $signature = $matchedWord->tokenSignature->signature;
-            if (!$this->isSubset($signature, $targetSignature)) continue;
-            $length = strlen($signature);
-            $token_id = $matchedWord->tokenSignature->token_id;
-            $storedWordBasedMins[$token_id] = $matchedWord->tokenSignature->token->min_length;
+        foreach($matchingTokenSignatureWords as $matchedWord) {
+            $tokenSignature = $matchedWord->tokenSignature;
+            $length = strlen($tokenSignature->signature);
+            $token_id = $tokenSignature->token_id;
+            $storedWordBasedMins[$token_id] = $tokenSignature->token->min_length;
             if (!isset($matchingWordBasedMins[$token_id]) || $length < $matchingWordBasedMins[$token_id]) {
                 $matchingWordBasedMins[$token_id] = $length;
             }

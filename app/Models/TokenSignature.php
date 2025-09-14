@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class TokenSignature extends Model
 {
+    protected $with = ['token'];
+
     protected $fillable = [
         'token_id',
         'signature',

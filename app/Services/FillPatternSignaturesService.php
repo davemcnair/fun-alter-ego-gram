@@ -43,16 +43,12 @@ class FillPatternSignaturesService
 
         $patternTokenPositions = Pattern::parsePatternTokenSlotPositions((string)$targetPattern->pattern->template);
 
-        $tokenSignatureWords = $wordMatchService->findMatchingTokenSignatureWords((string)$target->signature);
-
-        $candCount = $tokenSignatureWords->count();
-        try { Log::info('FillPatternSignaturesService: candidates=' . $candCount); } catch (\Throwable $e) {}
-
         // Algorithmic pruning and ordering (Proposed change 3)
         $targetSig = (string)$target->signature;
         $targetLen = strlen($targetSig);
         // 1) Early min-length pruning using WordMatchService helper
-        [$storedTokenMins, $matchingWordBasedMins] = $wordMatchService->extractMatchingTokenWordMinimumLengths($targetSig, $tokenSignatureWords);
+        [$storedTokenMins, $matchingWordBasedMins] =
+            $wordMatchService->extractTargetTokenSignatureWordMinimumLengths($target->matchingTokenSignatureWords);
         $minSum = 0;
         $unsatisfiable = false;
         foreach ($patternTokenPositions as $pos => $tokenId) {
@@ -73,8 +69,8 @@ class FillPatternSignaturesService
 
         // 2) Rarity-first slot ordering: order by ascending candidate count per token
         $candidateCounts = [];
-        foreach ($tokenSignatureWords as $tsw) {
-            $tid = (int)$tsw->tokenSignature->token_id;
+        foreach ($target->matchingTokenSignatureWords as $tokenSignatureWord) {
+            $tid = (int)$tokenSignatureWord->tokenSignature->token_id;
             $candidateCounts[$tid] = ($candidateCounts[$tid] ?? 0) + 1;
         }
         $orderedSlots = $patternTokenPositions; // copy
@@ -91,7 +87,7 @@ class FillPatternSignaturesService
         foreach ($signatureFillService->generateSignaturePatterns(
             $targetSig,
             $orderedSlots,
-            $tokenSignatureWords
+            $target->matchingTokenSignatureWords
         ) as $signaturePattern) {
             $signaturePatterns[] = [
                 'target_pattern_id' => $targetPattern->id,

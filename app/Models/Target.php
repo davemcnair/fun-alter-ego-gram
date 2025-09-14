@@ -33,7 +33,11 @@ class Target extends Model
         return $this->hasManyDeep(AlterEgo::class, [TargetPattern::class, TargetSignatureIndexedPattern::class]);
     }
 
-    public function tokenSignatureWords(): BelongsToMany
+    /**
+     * Pivot table: target_token_signature_words
+     * @return BelongsToMany<TokenSignatureWord, TargetTokenSignatureWord>
+     */
+    public function matchingTokenSignatureWords(): BelongsToMany
     {
         return $this->belongsToMany(
             TokenSignatureWord::class,

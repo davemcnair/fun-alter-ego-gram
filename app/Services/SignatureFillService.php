@@ -24,7 +24,7 @@ class SignatureFillService
     /**
      * @param string $targetSignature
      * @param array $patternTokenPositions
-     * @param array $matchingTokenSignatureWordIds
+     * @param Collection<TokenSignatureWord> $matchingTokenSignatureWords
      * @return Generator
      */
     public function generateSignaturePatterns(
@@ -40,13 +40,16 @@ class SignatureFillService
         yield from $dfs->dfs($patternTokenPositions, $targetLetterCountsNeeded, $candidatesSignaturesByTokenId, [], []);
     }
 
-    /** Build per-token_id candidates: signatures with precomputed histograms, per-letter maxima, and a letter index */
+    /**
+     * Build per-token_id candidates: signatures with precomputed histograms, per-letter maxima, and a letter index
+     * @param Collection<TokenSignatureWord> $matchingTokenSignatureWords
+     */
     private function precomputeCandidateSignaturesByTokenId(Collection $matchingTokenSignatureWords): array
     {
         $candidateSignaturesByTokenId = [];
-        foreach ($matchingTokenSignatureWords as $model) {
-            $signature = $model->tokenSignature->signature;
-            $token_id = $model->tokenSignature->token_id;
+        foreach ($matchingTokenSignatureWords as $tokenSignatureWord) {
+            $signature = $tokenSignatureWord->tokenSignature->signature;
+            $token_id = $tokenSignatureWord->tokenSignature->token_id;
             // Step 1: build candidate list with per-candidate histograms
             $candidateSignaturesByTokenId[$token_id]['signatures'][] = [
                 'signature' => $signature,

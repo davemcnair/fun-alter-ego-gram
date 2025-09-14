@@ -8,6 +8,7 @@ use App\Traits\HelpsMatchWords;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
+
 class WordController extends Controller
 {
     use HelpsMatchWords;

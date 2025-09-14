@@ -5,7 +5,7 @@ namespace App\Services;
 use App\Jobs\FillPatternSignaturesJob;
 use App\Models\Pattern;
 use App\Models\Target;
-use App\Models\TargetPattern;
+use App\Models\TargetTokenSignatureWord;
 use App\Support\NameNormalizer;
 use App\Traits\HelpsMatchWords;
 use Illuminate\Support\Facades\Log;
@@ -36,21 +36,19 @@ class TargetCreationService
 
         // Validation: normalized key must be non-empty
         if ($normalizedKey === '') {
-            \Log::warning('TargetCreationService.create invalid name after normalization', [
+            Log::warning('TargetCreationService.create invalid name after normalization', [
                 'original_input' => mb_substr($originalInput, 0, 80),
             ]);
             abort(422, 'Name is invalid after normalization');
         }
 
         // Log observability fields
-        try {
-            \Log::debug('TargetCreationService.create', [
-                'original_input' => mb_substr($originalInput, 0, 80),
-                'normalized_key' => $normalizedKey,
-                'signature' => $signature,
-                'sig_len' => strlen($signature),
-            ]);
-        } catch (\Throwable $e) {}
+        Log::debug('TargetCreationService.create', [
+            'original_input' => mb_substr($originalInput, 0, 80),
+            'normalized_key' => $normalizedKey,
+            'signature' => $signature,
+            'sig_len' => strlen($signature),
+        ]);
 
         $target = Target::firstOrCreate(
             ['normalized_key' => $normalizedKey],
@@ -58,15 +56,18 @@ class TargetCreationService
         );
 
         // Step 1: store matched words and get involved token ids
-        $tokenSignatureWords = $this->wordMatchService->storeNewTargetMatchedTokenSignatureWords($target, $includeBoring);
+        $matchingTokenSignatureWords = $this->wordMatchService->findMatchingTokenSignatureWords($target->signature, ['include_boring' => $includeBoring]);
+        $targetTokenSignatureWords = TargetTokenSignatureWord::bulkInsertOrIgnore($target, $matchingTokenSignatureWords);
 
         // Step 2: compute min lengths (id-keyed arrays)
         [$storedMinLengths, $matchedMinLengths] =
-            $this->wordMatchService->extractMatchingTokenWordMinimumLengths($signature, $tokenSignatureWords);
+            $this->wordMatchService->extractTargetTokenSignatureWordMinimumLengths($targetTokenSignatureWords);
 
         // Step 3: list patterns but link ALL standard patterns to this target (pending)
         // We still compute filtered sets for potential future use, but insertion is based on all standard patterns.
         $standardShortEnoughPatterns = $this->patternsService->listWithinMinLength(strlen($signature));
+        Log::info('collected standard short enough patterns, n= '. $standardShortEnoughPatterns->count());
+
         $filteredPatterns = $this->patternsService->filterPatternsForTarget(
             $signature,
             $standardShortEnoughPatterns,

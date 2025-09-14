@@ -5,12 +5,14 @@ namespace App\Http\Controllers;
 use App\Models\Target;
 use App\Models\TargetPattern;
 use App\Models\AlterEgo;
+use App\Models\TokenSignatureWord;
 use App\Services\TargetCreationService;
 use App\Support\NameNormalizer;
 use App\Traits\HelpsMatchWords;
 use App\Jobs\FillPatternSignaturesJob;
 use DB;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 
 class TargetController extends Controller
 {
@@ -220,7 +222,7 @@ class TargetController extends Controller
             'signatureIndexedPatternsCount' => $s->signatureIndexedPatterns()->count(),
             'alterEgosCount' => $s->alterEgos()->count(),
             'starred' => $s->alterEgos()->where('starred', true)->pluck('phrase')->all(),
-            'matchedWords' => $this->buildMatchedWords($s),
+            'matchedWords' => $this->buildMatchedWords($s->matchingTokenSignatureWords),
         ];
     }
 
@@ -228,30 +230,26 @@ class TargetController extends Controller
      * Build grouped token word matches for the Target Results page.
      * Returns an array like [ tokenName => [ listType => [ [id, word], ... ] ] ]
      */
-    private function buildMatchedWords(Target $s): array
+    private function buildMatchedWords(Collection $matchingTokenSignatureWords): array
     {
-        // Eager load token and tokenSignature for grouping
-        $rows = $s->tokenSignatureWords()
-            ->with(['tokenSignature.token'])
-            ->get();
-        if ($rows->isEmpty()) return [];
         $out = [];
-        foreach ($rows as $row) {
-            $token = optional($row->tokenSignature->token)->name ?? '';
-            if ($token === '') continue;
-            $list = (string)($row->list_type ?? '');
-            if ($list === '') continue;
+        /** @var TokenSignatureWord $tokenSignatureWord */
+        foreach ($matchingTokenSignatureWords as $tokenSignatureWord) {
+            $token = $tokenSignatureWord->tokenSignature->token->name;
+            $list = $tokenSignatureWord->list_type;
             if (!isset($out[$token])) $out[$token] = [];
             if (!isset($out[$token][$list])) $out[$token][$list] = [];
             $out[$token][$list][] = [
-                'id' => (int) $row->id,
-                'word' => (string) $row->word,
+                'id' => $tokenSignatureWord->id,
+                'word' => $tokenSignatureWord->word,
             ];
         }
         // Sort words alphabetically within each group for stable UI
         foreach ($out as $token => &$lists) {
             foreach ($lists as $list => &$items) {
-                usort($items, function($a, $b){ return strcasecmp($a['word'] ?? '', $b['word'] ?? ''); });
+                usort($items, function($a, $b) {
+                    return strcasecmp($a['word'], $b['word']);
+                });
             }
         }
         return $out;

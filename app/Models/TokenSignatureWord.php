@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class TokenSignatureWord extends Model
 {
+    protected $with = ['tokenSignature'];
+
     // Allow both canonical DB column names and the alternative keys used by import code
     protected $fillable = [
         'token_signature_id',

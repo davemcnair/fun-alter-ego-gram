@@ -4,12 +4,14 @@ namespace App\Providers;
 
 use App\Events\TokenWordAdded;
 use App\Jobs\BackfillNewWordMatchesJob;
+use App\Traits\ScalesJobs;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Throwable;
 
 class AppServiceProvider extends ServiceProvider
 {
+    use ScalesJobs;
     /**
      * Register any application services.
      */
@@ -26,9 +28,8 @@ class AppServiceProvider extends ServiceProvider
         // Listen for TokenWordAdded events and enqueue backfill job
         try {
             Event::listen(TokenWordAdded::class, function($event){
-                $dispatch = BackfillNewWordMatchesJob::dispatch((int)$event->tokenSignatureWordId);
-                $queue = config('search.queue');
-                if (!empty($queue)) { $dispatch->onQueue($queue); }
+                // Use scaledDispatch from ScalesJobs trait to honor queue configuration
+                $this->scaledDispatch(BackfillNewWordMatchesJob::class, (int)$event->tokenSignatureWordId);
             });
         } catch (Throwable $e) {
             // In some CLI/test contexts Event may not be bound; ignore

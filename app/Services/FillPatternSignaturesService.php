@@ -8,12 +8,13 @@ use App\Models\TargetSignatureIndexedPattern;
 use App\Models\Target;
 use App\Models\TargetPattern;
 use App\Traits\HelpsMatchWords;
+use App\Traits\ScalesJobs;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class FillPatternSignaturesService
 {
-    use HelpsMatchWords;
+    use HelpsMatchWords, ScalesJobs;
 
     /**
      * Execute the fill step for a TargetNamePattern using the provided collaborator services.
@@ -86,15 +87,7 @@ class FillPatternSignaturesService
         }
         $durationMs = (int) round((microtime(true) - $fillStart) * 1000);
         try { Log::info($target->name . '/' . ((string)$targetPattern->pattern->template) . ' : fills_completed=' . $count . ' candidates=' . ($candCount ?? 0) . ' duration_ms=' . $durationMs); } catch (Throwable $e) {}
-        // Dispatch expansion; run synchronously when no queue is configured
-        $queue = config('search.queue');
-        if (empty($queue)) {
-            // Run inline (synchronously)
-            ExpandSignatureIndexedPatternsJob::dispatchSync($targetPattern->id);
-        } else {
-            // Queue asynchronously (on the configured queue)
-            $dispatch = ExpandSignatureIndexedPatternsJob::dispatch($targetPattern->id);
-            $dispatch->onQueue($queue);
-        }
+        // Dispatch expansion; scale based on queue configuration
+        $this->scaledDispatch(ExpandSignatureIndexedPatternsJob::class, $targetPattern->id);
     }
 }

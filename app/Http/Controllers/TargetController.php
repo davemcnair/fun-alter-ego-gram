@@ -5,18 +5,22 @@ namespace App\Http\Controllers;
 use App\Models\Target;
 use App\Models\TargetPattern;
 use App\Models\AlterEgo;
+use App\Models\TargetTokenSignatureWord;
 use App\Models\TokenSignatureWord;
 use App\Services\TargetCreationService;
+use App\Services\WordMatchService;
+use App\Services\WordStoreService;
 use App\Support\NameNormalizer;
 use App\Traits\HelpsMatchWords;
 use App\Jobs\FillPatternSignaturesJob;
+use App\Traits\ScalesJobs;
 use DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 
 class TargetController extends Controller
 {
-    use HelpsMatchWords;
+    use HelpsMatchWords, ScalesJobs;
 
     public function debug(Target $target, Request $request)
     {
@@ -30,20 +34,6 @@ class TargetController extends Controller
 
     public function addWord(Target $target, Request $request)
     {
-        \Log::info('TargetController.addWord: request received', [
-            'target_id' => $target->id,
-            'ajax' => $request->ajax(),
-            'route' => $request->path(),
-            'headers' => [
-                'x-requested-with' => $request->header('X-Requested-With'),
-                'accept' => $request->header('Accept'),
-            ],
-            'payload_preview' => [
-                'token_type' => (string)($request->input('token_type')),
-                'word_len' => strlen((string)$request->input('word', '')),
-                'list_type' => (string)$request->input('list_type'),
-            ],
-        ]);
         // Perform explicit validation so we can return a consistent JSON error shape on failure
         $validator = \Validator::make($request->all(), [
             'token_type' => ['required','string'],
@@ -65,21 +55,23 @@ class TargetController extends Controller
         }
         $data = $validator->validated();
 
+        // Ensure target has a non-empty signature
+        if (trim((string)$target->signature) === '') {
+            return response()->json([
+                'ok' => false,
+                'error' => 'Target has empty signature',
+            ], 422);
+        }
+
         // Normalize and validate list type (default to ok)
         $list = strtolower(trim((string)($data['list_type'] ?? 'ok')));
-        if ($list === '' || $list === 'new') { $list = 'ok'; }
-        if (!in_array($list, ['ok','fun','boring'], true)) {
+        if (!in_array($list, ['ok','fun'], true)) {
             return response()->json(['ok' => false, 'error' => 'Invalid list_type'], 422);
         }
 
-        // Ensure target has a non-empty signature
-        if (trim((string)$target->signature) === '') {
-            return response()->json(['ok' => false, 'error' => 'Empty target signature'], 422);
-        }
-
         // Create the word using existing domain logic; be tolerant of failures
-        /** @var \App\Services\WordStoreService $store */
-        $store = app(\App\Services\WordStoreService::class);
+        /** @var WordStoreService $store */
+        $store = app(WordStoreService::class);
         try {
             $created = $store->createNewWordAndMaybeDispatch((string)$data['token_type'], (string)$data['word'], $list);
         } catch (\Throwable $e) {
@@ -87,10 +79,10 @@ class TargetController extends Controller
         }
 
         // Find matches and link to this target (mark new)
-        /** @var \App\Services\WordMatchService $matcher */
-        $matcher = app(\App\Services\WordMatchService::class);
+        /** @var WordMatchService $matcher */
+        $matcher = app(WordMatchService::class);
         $matches = $matcher->findMatchingTokenSignatureWords($target->signature, ['include_boring' => true]);
-        \App\Models\TargetTokenSignatureWord::bulkInsertOrIgnore($target, $matches);
+        TargetTokenSignatureWord::bulkInsertOrIgnore($target, $matches);
 
         // If there are any new rows, mark consumed and enqueue fills for this target
         $newIds = DB::table('target_token_signature_words')
@@ -105,14 +97,12 @@ class TargetController extends Controller
                 ->whereIn('token_signature_word_id', $newIds)
                 ->update(['is_new' => false]);
 
-            $patternIds = \App\Models\TargetPattern::where('target_id', $target->id)
+            $patternIds = TargetPattern::where('target_id', $target->id)
                 ->orderBy('popularity_rank')
                 ->pluck('id')
                 ->all();
             foreach ($patternIds as $pid) {
-                $dispatch = FillPatternSignaturesJob::dispatch((int)$pid);
-                $queue = config('search.queue');
-                if (!empty($queue)) { $dispatch->onQueue($queue); }
+                $this->scaledDispatch(FillPatternSignaturesJob::class, (int)$pid);
             }
         }
 
@@ -239,9 +229,7 @@ class TargetController extends Controller
         $attempted = 0;
         foreach ($patterns as $pid) {
             $attempted++;
-            $dispatch = FillPatternSignaturesJob::dispatch((int)$pid);
-            $queue = config('search.queue');
-            if (!empty($queue)) { $dispatch->onQueue($queue); }
+            $this->scaledDispatch(FillPatternSignaturesJob::class, (int)$pid);
         }
 
         try { cache()->put($key, $now, 60); } catch (\Throwable $e) {}

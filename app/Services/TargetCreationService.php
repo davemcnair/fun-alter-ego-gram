@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\DB;
 
 class TargetCreationService
 {
-    use HelpsMatchWords;
+    use HelpsMatchWords, \App\Traits\ScalesJobs;
 
     public function __construct(
         private readonly ListPatternsService $patternsService,
@@ -97,15 +97,8 @@ class TargetCreationService
         // Step 5: dispatch fills for pending
         $pendingIds = $target->fresh()->patterns()->where('status','pending')->pluck('id');
         Log::info('pending ids', $pendingIds->toArray());
-        $queue = config('search.queue');
         foreach ($pendingIds as $pid) {
-            if (empty($queue)) {
-                // Run fills inline to ensure progress without a queue worker
-                FillPatternSignaturesJob::dispatchSync((int)$pid);
-            } else {
-                $dispatch = FillPatternSignaturesJob::dispatch((int)$pid);
-                $dispatch->onQueue($queue);
-            }
+            $this->scaledDispatch(FillPatternSignaturesJob::class, (int)$pid);
         }
 
         // Step 6: set target to running

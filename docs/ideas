@@ -1,9 +1,4 @@
-- rebuild tool for after generator changes
-    - migrate:rollback as far as create_token_signatures_table
-    - migrate
-    - db:seed
-    - replay-words-added
-    - replay-word-list-type-changed
+
 - addWord updates resources
 - changeWordListType updates resources
 - insert-multi-anagram-words
@@ -30,7 +25,7 @@
     - everyday foreign words
     - franglais
 - redo progress for asynchronous tasks
-- generate pending task from target page
+- generate altegos from pending targetpattern from target page
 - webhook for progress
 - starred alter-egos
     - drag'n'drop order

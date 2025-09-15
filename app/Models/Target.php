@@ -18,6 +18,11 @@ class Target extends Model
         'name', 'signature', 'normalized_key', 'status',
     ];
 
+    protected $casts = [
+        'matches_seen_at' => 'datetime',
+        'last_processed_matches_at' => 'datetime',
+    ];
+
     public function patterns(): HasMany
     {
         return $this->hasMany(TargetPattern::class)->with(['pattern']);
@@ -44,7 +49,7 @@ class Target extends Model
             'target_token_signature_words',
             'target_id',
             'token_signature_word_id'
-        )->withPivot('is_new');
+        );
     }
 
     /**

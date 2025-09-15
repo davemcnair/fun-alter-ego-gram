@@ -26,7 +26,7 @@ class TargetTokenSignatureWord extends Model
 
     /**
      * Link provided TokenSignatureWord rows to the target.
-     * Newly linked rows will be flagged as is_new=true. Existing links are left untouched.
+     * Existing links are left untouched. Newly linked rows get timestamps.
      *
      * @param Target $target
      * @param Collection<TokenSignatureWord> $tokenSignatureWords
@@ -56,7 +56,8 @@ class TargetTokenSignatureWord extends Model
                 $newRows[] = [
                     'target_id' => $target->id,
                     'token_signature_word_id' => $wid,
-                    'is_new' => true,
+                    'created_at' => $now,
+                    'updated_at' => $now,
                 ];
             }
         }

@@ -78,32 +78,19 @@ class TargetController extends Controller
             $created = null; // tolerate and continue to refresh UI
         }
 
-        // Find matches and link to this target (mark new)
+        // Find matches and link to this target
         /** @var WordMatchService $matcher */
         $matcher = app(WordMatchService::class);
         $matches = $matcher->findMatchingTokenSignatureWords($target->signature, ['include_boring' => true]);
         TargetTokenSignatureWord::bulkInsertOrIgnore($target, $matches);
 
-        // If there are any new rows, mark consumed and enqueue fills for this target
-        $newIds = DB::table('target_token_signature_words')
-            ->where('target_id', $target->id)
-            ->where('is_new', true)
-            ->pluck('token_signature_word_id')
+        // Enqueue fills for this target's patterns; idempotent downstream via unique constraints
+        $patternIds = TargetPattern::where('target_id', $target->id)
+            ->orderBy('popularity_rank')
+            ->pluck('id')
             ->all();
-
-        if (!empty($newIds)) {
-            DB::table('target_token_signature_words')
-                ->where('target_id', $target->id)
-                ->whereIn('token_signature_word_id', $newIds)
-                ->update(['is_new' => false]);
-
-            $patternIds = TargetPattern::where('target_id', $target->id)
-                ->orderBy('popularity_rank')
-                ->pluck('id')
-                ->all();
-            foreach ($patternIds as $pid) {
-                $this->scaledDispatch(FillPatternSignaturesJob::class, (int)$pid);
-            }
+        foreach ($patternIds as $pid) {
+            $this->scaledDispatch(FillPatternSignaturesJob::class, (int)$pid);
         }
 
         return response()->json(['ok' => true] + $this->lookupProgressPayload($target->fresh()));
@@ -181,7 +168,9 @@ class TargetController extends Controller
             ->join('token_signatures as s', 's.id', '=', 'w.token_signature_id')
             ->join('tokens as tok', 'tok.id', '=', 's.token_id')
             ->where('t.target_id', $target->id)
-            ->where('t.is_new', true)
+            ->when($target->matches_seen_at, function($q) use ($target){
+                $q->where('t.created_at', '>', $target->matches_seen_at);
+            })
             ->orderBy('tok.name')
             ->orderBy('w.list_type')
             ->orderBy('w.word')
@@ -208,23 +197,15 @@ class TargetController extends Controller
             }
         } catch (\Throwable $e) { /* ignore cache errors */ }
 
-        $ids = DB::table('target_token_signature_words')
-            ->where('target_id', $target->id)
-            ->where('is_new', true)
-            ->pluck('token_signature_word_id')
-            ->all();
-        $count = count($ids);
-        if ($count === 0) {
-            return response()->json(['ok' => true, 'patterns_attempted' => 0, 'alter_egos_created' => 0]);
-        }
+        // Determine how many matches are new for processing since the last cycle
+        $count = DB::table('target_token_signature_words as t')
+            ->where('t.target_id', $target->id)
+            ->when($target->last_processed_matches_at, function($q) use ($target){
+                $q->where('t.created_at', '>', $target->last_processed_matches_at);
+            })
+            ->count();
 
-        // Mark-as-consumed strategy (A): mark as not new before queueing to keep idempotency
-        DB::table('target_token_signature_words')
-            ->where('target_id', $target->id)
-            ->whereIn('token_signature_word_id', $ids)
-            ->update(['is_new' => false]);
-
-        // Enqueue fill/expand for each target pattern. In a future enhancement, constrain by $ids.
+        // Enqueue fill/expand for each target pattern
         $patterns = TargetPattern::where('target_id', $target->id)->orderBy('popularity_rank')->pluck('id')->all();
         $attempted = 0;
         foreach ($patterns as $pid) {
@@ -237,8 +218,14 @@ class TargetController extends Controller
         return response()->json([
             'ok' => true,
             'patterns_attempted' => $attempted,
-            'alter_egos_created' => 0,
+            'new_matches_count' => $count,
         ]);
+    }
+
+    public function markMatchesSeen(Target $target)
+    {
+        try { $target->matches_seen_at = now(); $target->save(); } catch (\Throwable $e) {}
+        return response()->json(['ok' => true]);
     }
 
     public function star(Target $target, Request $request)

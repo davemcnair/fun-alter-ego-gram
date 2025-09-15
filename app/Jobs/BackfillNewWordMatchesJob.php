@@ -66,7 +66,8 @@ class BackfillNewWordMatchesJob implements ShouldQueue
                 $rows[] = [
                     'target_id' => (int)$t->id,
                     'token_signature_word_id' => (int)$tsw->id,
-                    'is_new' => true,
+                    'created_at' => now(),
+                    'updated_at' => now(),
                 ];
             }
             if (!empty($rows)) {

@@ -38,6 +38,7 @@ Route::post('/words/{word}/toggle-search', [WordController::class, 'toggleSearch
 // New matches endpoints
 Route::get('/targets/{target}/new-matches', [TargetController::class, 'newMatches'])->name('targets.new-matches');
 Route::post('/targets/{target}/process-new-matches', [TargetController::class, 'processNewMatches'])->name('targets.process-new-matches');
+Route::post('/targets/{target}/mark-matches-seen', [TargetController::class, 'markMatchesSeen'])->name('targets.mark-matches-seen');
 // Add word in context of a target and trigger immediate generation
 Route::post('/targets/{target}/add-word', [TargetController::class, 'addWord'])->name('targets.add-word');
 //Route::post('/targets/{target}/start', [TargetController::class, 'start'])->name('targets.start');

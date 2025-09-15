@@ -78,10 +78,10 @@ class TargetAddWordTest extends TestCase
         $json = $res->json();
         $this->assertTrue($json['ok'] ?? false, 'ok should be true');
         $this->assertArrayHasKey('item', $json);
-        // Ensure link exists and is marked consumed (is_new=false)
+        // Ensure link exists and has timestamps
         $row = DB::table('target_token_signature_words')->where('target_id', $target->id)->first();
         $this->assertNotNull($row, 'pivot link should exist');
-        $this->assertSame(0, (int)$row->is_new, 'new flag should be consumed (false)');
+        $this->assertNotNull($row->created_at ?? null, 'pivot should have created_at');
 
         // Assert a fill job was dispatched for the target pattern
         Bus::assertDispatched(FillPatternSignaturesJob::class, 1);
@@ -123,7 +123,7 @@ class TargetAddWordTest extends TestCase
         $this->assertSame(1, $count, 'should only have one pivot row for the match');
     }
 
-    public function test_addWord_marks_new_consumed_after_enqueue(): void
+    public function test_addWord_idempotent_no_duplicate_and_enqueues(): void
     {
         Config::set('search.queue', 'test');
         Bus::fake();
@@ -131,17 +131,14 @@ class TargetAddWordTest extends TestCase
         $target = $this->makeTarget('Jane', 'aejn');
         $this->attachSimplePattern($target);
 
-        // First call should insert with is_new then consume
+        // First call should insert the link and enqueue
         $this->postJson(route('targets.add-word', $target), [
             'token_type' => 'forename',
             'word' => 'jane',
             'list_type' => 'ok',
         ])->assertStatus(200);
 
-        $row = DB::table('target_token_signature_words')->where('target_id', $target->id)->first();
-        $this->assertSame(0, (int)$row->is_new, 'is_new should be false after enqueue');
-
-        // Second call should keep it false and not create duplicates
+        // Second call should not create duplicates and still enqueue safely
         $this->postJson(route('targets.add-word', $target), [
             'token_type' => 'forename',
             'word' => 'jane',
@@ -150,5 +147,7 @@ class TargetAddWordTest extends TestCase
 
         $count = DB::table('target_token_signature_words')->where('target_id', $target->id)->count();
         $this->assertSame(1, $count);
+
+        Bus::assertDispatched(FillPatternSignaturesJob::class); // at least once
     }
 }

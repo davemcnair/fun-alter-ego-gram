@@ -14,6 +14,9 @@ return new class extends Migration
             $table->string('signature')->index();
             $table->string('normalized_key')->unique();
             $table->string('status');
+            $table->dateTime('matches_seen_at')->nullable();
+            // Processing watermark: last time we processed new matches
+            $table->dateTime('last_processed_matches_at')->nullable();
             $table->timestamps();
         });
 
@@ -40,7 +43,10 @@ return new class extends Migration
             $table->foreignId('target_id')->constrained('targets')->onDelete('cascade');
             $table->foreignId('token_signature_word_id')->constrained('token_signature_words')->onDelete('cascade');
             $table->boolean('is_new')->default(false);
+            // Some older SQLite versions don't support adding multiple columns with default expressions; keep nullable and set values in code
+            $table->timestamps();
 
+            $table->index('created_at', 'ttsw_created_at_idx');
             $table->unique(['target_id', 'token_signature_word_id'], 'matched_words_unique');
             $table->index('token_signature_word_id');
             $table->index('target_id');

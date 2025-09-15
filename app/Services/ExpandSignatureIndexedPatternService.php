@@ -90,6 +90,14 @@ final class ExpandSignatureIndexedPatternService
 
         // Optional log
         try { Log::info('Expanded signatureIndexed patterns for TP '.$targetPattern->id.' => '.$createdCount.' phrase(s).'); } catch (Throwable $e) {}
+
+        // Processing watermark: mark the time we completed processing new matches for this target
+        try {
+            $target->last_processed_matches_at = now();
+            $target->save();
+        } catch (Throwable $e) {
+            try { Log::warning('Failed updating last_processed_matches_at for target '.$target->id.': '.$e->getMessage()); } catch (Throwable $e2) {}
+        }
     }
 
     /**

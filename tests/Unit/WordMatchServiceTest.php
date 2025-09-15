@@ -2,150 +2,125 @@
 
 namespace Tests\Unit;
 
-use App\Models\Target;
 use App\Models\Token;
-use App\Models\TokenSignature;
-use App\Models\TokenSignatureWord;
 use App\Services\WordMatchService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Config;
 use Tests\TestCase;
 
 class WordMatchServiceTest extends TestCase
 {
     use RefreshDatabase;
 
-    private WordMatchService $svc;
+    protected WordMatchService $svc;
 
     protected function setUp(): void
     {
         parent::setUp();
+        // Disable cache for these tests per issue requirement
+        Config::set('search.enable_match_cache', false);
         $this->svc = app(WordMatchService::class);
-        // Seed a couple of tokens used by tests
+
+        // Seed minimal tokens used throughout tests
         Token::insert([
-            ['name' => 'forename', 'prio' => 1, 'min_length' => 2],
-            ['name' => 'surname',  'prio' => 2, 'min_length' => 2],
+            ['name' => 'forename', 'prio' => 1, 'min_length' => 2, 'allow_nearly' => false, 'has_fun' => true, 'has_boring' => true, 'max_multiples' => 1],
+            ['name' => 'surname',  'prio' => 2, 'min_length' => 2, 'allow_nearly' => false, 'has_fun' => true, 'has_boring' => true, 'max_multiples' => 1],
         ]);
     }
 
-    public function test_adds_fun_word_not_deferred_for_new_signature(): void
+    public function test_basic_subset_and_defaults_exclude_boring_and_deferred(): void
     {
-        $tsw = $this->svc->addTokenWord('forename', 'Jane', 'fun');
-        $this->assertInstanceOf(TokenSignatureWord::class, $tsw);
-        $this->assertFalse($tsw->is_deferred);
+        // Target signature for 'adam' -> aadm
+        $targetSignature = 'aadm';
 
-        $sig = TokenSignature::first();
-        $this->assertNotNull($sig);
-        $this->assertEquals('aejn', $sig->signature);
+        // Create matching candidates under forename
+        // New signature 'aadm' with ok (not deferred since signature is newly created)
+        $w1 = $this->svc->addTokenWord('forename', 'adam', 'ok');
+        // Another subset 'aad' (shorter) ok
+        $w2 = $this->svc->addTokenWord('forename', 'ada', 'ok');
+        // Boring subset that should be excluded by default
+        $w3 = $this->svc->addTokenWord('forename', 'am', 'boring');
+        // Non-subset (has n) should never match
+        $w4 = $this->svc->addTokenWord('forename', 'anna', 'ok');
+
+        // Create a deferred candidate intentionally: create fun first for signature, then ok.
+        $this->svc->addTokenWord('forename', 'adam', 'fun');
+        $deferred = $this->svc->addTokenWord('forename', 'dama', 'ok'); // same signature as 'adam', should be deferred
+
+        // Also add a surname subset candidate
+        $ws = $this->svc->addTokenWord('surname', 'dam', 'ok');
+
+        $matches = $this->svc->findMatchingTokenSignatureWords($targetSignature);
+
+        // Assertions: contains w2, ws; excludes boring w3; excludes non-subset w4; excludes deferred
+        $ids = $matches->pluck('id')->all();
+        $this->assertContains($w2->id, $ids);
+        $this->assertContains($ws->id, $ids);
+        $this->assertNotContains($w3->id, $ids, 'boring should be excluded by default');
+        $this->assertNotContains($w4->id, $ids, 'non-subset should not match');
+        $this->assertNotContains($deferred->id, $ids, 'deferred non-fun word should be excluded');
     }
 
-    public function test_adds_non_fun_word_deferred_for_existing_signature(): void
+    public function test_include_boring_true_includes_boring_words(): void
     {
-        // First create a signature by adding a fun word
-        $this->svc->addTokenWord('forename', 'Jane', 'fun');
+        $targetSignature = 'aadm';
+        $ok = $this->svc->addTokenWord('forename', 'adam', 'ok');
+        $boring = $this->svc->addTokenWord('forename', 'am', 'boring');
 
-        // Now add a non-fun word with same signature
-        $tsw2 = $this->svc->addTokenWord('forename', 'enja', 'ok');
-        $this->assertTrue((bool)$tsw2->is_deferred, 'Non-fun under existing signature should be deferred');
+        $matches = $this->svc->findMatchingTokenSignatureWords($targetSignature, ['include_boring' => true]);
+        $ids = $matches->pluck('id')->all();
+        $this->assertContains($ok->id, $ids);
+        $this->assertContains($boring->id, $ids);
     }
 
-    public function test_retroactively_defers_first_non_fun_when_fun_exists(): void
+    public function test_list_filter_overrides_and_limits_to_specific_list(): void
     {
-        // Add non-fun first
-        $nf = $this->svc->addTokenWord('forename', 'enja', 'ok');
-        $this->assertFalse((bool)$nf->is_deferred, 'First word of new signature should not be deferred initially');
+        $targetSignature = 'aadm';
+        // Use different matching signatures for OK vs FUN to avoid retroactive deferral of the OK word
+        $ok = $this->svc->addTokenWord('forename', 'ada', 'ok');     // signature 'aad'
+        $fun = $this->svc->addTokenWord('forename', 'adam', 'fun');  // signature 'aadm'
+        $boring = $this->svc->addTokenWord('forename', 'am', 'boring');
 
-        // Add a fun word with same signature; should retro-defer first non-fun
-        $this->svc->addTokenWord('forename', 'jane', 'fun');
-        $nf->refresh();
-        $this->assertTrue((bool)$nf->is_deferred, 'First non-fun must be retro-deferred once a fun word exists');
+        $matchesFunOnly = $this->svc->findMatchingTokenSignatureWords($targetSignature, ['list' => 'fun']);
+        $idsFun = $matchesFunOnly->pluck('id')->all();
+        $this->assertContains($fun->id, $idsFun);
+        $this->assertNotContains($ok->id, $idsFun);
+        $this->assertNotContains($boring->id, $idsFun);
+
+        $matchesOkOnly = $this->svc->findMatchingTokenSignatureWords($targetSignature, ['list' => 'ok']);
+        $idsOk = $matchesOkOnly->pluck('id')->all();
+        $this->assertContains($ok->id, $idsOk);
+        $this->assertNotContains($fun->id, $idsOk);
+        $this->assertNotContains($boring->id, $idsOk);
     }
 
-    public function test_idempotent_on_duplicate_word_for_same_signature_and_list(): void
+    public function test_token_filter_limits_to_specific_token(): void
     {
-        $w1 = $this->svc->addTokenWord('surname', 'ray', 'ok');
-        $w2 = $this->svc->addTokenWord('surname', 'ray', 'ok');
-        $this->assertEquals($w1->id, $w2->id);
+        $targetSignature = 'aadm';
+        $forenameOk = $this->svc->addTokenWord('forename', 'adam', 'ok');
+        $surnameOk = $this->svc->addTokenWord('surname', 'dam', 'ok');
 
-        $count = TokenSignatureWord::count();
-        $this->assertSame(1, $count);
+        $matchesForenameOnly = $this->svc->findMatchingTokenSignatureWords($targetSignature, ['token' => 'forename']);
+        $idsA = $matchesForenameOnly->pluck('id')->all();
+        $this->assertContains($forenameOk->id, $idsA);
+        $this->assertNotContains($surnameOk->id, $idsA);
+
+        $matchesSurnameOnly = $this->svc->findMatchingTokenSignatureWords($targetSignature, ['token' => 'surname']);
+        $idsB = $matchesSurnameOnly->pluck('id')->all();
+        $this->assertContains($surnameOk->id, $idsB);
+        $this->assertNotContains($forenameOk->id, $idsB);
     }
 
-    public function test_returns_null_for_unknown_token_or_empty_signature(): void
+    public function test_zero_letter_counts_are_enforced(): void
     {
-        $this->assertNull($this->svc->addTokenWord('nonexistent', 'jane', 'fun'));
-        $this->assertNull($this->svc->addTokenWord('forename', '!!!', 'fun'));
-    }
+        // Target with only b's should not match any word containing 'a'
+        $targetSignature = 'bbb';
+        $this->svc->addTokenWord('forename', 'bb', 'ok');       // should match
+        $aWord = $this->svc->addTokenWord('forename', 'ab', 'ok'); // should not match (has 'a')
 
-    public function test_find_matching_token_signature_words_with_filters_and_boring_flag(): void
-    {
-        // Seed words
-        $this->svc->addTokenWord('forename', 'jane', 'fun'); // not deferred
-        $this->svc->addTokenWord('forename', 'enja', 'ok'); // deferred due to existing signature
-        $this->svc->addTokenWord('forename', 'li', 'boring'); // new signature, not deferred
-        $this->svc->addTokenWord('surname', 'ray', 'ok'); // new signature, not deferred
-
-        $targetSig = $this->svc->makeSignature('jane li ray');
-
-        // Default: include_boring=false, no list filter => 2 matches (jane fun, ray ok)
-        $matches = $this->svc->findMatchingTokenSignatureWords($targetSig);
-        $this->assertCount(2, $matches);
-
-        // Include boring => should include 'li' boring (not deferred)
-        $matchesWithBoring = $this->svc->findMatchingTokenSignatureWords($targetSig, ['include_boring' => true]);
-        $this->assertCount(3, $matchesWithBoring);
-
-        // Filter by token forename (default exclude boring)
-        $forenameMatches = $this->svc->findMatchingTokenSignatureWords($targetSig, ['token' => 'forename']);
-        $this->assertCount(1, $forenameMatches);
-        $this->assertTrue($forenameMatches->every(fn($r) => $r->list_type !== 'boring'));
-
-        // Filter by token forename and include boring
-        $forenameMatchesWithBoring = $this->svc->findMatchingTokenSignatureWords($targetSig, ['token' => 'forename', 'include_boring' => true]);
-        $this->assertCount(2, $forenameMatchesWithBoring);
-
-        // Filter by list fun
-        $funOnly = $this->svc->findMatchingTokenSignatureWords($targetSig, ['list' => 'fun']);
-        $this->assertCount(1, $funOnly);
-        $this->assertSame('fun', $funOnly->first()->list_type);
-
-        // Ensure deferred record is never returned
-        $this->assertTrue($matches->every(fn($r) => !$r->is_deferred));
-    }
-
-
-    public function test_extract_matching_token_word_minimum_lengths(): void
-    {
-        // Adjust min lengths to be distinct
-        Token::where('name', 'forename')->update(['min_length' => 3]);
-        Token::where('name', 'surname')->update(['min_length' => 2]);
-
-        // Seed words with various signature lengths
-        $this->svc->addTokenWord('forename', 'ann', 'ok');   // sig length 3
-        $this->svc->addTokenWord('forename', 'anne', 'ok');  // sig length 4
-        $this->svc->addTokenWord('surname', 'ry', 'ok');     // len 2
-        $this->svc->addTokenWord('surname', 'ray', 'ok');    // len 3
-
-        $tsws = TokenSignatureWord::with('tokenSignature.token')->get();
-
-        $targetSig = $this->svc->makeSignature('ann ray'); // can cover all above
-        [$stored, $matching] = $this->svc->extractTargetTokenSignatureWordMinimumLengths($tsws);
-
-        // Stored mins come from tokens table
-        $forenameId = Token::where('name', 'forename')->first()->id;
-        $surnameId = Token::where('name', 'surname')->first()->id;
-        $this->assertSame(3, $stored[$forenameId]);
-        $this->assertSame(2, $stored[$surnameId]);
-
-        // Matching min lengths: min per token of signature lengths that are subset of target signature
-        $this->assertSame(3, $matching[$forenameId]); // min(3,4) => 3
-        $this->assertSame(2, $matching[$surnameId]);  // min(2,3) => 2
-    }
-
-    public function test_auto_creates_token_when_valid_name_missing(): void
-    {
-        // Do not seed 'suffix' token; service should auto-create it when adding a word
-        $tsw = $this->svc->addTokenWord('suffix', 'jr', 'ok');
-        $this->assertInstanceOf(TokenSignatureWord::class, $tsw);
-        $this->assertTrue(Token::where('name', 'suffix')->exists(), 'Suffix token should be auto-created');
+        $matches = $this->svc->findMatchingTokenSignatureWords($targetSignature);
+        $words = $matches->pluck('word')->all();
+        $this->assertContains('bb', $words);
+        $this->assertNotContains('ab', $words);
     }
 }

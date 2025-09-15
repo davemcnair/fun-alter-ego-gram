@@ -1,0 +1,37 @@
+- rebuild tool for after generator changes
+    - migrate:rollback as far as create_token_signatures_table
+    - migrate
+    - db:seed
+    - replay-words-added
+    - replay-word-list-type-changed
+- addWord updates resources
+- changeWordListType updates resources
+- insert-multi-anagram-words
+- commit-resources
+    - zip backup of resources/replays
+    - reset replays
+- page view preferences
+    - fun only
+    - hilarious only
+    - pending patterns
+    - word matches
+        - only used
+    - target pattern
+        - toggle
+        - fun only
+        - excluded used words
+- seed
+    - nearly words
+    - word forms
+        - nouns
+        - adjectives
+        - adverbs
+        - verbs
+    - everyday foreign words
+    - franglais
+- redo progress for asynchronous tasks
+- generate pending task from target page
+- webhook for progress
+- starred alter-egos
+    - drag'n'drop order
+    - hilarious tag

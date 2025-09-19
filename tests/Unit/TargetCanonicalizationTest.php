@@ -36,6 +36,7 @@ class TargetCanonicalizationTest extends TestCase
         $wm = Mockery::mock(WordMatchService::class);
         $wm->shouldReceive('findMatchingTokenSignatureWords')->andReturn(collect());
         $wm->shouldReceive('extractTargetTokenSignatureWordMinimumLengths')->andReturn([[], []]);
+        $wm->shouldReceive('linkMatchesToTarget');
         $this->app->instance(WordMatchService::class, $wm);
     }
 

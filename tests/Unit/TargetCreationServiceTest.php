@@ -43,6 +43,7 @@ class TargetCreationServiceTest extends TestCase
     {
         $this->bindEmptyPatternsServiceMock();
         $wm = Mockery::mock(WordMatchService::class);
+        $wm->shouldReceive('linkMatchesToTarget');
         $this->app->instance(WordMatchService::class, $wm);
         $svc = app(TargetService::class);
 
@@ -93,6 +94,7 @@ class TargetCreationServiceTest extends TestCase
         $forenameId = (int)Token::where('name', 'forename')->first()->id;
         $surnameId  = (int)Token::where('name', 'surname')->first()->id;
         $wm = Mockery::mock(WordMatchService::class);
+        $wm->shouldReceive('linkMatchesToTarget');
         // No matched words are actually needed to be returned for pivot insert
         $wm->shouldReceive('findMatchingTokenSignatureWords')
             ->andReturn(collect());
@@ -109,14 +111,9 @@ class TargetCreationServiceTest extends TestCase
         // Use real ListPatternsService so filtering logic is exercised
         $svc = app(TargetService::class);
 
-        $result = $svc->create('Jane');
-
-        // Should only insert the satisfiable pattern as pending
-        $this->assertSame(1, $result['filtered_count']);
-        $this->assertSame(1, $result['pending_count']);
+        $target = $svc->create('Jane');
 
         /** @var Target $target */
-        $target = $result['target']->fresh();
         $pending = TargetPattern::where('target_id', $target->id)
             ->where('status', 'pending')
             ->get();

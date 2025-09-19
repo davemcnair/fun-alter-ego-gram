@@ -56,14 +56,18 @@ class WordMatchService
             ]
         );
 
-        // Retroactively defer the first non-fun word if a fun word exists under the same signature
-        if (!$tokenSignature->wasRecentlyCreated) {
-            $firstWord = $tokenSignature->words()->orderBy('id')->first();
-            if ($firstWord && $firstWord->list_type !== 'fun' && !$firstWord->is_deferred) {
-                $funExists = $tokenSignature->words()->where('list_type', 'fun')->exists();
+        // Retroactively defer the earliest non-fun word when a FUN word exists on the same token/signature
+        $shouldCheckRetroactive = $listType === 'fun' || !$tokenSignature->wasRecentlyCreated;
+        if ($shouldCheckRetroactive) {
+            $firstNonFun = $tokenSignature->words()
+                ->where('list_type', '!=', 'fun')
+                ->orderBy('id')
+                ->first();
+            if ($firstNonFun && !$firstNonFun->is_deferred) {
+                $funExists = $listType === 'fun' || $tokenSignature->words()->where('list_type', 'fun')->exists();
                 if ($funExists) {
-                    $firstWord->is_deferred = true;
-                    $firstWord->save();
+                    $firstNonFun->is_deferred = true;
+                    $firstNonFun->save();
                 }
             }
         }

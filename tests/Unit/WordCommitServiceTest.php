@@ -26,6 +26,11 @@ class WordCommitServiceTest extends TestCase
         parent::setUp();
         $this->resourcesBase = storage_path('framework/testing/token_words_resources');
         $this->backupBase = storage_path('framework/testing/token_words_backup');
+        // Seed minimal tokens required for addTokenWord calls in this test
+        Token::insert([
+            ['name' => 'forename', 'prio' => 1, 'min_length' => 0],
+            ['name' => 'surname',  'prio' => 2, 'min_length' => 0],
+        ]);
         // Ensure clean directories for deterministic tests (only within testing sandbox)
         @File::deleteDirectory($this->resourcesBase);
         @File::deleteDirectory($this->backupBase);

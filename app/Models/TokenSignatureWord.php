@@ -19,6 +19,7 @@ class TokenSignatureWord extends Model
 
     protected $casts = [
         'committed_at' => 'datetime',
+        'is_deferred' => 'boolean',
     ];
 
     protected static function booted(): void

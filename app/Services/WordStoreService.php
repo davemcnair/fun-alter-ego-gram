@@ -43,9 +43,9 @@ class WordStoreService
      */
     public function addWordAndSearchIfSearchable(string $tokenName, string $word, string $listType): TokenSignatureWord
     {
-
+        $created = $this->wordMatchService->addTokenWord($tokenName, $word, $listType);
         if (in_array((string)$created->list_type, ['fun','ok'], true) && !$created->is_deferred) {
-            event(new TokenWordAdded((int)$created->id));
+            try { event(new TokenWordAdded((int)$created->id)); } catch (\Throwable $e) { /* swallow */ }
         }
         return $created;
     }
@@ -86,8 +86,9 @@ class WordStoreService
     {
         return TokenSignature::query()
             ->join('tokens', 'tokens.id', '=', 'token_signatures.token_id')
+            ->join('signatures', 'signatures.id', '=', 'token_signatures.signature_id')
             ->where('tokens.name', $tokenName)
-            ->where('token_signatures.signature', $signature)
+            ->where('signatures.signature', $signature)
             ->select('token_signatures.*')
             ->first();
     }

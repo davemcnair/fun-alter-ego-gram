@@ -12,12 +12,12 @@ use App\Support\NameNormalizer;
 use App\Traits\HelpsMatchWords;
 use App\Jobs\FillPatternSignaturesJob;
 use App\Traits\ScalesJobs;
-use DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
-use Log;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 use Throwable;
-use Validator;
 
 class TargetController extends Controller
 {
@@ -93,7 +93,8 @@ class TargetController extends Controller
             return response()->json(['message' => 'Name is invalid after normalization'], 422);
         }
 
-        $target = $targetService->create($data['name'], $includeBoring);
+        $result = $targetService->create($data['name'], $includeBoring);
+        $target = is_array($result) ? ($result['target'] ?? null) : $result;
 
         return redirect()->route('targets.show', $target);
     }

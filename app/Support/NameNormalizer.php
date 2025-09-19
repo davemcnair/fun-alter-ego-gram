@@ -58,7 +58,6 @@ class NameNormalizer
     public static function anagramSignature(string $input): SignatureDto
     {
         $s = trim($input);
-        if ($s === '') return '';
         $ascii = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s);
         if ($ascii === false) {
             $ascii = $s;

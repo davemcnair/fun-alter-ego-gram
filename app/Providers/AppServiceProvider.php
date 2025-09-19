@@ -25,7 +25,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Listen for TokenWordAdded events and enqueue backfill job
         try {
             Event::listen(TokenWordAdded::class, function($event){
                 // Use scaledDispatch from ScalesJobs trait to honor queue configuration

@@ -4,7 +4,6 @@ namespace App\Jobs;
 
 use App\Services\FillPatternSignaturesService;
 use App\Services\SignatureFillService;
-use App\Services\WordMatchService;
 use App\Traits\HelpsMatchWords;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -76,13 +75,12 @@ class FillPatternSignaturesJob implements ShouldQueue
      * Handle filling pattern signatures for the associated TargetNamePattern.
      */
     public function handle(
-        WordMatchService $wordMatchService,
         SignatureFillService $signatureFillService
     ): void
     {
         // Delegate to extracted service while preserving signature for tests
         app(FillPatternSignaturesService::class)
-            ->fillWithServices($this->targetNamePatternId, $wordMatchService, $signatureFillService);
+            ->fillWithServices($this->targetNamePatternId, $signatureFillService);
     }
 
 }

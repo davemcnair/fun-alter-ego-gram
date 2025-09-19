@@ -72,7 +72,6 @@ class BackfillNewWordMatchesJob implements ShouldQueue
             }
             if (!empty($rows)) {
                 // Use insertOrIgnore to avoid violating the unique pivot constraint if rows already exist.
-                // This preserves existing is_new values and only inserts when absent.
                 DB::table('target_token_signature_words')->insertOrIgnore($rows);
                 $count += count($rows);
             }

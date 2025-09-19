@@ -14,7 +14,22 @@ class TokenSignatureWord extends Model
         'list_type',
         'word',
         'is_deferred',
+        'committed_at',
     ];
+
+    protected $casts = [
+        'committed_at' => 'datetime',
+    ];
+
+    protected static function booted(): void
+    {
+        static::updating(function (self $model) {
+            if ($model->isDirty('list_type')) {
+                // Any change to list type should mark as uncommitted
+                $model->committed_at = null;
+            }
+        });
+    }
 
     public function tokenSignature(): BelongsTo
     {

@@ -35,9 +35,12 @@
 </nav>
 <div class="container">
     <div class="card">
-        <div class="flex" style="justify-content: space-between;">
+        <div class="flex" style="justify-content: space-between; align-items:center;">
             <h2 style="margin:0;">Words</h2>
-            <a href="{{ route('words.create') }}" class="btn">Add word</a>
+            <div class="flex" style="gap:8px;">
+                <button id="commitBtn" class="btn" {{ $hasUncommitted ? '' : 'disabled' }} title="Commit DB words to resources" >Commit Resources</button>
+                <a href="{{ route('words.create') }}" class="btn">Add word</a>
+            </div>
         </div>
     </div>
 
@@ -99,7 +102,6 @@
                         <th>Token</th>
                         <th>List</th>
                         <th>Signature</th>
-                        <th>Search rep?</th>
                         <th>Anagrams</th>
                         <th>Actions</th>
                     </tr>
@@ -117,7 +119,6 @@
                                 @endif
                             </td>
                             <td>{{ $w->signature }}</td>
-                            <td>{!! $w->use_for_search ? '<span class="badge badge-green">yes</span>' : '<span class="muted">no</span>' !!}</td>
                             <td>
                                 @php $hasA = (bool)($hasAnagsMap[$w->id] ?? false); @endphp
                                 @if($hasA)
@@ -127,7 +128,6 @@
                                             @foreach(($anagsListMap[$w->id] ?? []) as $a)
                                                 <div class="flex" style="gap:6px; margin:3px 0;">
                                                     <span>{{ $a['word'] }}</span>
-                                                    <button class="btn-link js-toggle-search" data-target="{{ $a['id'] }}">Make search</button>
                                                 </div>
                                             @endforeach
                                         </div>
@@ -171,6 +171,29 @@
         }).then(r => r.json());
     }
 
+    const commitBtn = document.getElementById('commitBtn');
+    if (commitBtn) {
+        commitBtn.addEventListener('click', function(){
+            if (this.hasAttribute('disabled')) return;
+            this.setAttribute('disabled', 'disabled');
+            this.textContent = 'Committing...';
+            postJson('{{ route('words.commit-resources') }}', {}).then(res => {
+                if (res && res.ok) {
+                    alert('Committed ' + (res.committed_count || 0) + ' word(s). Backup: ' + (res.backup || 'n/a'));
+                    location.reload();
+                } else {
+                    alert((res && res.error) || 'Commit failed');
+                    commitBtn.removeAttribute('disabled');
+                    commitBtn.textContent = 'Commit Resources';
+                }
+            }).catch(() => {
+                alert('Commit failed');
+                commitBtn.removeAttribute('disabled');
+                commitBtn.textContent = 'Commit Resources';
+            });
+        });
+    }
+
     document.querySelectorAll('.js-promote').forEach(btn => {
         btn.addEventListener('click', function(){
             const id = this.dataset.id;
@@ -182,20 +205,6 @@
                     alert(res.error || 'Failed to promote');
                 }
             }).catch(() => alert('Failed to promote'));
-        });
-    });
-
-    document.querySelectorAll('.js-toggle-search').forEach(btn => {
-        btn.addEventListener('click', function(){
-            const id = this.dataset.target;
-            const url = '{{ route('words.toggle-search', ['word' => 'WORD_ID']) }}'.replace('WORD_ID', String(id));
-            postJson(url, {}).then(res => {
-                if (res && res.ok) {
-                    location.reload();
-                } else {
-                    alert(res.error || 'Failed to set as search representative');
-                }
-            }).catch(() => alert('Failed to set'));
         });
     });
 })();

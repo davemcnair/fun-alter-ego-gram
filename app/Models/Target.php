@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
@@ -14,8 +15,10 @@ class Target extends Model
 {
     use HasRelationships;
 
+    protected $with = ['signature'];
+
     protected $fillable = [
-        'name', 'signature', 'normalized_key', 'status',
+        'name', 'signature', 'normalized_key', 'status', 'signature_id'
     ];
 
     protected $casts = [
@@ -36,6 +39,11 @@ class Target extends Model
     public function alterEgos(): HasManyDeep
     {
         return $this->hasManyDeep(AlterEgo::class, [TargetPattern::class, TargetSignatureIndexedPattern::class]);
+    }
+
+    public function signature(): BelongsTo
+    {
+        return $this->belongsTo(Signature::class);
     }
 
     /**

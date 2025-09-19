@@ -2,12 +2,10 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Token;
 use App\Services\WordMatchService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\DB;
-use Log;
 
 class ImportWordLists extends Command
 {
@@ -22,20 +20,18 @@ class ImportWordLists extends Command
             $this->warn("Base path not found: {$basePath}");
             return self::FAILURE;
         }
-
         DB::transaction(function () use ($basePath) {
+            $committedAt = now();
             $svc = app(WordMatchService::class);
             foreach (File::directories($basePath) as $tokenTypePath) {
                 $tokenType = basename($tokenTypePath);
-                Log::info($tokenType);
-                $token = Token::where('name', $tokenType)->first();
                 foreach (File::files($tokenTypePath) as $file) {
                     // $file is SplFileInfo
                     $listType = pathinfo($file->getFilename(), PATHINFO_FILENAME); // ok, fun, boring
                     $lines = @file($file->getRealPath(), FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
 
                     foreach ($lines as $word) {
-                        $svc->addTokenWord($tokenType, trim($word), $listType);
+                        $svc->addTokenWord($tokenType, trim($word), $listType, $committedAt);
                     }
                 }
             }

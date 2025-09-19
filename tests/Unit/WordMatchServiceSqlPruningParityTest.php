@@ -53,7 +53,7 @@ class WordMatchServiceSqlPruningParityTest extends TestCase
                 }
             })
             ->whereHas('tokenSignature', function($q) use ($srcLen, $counts, $filterToken) {
-                $q->where('sig_len', '<=', $srcLen);
+                $q->where('length', '<=', $srcLen);
                 // Enforce exact subset: letters present must be <= target counts; letters absent must be 0
                 foreach (range('a','z') as $ch) {
                     $n = (int)($counts[$ch] ?? 0);

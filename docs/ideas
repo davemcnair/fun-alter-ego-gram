@@ -1,5 +1,13 @@
+- create target signature
+- adjust token_signature_word builder
 
-
+- ai write docs
+    - brief
+    - spec
+    - user guide
+    - what else?
+- convert to DDD bounded contexts - Command/Service
+- integration tests?
 - add commited column to tokenSignatureWord
     - seeded words are marked as committed
     - added words are marked as !committed
@@ -13,10 +21,17 @@
         - !committed word changes should be
             - merged in to resources\token_words
             - then set to committed
-
+- find matching targets
+    - make createService more modular reusable parts
+    - recompute pattern filters, and regenerate fills, expands with insertOrIgnore
+    - lose target status
+    - lose debug endpoint
+- mastering
+    - Junie
+    - AI assistant
 - insert-multi-anagram-words
 
-- page view preferences
+- target page view preferences
     - fun only
     - hilarious only
     - pending patterns
@@ -26,18 +41,110 @@
         - toggle
         - fun only
         - excluded used words
-- seed
-    - nearly words
+- drop boring?
+- matching word panel
+    - token-type curatable
+        - funny/remainder/boring columns (only show boring if include boring enabled)
+          words in columns should have clickable traffic lights to set funny/remainder/boring green/amber/red
+          add funny, promote funny -> lights  -> merge new
+          each funny column should have an add word input
+          if any traffic light changed or word added, Regenerate Funny Partials button should be lit
+          exclude word
+    - non-curatable
+        add word input, exclude word
+- pending targetPatterns panel
+- generate/seed/load/pre-filter
+    - nearly words (by pluggable expansion rules) as related table/resource?
+        apostrophes kin'g, h'orace
+        doublable consonants on names vfunny
+        yoof speak :
+        er-> a
+        th->f,
+        scots
+        n't -> ae
     - word forms
         - nouns
         - adjectives
         - adverbs
         - verbs
-    - everyday foreign words
+    - everyday funny foreign words
+        Scottish, GERMAN, FRENCH, ITALIAN, SPANISH
     - franglais
 - redo progress for asynchronous tasks
 - generate altegos from pending targetpattern from target page
 - webhook for progress
 - starred alter-egos
     - drag'n'drop order
-    - hilarious tag
+- tags
+    - hilarious
+    - risque
+- word themes pivot CRUD
+    - pets (ai gets list, user curates - add/remove)
+    - hilarious
+    - risque
+- filter token fun
+- filter and/or
+- filter expandable
+    - anag dupes (case-insensitive)
+        - {f} {s:2} | [s:1,s:2,f:0]:0 | andhitshits [shit, tish, shits]
+          -> f shit s | [shit:1 s:2 f:0]:1 andhits [shit, tish]
+          -> f shit shit | [shit:1 shit:2 f:0]:2 and [dan]
+          -> dan shit shit | [shit:1 shit:2 dan:0]:null = ae
+          -> f tish s | [tish:1 s:2 f:0]:1 andhits [shit, tish, shits]
+          -> f shits s | [shit:1 s:2 f:0]:1 andhit [shit, tish, shits]?
+    - position dupes
+    - normalized dupes
+- 2 col altegos
+- is phrase computed from pattern or stored
+- export/import regenerates/favourites/preferences on rebuild (warn if no regenerates)
+- phrase token adjacency/output rules
+    - format(first,second, outputRules: case, separator, anags
+    - fn(pattern)
+- less standards as >n
+- gpt identifies stars/flops ie learns sense of humour
+    - Identify plausible-but-funny fake names (e.g., Dave Fun-Wheel). The humour mainly comes from curated “fun words” used as surnames (often double-barrelled, but not limited to that).
+    - maybe a scoring algorithm for funny names/words
+    - {noun}{verb}.
+      {noun}{adverb}.
+      {verb}{noun}.
+      {verb}{adverb}.
+      {noun}{verb-er}.
+      {adj}{verb-er}
+      {verb-s}
+- eligible for multiple forename (ask AI)
+- filter
+    - gender MFU
+    - gender consistent phrases
+- pre-filter pattern words by longest possible for slot! even quicker but already really fast
+- {surname}{suffix}{prefix}{surname}{suffix}
+    - pre-filter face(and other suffixes) from {surnames} when {surname}{suffix} is present
+- get name lookup after 1st space favour t m/f
+- bios
+    - friends
+    - (configd gen-RIFF->pic gen-prompt->ILLUSTRATE)->interactive(riff*->pic prompt->illustrate)*
+- interactive merge in extra sources
+- users own wordlists export/import
+- permutations count/estimate actual, elapsed
+- ALTEREGOMAKER.COM alteregogram.com
+- merch
+    - mugs
+    - t-shirts
+    - fancy dress costumes
+- account options
+    - AGENT TO USE USERS AI ACCOUNT rather than API
+- think DONE: give me a php script that from a file source.txt containing a list of words (1 per line), removes all words that are an anagram of a previous word in the list, storing the removed words in a separate file source-anags.txt example 2nd file line host: hots, shot, tosh
+- pluggable expansions
+    - complete foreign lang
+- use packages
+      own?
+      3rd party?
+- rewrite git history atomic commits
+- Codex
+- Context7
+- LLM Model selection
+- wtf fixed the ui? - design it better - move some to backend
+- replace frontend with vue
+- API
+- expose resources as MCP
+- separate resource management - package? not just php
+- AI-Native best practices

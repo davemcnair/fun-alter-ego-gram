@@ -12,7 +12,7 @@ trait HelpsMatchWords
         return preg_replace('/[^a-z]/', '', $s) ?? '';
     }
 
-    // Make a sorted-letter signature from input string
+    // Make a sorted-letter signature string from input string
     public function makeSignature(string $s): string
     {
         $norm = $this->normalize($s);
@@ -40,7 +40,7 @@ trait HelpsMatchWords
      * @param string $signature
      * @return array
      */
-    public function letterCountsFromSignature(string $signature): array
+    public static function letterCountsFromSignature(string $signature): array
     {
         $letterCounts = [];
         $len = strlen($signature);

@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Events\TokenWordAdded;
 use App\Models\TokenSignature;
 use App\Models\TokenSignatureWord;
-use Illuminate\Support\Facades\DB;
 
 /**
  * WordStoreService
@@ -34,20 +33,19 @@ class WordStoreService
             ->orderBy('word')
             ->get();
         $selectedId = optional($existing->firstWhere('is_deferred', false))->id;
-        // Synthesize use_for_search for presentation (kept here for parity but testable)
-        foreach ($existing as $ex) { $ex->use_for_search = !$ex->is_deferred; }
+
         return [$existing, $selectedId ? (int)$selectedId : null];
     }
 
     /**
      * Create a new TokenSignatureWord and, if eligible (fun/ok and not deferred), dispatch TokenWordAdded.
-     * Returns the created row or null if creation failed (e.g., empty signature or invalid token).
+     * Returns the created row.
      */
-    public function createNewWordAndMaybeDispatch(string $tokenName, string $word, string $listType): ?TokenSignatureWord
+    public function addWordAndSearchIfSearchable(string $tokenName, string $word, string $listType): TokenSignatureWord
     {
-        $created = $this->wordMatchService->addTokenWord($tokenName, $word, $listType);
-        if ($created && in_array((string)$created->list_type, ['fun','ok'], true) && !$created->is_deferred) {
-            try { event(new TokenWordAdded((int)$created->id)); } catch (\Throwable $e) { /* swallow */ }
+
+        if (in_array((string)$created->list_type, ['fun','ok'], true) && !$created->is_deferred) {
+            event(new TokenWordAdded((int)$created->id));
         }
         return $created;
     }

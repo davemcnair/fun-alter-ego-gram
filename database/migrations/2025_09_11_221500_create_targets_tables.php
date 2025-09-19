@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('targets', function (Blueprint $table) {
             $table->id();
             $table->string('name');
-            $table->string('signature')->index();
+            $table->foreignId('signature_id')->constrained('signatures')->onDelete('cascade');
             $table->string('normalized_key')->unique();
             $table->string('status');
             $table->dateTime('matches_seen_at')->nullable();
@@ -42,7 +42,6 @@ return new class extends Migration
             // Simple 2-column pivot with composite unique; no id/timestamps
             $table->foreignId('target_id')->constrained('targets')->onDelete('cascade');
             $table->foreignId('token_signature_word_id')->constrained('token_signature_words')->onDelete('cascade');
-            $table->boolean('is_new')->default(false);
             // Some older SQLite versions don't support adding multiple columns with default expressions; keep nullable and set values in code
             $table->timestamps();
 
@@ -50,10 +49,7 @@ return new class extends Migration
             $table->unique(['target_id', 'token_signature_word_id'], 'matched_words_unique');
             $table->index('token_signature_word_id');
             $table->index('target_id');
-            // Add helpful indexes for queries by is_new
-            $table->index(['target_id', 'is_new'], 'ttsw_target_isnew_idx');
-            $table->index(['token_signature_word_id', 'is_new'], 'ttsw_word_isnew_idx');
-        });
+            });
 
         Schema::create('alter_egos', function (Blueprint $table) {
             $table->id();

@@ -1,0 +1,44 @@
+Key Concepts
+Token Match Word pools
+initially gb english, leave door open to other langs (see pluggable expansions)
+Curatable token words can be  tagged as “fun” vs. “ok” vs "boring".
+fun words treated as equally funny — no internal ranking.
+only surname, forename tokens are curatable.
+“Nearly” words may be introduced via pluggable expansion rules (see §Pluggable Expansions).
+genderable token matches maybe filtered by gender (see pluggable expansions)
+token Patterns
+Generated from superset {title}{forename:2}{initials}{prefix}{surname:4}{suffix}{honorific}.
+Length limits:
+Source names: max ~18 letters.
+Generated patterns: min ~18 letters (aggregate across tokens, min token length = 2).
+Patterns ordered by “normalcy” by user for search progression:
+{forename}{surname}
+{forename}{surname:2}
+{title}{forename}{surname}
+{title}{forename}{surname:2}
+…then expand into longer/more exotic combinations.
+Viability Check
+Initial heuristic: remaining letter count vs. target.
+Improved option: histogram intersection — compare letter distributions of remaining tokens vs. target, ensuring sufficient matches exist to complete the pattern.
+Viability check applied incrementally:
+Don’t branch into 2nd surname until 1st surname placed (enforced by replacement + next-token choice rule).
+recompute histograms for viability checks at each step
+Search Plan
+One-time generation of all doable source patterns (filtered by length & token rules).
+Store and order patterns by normalcy.
+At runtime:
+Expand pattern → place fun surname words first.
+If matches exist, generator can pause early and show partial wins (progress panel).
+Later expansion: crazier, multi-token patterns.
+Pluggable Expansions
+“Nearly words” and flexible substitutions should be possible but modular.
+Approaches:
+Manual curation (least flexible, highest control).
+Rule-based nearlies (e.g., phonetic shifts, one-letter swap, rhyme families).
+Weighted expansions: mark some expansions as high-noise (so they’re skipped unless configured).
+Recommendation: make expansions pluggable features, toggled at runtime so core system remains clean.
+Outputs
+Each candidate name can be:
+Completed (all slots filled).
+Incomplete (with placeholders).
+Optional post-process: reorder components to surface alternative funny combinations (e.g., Dave Fun-Wheel → Dave Wheel-Fun).

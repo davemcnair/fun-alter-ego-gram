@@ -42,7 +42,9 @@ final class ExpandSignatureIndexedPatternService
             foreach ($tokenIdSignaturePairs as $pair) {
                 $ts = TokenSignature::query()
                     ->where('token_id', $pair['token_id'])
-                    ->where('signature', $pair['signature'])
+                    ->whereHas('signature', function ($q) use ($pair) {
+                        $q->where('signature', $pair['signature']);
+                    })
                     ->first();
 
                 if ($ts) {

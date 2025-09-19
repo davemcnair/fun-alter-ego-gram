@@ -5,7 +5,7 @@ namespace Tests\Unit;
 use App\Models\Target;
 use App\Models\Token;
 use App\Services\ListPatternsService;
-use App\Services\TargetCreationService;
+use App\Services\TargetService;
 use App\Services\WordMatchService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
@@ -42,7 +42,7 @@ class TargetCanonicalizationTest extends TestCase
     public function test_variants_deduplicate_to_one_target(): void
     {
         Bus::fake();
-        $svc = app(TargetCreationService::class);
+        $svc = app(TargetService::class);
 
         $svc->create('David McNair');
         $svc->create('davidmcnair');
@@ -55,7 +55,7 @@ class TargetCanonicalizationTest extends TestCase
 
     public function test_invalid_input_yields_422_and_no_row(): void
     {
-        $svc = app(TargetCreationService::class);
+        $svc = app(TargetService::class);
         $this->expectException(HttpException::class);
         try {
             $svc->create('!!!');

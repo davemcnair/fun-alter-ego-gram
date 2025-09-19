@@ -11,8 +11,9 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // Seed words and patterns from resources
+        // Seed tokens, then words and patterns from resources (order matters)
         $this->call([
+            TokensFromResourcesSeeder::class,
             WordsFromResourcesSeeder::class,
             PatternsFromResourcesSeeder::class,
         ]);

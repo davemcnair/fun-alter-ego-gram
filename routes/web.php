@@ -29,8 +29,8 @@ Route::post('/patterns/export', [PatternController::class, 'export'])->name('pat
 Route::resource('words', WordController::class)->except(['show']);
 // Promote a word to fun (AJAX)
 Route::post('/words/{word}/promote', [WordController::class, 'promote'])->name('words.promote');
-// Toggle use_for_search for a word within its anagram set (AJAX)
-Route::post('/words/{word}/toggle-search', [WordController::class, 'toggleSearch'])->name('words.toggle-search');
+// Commit resources from uncommitted DB words
+Route::post('/words/commit-resources', [WordController::class, 'commitResources'])->name('words.commit-resources');
 
 // Search control endpoints (pause/resume/progress/run-step/start)
 //Route::post('/targets/{target}/pause', [TargetController::class, 'pause'])->name('targets.pause');

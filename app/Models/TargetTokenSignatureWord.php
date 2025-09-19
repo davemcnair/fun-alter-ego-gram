@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Arr;
 use DB;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -32,15 +33,11 @@ class TargetTokenSignatureWord extends Model
      * @param Collection<TokenSignatureWord> $tokenSignatureWords
      * @return Collection<TokenSignatureWord, TargetTokenSignatureWord>
      */
-    public static function bulkInsertOrIgnore(Target $target , Collection $tokenSignatureWords): Collection
+    public static function bulkInsertOrIgnore(Target $target, Collection $tokenSignatureWords): array
     {
-        if ($tokenSignatureWords->isEmpty()) {
-            return $target->fresh()->matchingTokenSignatureWords;
-        }
-
         $wordIds = $tokenSignatureWords->pluck('id')->map(fn($v) => (int)$v)->values();
 
-        // Determine which links already exist
+        // Determine which links already exist - why would they exist?
         $existing = DB::table('target_token_signature_words')
             ->where('target_id', $target->id)
             ->whereIn('token_signature_word_id', $wordIds)
@@ -65,8 +62,7 @@ class TargetTokenSignatureWord extends Model
         if (!empty($newRows)) {
             DB::table('target_token_signature_words')->insert($newRows);
         }
-
-        return $target->fresh()->matchingTokenSignatureWords;
+        return Arr::pluck($newRows, 'token_signature_word_id');
     }
 
 }

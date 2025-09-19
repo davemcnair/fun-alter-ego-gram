@@ -3,10 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\TokenSignatureWord;
+use App\Services\WordCommitService;
 use App\Services\WordMatchService;
 use App\Traits\HelpsMatchWords;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 
 class WordController extends Controller
@@ -34,7 +36,6 @@ class WordController extends Controller
                 'token_signatures.signature as signature',
                 'token_signatures.id as token_signature_id',
                 'tokens.name as token_type',
-                DB::raw('(CASE WHEN token_signature_words.is_deferred = 0 THEN 1 ELSE 0 END) as use_for_search'),
             ])
             ->orderBy('token_signature_words.id');
         if ($q !== '') {
@@ -101,7 +102,8 @@ class WordController extends Controller
             if (!empty($list)) $anagsListMap[$it->id] = $list;
         }
 
-        return view('words.index', compact('items','q','exact','token','list','perPage','tokenOptions','listOptions','hasAnags','hasAnagsMap','anagsListMap'));
+        $hasUncommitted = TokenSignatureWord::query()->whereNull('committed_at')->exists();
+        return view('words.index', compact('items','q','exact','token','list','perPage','tokenOptions','listOptions','hasAnags','hasAnagsMap','anagsListMap','hasUncommitted'));
     }
 
     public function create()
@@ -136,7 +138,7 @@ class WordController extends Controller
                 ]);
             }
             // No existing anagrams; create immediately via service (emits event if eligible)
-            $store->createNewWordAndMaybeDispatch($token, $data['word'], $list);
+            $store->addWordAndSearchIfSearchable($token, $data['word'], $list);
             return redirect()->route('words.index')->with('status', 'Word created.');
         }
 
@@ -149,7 +151,7 @@ class WordController extends Controller
 
         $created = null;
         if ($selectedExistingId === null && $choice === 'new') {
-            $created = $store->createNewWordAndMaybeDispatch($token, $data['word'], $list);
+            $created = $store->addWordAndSearchIfSearchable($token, $data['word'], $list);
         }
 
         // Designate representative and possibly emit event if newly created rep is eligible
@@ -196,20 +198,6 @@ class WordController extends Controller
         return redirect()->route('words.index')->with('status', 'Word deleted.');
     }
 
-    // Toggle use_for_search representative within an anagram set (AJAX)
-    public function toggleSearch(Request $request, TokenSignatureWord $word)
-    {
-        // Only makes sense if there are anagrams (at least one other in set)
-        $count = TokenSignatureWord::query()->where('token_signature_id', $word->token_signature_id)->where('id', '!=', $word->id)->count();
-        if ($count === 0) {
-            return response()->json(['ok' => false, 'error' => 'No anagrams to designate representative for.'], 400);
-        }
-        // Reset others to deferred and set this one as active (not deferred)
-        TokenSignatureWord::query()->where('token_signature_id', $word->token_signature_id)->update(['is_deferred' => true]);
-        $word->is_deferred = false; $word->save();
-        return response()->json(['ok' => true]);
-    }
-
     // Promote a word from OK to FUN (AJAX)
     public function promote(Request $request, TokenSignatureWord $word)
     {
@@ -240,5 +228,37 @@ class WordController extends Controller
             'token_type' => 'Token type',
             'list_type' => 'List type',
         ]);
+    }
+
+    // Commit resources by merging uncommitted DB words back to resources/token_words
+    public function commitResources(Request $request)
+    {
+        // Simple lock to avoid concurrent commits
+        $lockFile = storage_path('app/commit_words.lock');
+        $fh = @fopen($lockFile, 'c');
+        if ($fh === false) {
+            return response()->json(['ok' => false, 'error' => 'Unable to create lock'], 500);
+        }
+        if (!@flock($fh, LOCK_EX | LOCK_NB)) {
+            return response()->json(['ok' => false, 'error' => 'Commit already in progress'], 409);
+        }
+
+        try {
+            /** @var WordCommitService $svc */
+            $svc = app(WordCommitService::class);
+            $result = $svc->commit();
+            return response()->json([
+                'ok' => true,
+                'committed_count' => (int)($result['committed_count'] ?? 0),
+                'backup' => $result['backup'] ?? null,
+                'sample_changes' => array_slice($result['changes'] ?? [], 0, 5),
+            ]);
+        } catch (Throwable $e) {
+            return response()->json(['ok' => false, 'error' => 'Commit failed', 'message' => $e->getMessage()], 500);
+        } finally {
+            @flock($fh, LOCK_UN);
+            @fclose($fh);
+            @unlink($lockFile); // best-effort cleanup
+        }
     }
 }

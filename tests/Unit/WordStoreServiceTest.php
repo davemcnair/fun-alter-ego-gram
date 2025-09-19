@@ -41,9 +41,6 @@ class WordStoreServiceTest extends TestCase
 
         $this->assertGreaterThanOrEqual(2, $existing->count());
         $this->assertSame($w2->id, $selectedId, 'Selected should be the non-deferred (fun) representative');
-        // Ensure synthesized use_for_search is present and accurate
-        $active = $existing->firstWhere('id', $selectedId);
-        $this->assertTrue((bool)($active->use_for_search ?? false));
     }
 
     public function test_createNewWordAndMaybeDispatch_emits_for_fun_and_skips_when_deferred_or_boring(): void
@@ -52,7 +49,7 @@ class WordStoreServiceTest extends TestCase
         $svc = app(WordStoreService::class);
 
         // Emits for FUN when not deferred
-        $createdFun = $svc->createNewWordAndMaybeDispatch('surname', 'ray', 'fun');
+        $createdFun = $svc->addWordAndSearchIfSearchable('surname', 'ray', 'fun');
         $this->assertNotNull($createdFun);
         Event::assertDispatched(TokenWordAdded::class, function($e) use ($createdFun){
             return (int)$e->tokenSignatureWordId === (int)$createdFun->id;
@@ -64,14 +61,14 @@ class WordStoreServiceTest extends TestCase
         $wm->addTokenWord('surname', 'yra', 'fun'); // same signature as 'ray'
 
         // Adding OK for existing signature should be deferred => no event
-        $createdOkDeferred = $svc->createNewWordAndMaybeDispatch('surname', 'ary', 'ok');
+        $createdOkDeferred = $svc->addWordAndSearchIfSearchable('surname', 'ary', 'ok');
         $this->assertNotNull($createdOkDeferred);
         $this->assertTrue((bool)$createdOkDeferred->is_deferred);
         Event::assertNotDispatched(TokenWordAdded::class);
 
         Event::fake();
         // Boring should never emit
-        $boring = $svc->createNewWordAndMaybeDispatch('surname', 'ravy', 'boring');
+        $boring = $svc->addWordAndSearchIfSearchable('surname', 'ravy', 'boring');
         $this->assertNotNull($boring);
         Event::assertNotDispatched(TokenWordAdded::class);
     }

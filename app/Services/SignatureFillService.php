@@ -48,12 +48,14 @@ class SignatureFillService
     {
         $candidateSignaturesByTokenId = [];
         foreach ($matchingTokenSignatureWords as $tokenSignatureWord) {
-            $signature = $tokenSignatureWord->tokenSignature->signature;
+            $sigModel = $tokenSignatureWord->tokenSignature->signature;
+            $signature = is_object($sigModel) ? (string)($sigModel->signature ?? '') : (string)$sigModel;
+            $length = is_object($sigModel) ? (int)($sigModel->length ?? strlen($signature)) : strlen($signature);
             $token_id = $tokenSignatureWord->tokenSignature->token_id;
             // Step 1: build candidate list with per-candidate histograms
             $candidateSignaturesByTokenId[$token_id]['signatures'][] = [
                 'signature' => $signature,
-                'len' => strlen($signature),
+                'len' => $length,
                 'hist' => $this->letterCountsFromSignature($signature),
             ];
         }

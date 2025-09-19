@@ -2,12 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Pattern;
 use App\Models\Target;
 use App\Models\TargetPattern;
 use App\Models\AlterEgo;
 use App\Models\TargetTokenSignatureWord;
 use App\Models\TokenSignatureWord;
-use App\Services\TargetCreationService;
+use App\Services\TargetService;
 use App\Services\WordMatchService;
 use App\Services\WordStoreService;
 use App\Support\NameNormalizer;
@@ -17,6 +18,9 @@ use App\Traits\ScalesJobs;
 use DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Log;
+use Throwable;
+use Validator;
 
 class TargetController extends Controller
 {
@@ -24,7 +28,7 @@ class TargetController extends Controller
 
     public function debug(Target $target, Request $request)
     {
-        \Log::info('TargetController.debug: request received', [
+        Log::info('TargetController.debug: request received', [
             'target_id' => $target->id,
             'route' => $request->path(),
             'ajax' => $request->ajax(),
@@ -32,17 +36,17 @@ class TargetController extends Controller
         return response()->json(['ok' => true, 'target_id' => $target->id]);
     }
 
-    public function addWord(Target $target, Request $request)
+    public function addWord(Target $target, Request $request, WordMatchService $wordMatchService, TargetService $targetService)
     {
         // Perform explicit validation so we can return a consistent JSON error shape on failure
-        $validator = \Validator::make($request->all(), [
+        $validator = Validator::make($request->all(), [
             'token_type' => ['required','string'],
             'word' => ['required','string','min:1'],
             'list_type' => ['nullable','string'],
         ]);
         if ($validator->fails()) {
             $errors = $validator->errors()->toArray();
-            \Log::warning('TargetController.addWord: validation failed', [
+            Log::warning('TargetController.addWord: validation failed', [
                 'target_id' => $target->id,
                 'errors' => $errors,
                 'input' => $request->only(['token_type','word','list_type']),
@@ -55,43 +59,19 @@ class TargetController extends Controller
         }
         $data = $validator->validated();
 
-        // Ensure target has a non-empty signature
-        if (trim((string)$target->signature) === '') {
-            return response()->json([
-                'ok' => false,
-                'error' => 'Target has empty signature',
-            ], 422);
-        }
-
         // Normalize and validate list type (default to ok)
-        $list = strtolower(trim((string)($data['list_type'] ?? 'ok')));
-        if (!in_array($list, ['ok','fun'], true)) {
+        $listType = strtolower(trim((string)($data['list_type'] ?? 'ok')));
+        if (!in_array($listType, ['ok','fun'], true)) {
             return response()->json(['ok' => false, 'error' => 'Invalid list_type'], 422);
         }
 
-        // Create the word using existing domain logic; be tolerant of failures
-        /** @var WordStoreService $store */
-        $store = app(WordStoreService::class);
-        try {
-            $created = $store->createNewWordAndMaybeDispatch((string)$data['token_type'], (string)$data['word'], $list);
-        } catch (\Throwable $e) {
-            $created = null; // tolerate and continue to refresh UI
-        }
+        $wordMatchService->addTokenWord($data['token_type'], $data['word'], $listType);
 
-        // Find matches and link to this target
-        /** @var WordMatchService $matcher */
-        $matcher = app(WordMatchService::class);
-        $matches = $matcher->findMatchingTokenSignatureWords($target->signature, ['include_boring' => true]);
-        TargetTokenSignatureWord::bulkInsertOrIgnore($target, $matches);
+        // Step 1: Find matches and link to this target
+        $wordMatchService->linkMatchesToTarget($target);
 
-        // Enqueue fills for this target's patterns; idempotent downstream via unique constraints
-        $patternIds = TargetPattern::where('target_id', $target->id)
-            ->orderBy('popularity_rank')
-            ->pluck('id')
-            ->all();
-        foreach ($patternIds as $pid) {
-            $this->scaledDispatch(FillPatternSignaturesJob::class, (int)$pid);
-        }
+        // Step 2: compute min lengths (id-keyed arrays)
+        $targetService->fillMatchedPatternsForTarget($target->fresh());
 
         return response()->json(['ok' => true] + $this->lookupProgressPayload($target->fresh()));
     }
@@ -102,7 +82,7 @@ class TargetController extends Controller
         return view('targets.index', compact('items'));
     }
 
-    public function store(Request $request, TargetCreationService $createService)
+    public function store(Request $request, TargetService $targetService)
     {
         $data = $request->validate([
             'name' => ['required','string','min:1','max:100'],
@@ -116,9 +96,7 @@ class TargetController extends Controller
             return response()->json(['message' => 'Name is invalid after normalization'], 422);
         }
 
-        $result = $createService->create($data['name'], $includeBoring);
-        /** @var Target $target */
-        $target = $result['target'];
+        $target = $targetService->create($data['name'], $includeBoring);
 
         return redirect()->route('targets.show', $target);
     }
@@ -126,41 +104,13 @@ class TargetController extends Controller
     public function show(Target $target)
     {
         $target->fresh();
-        \Log::info('TargetController.show', ['target' => $target]);
-        return view('targets.show', $this->lookupProgressPayload($target));
+        $data = $this->lookupProgressPayload($target);
+        return view('targets.show', $data);
     }
-
-//    public function pause(Target $target)
-//    {
-//        $target->status = 'paused';
-//        $target->save();
-//        return response()->json(['ok' => true] + $this->lookupProgressPayload($target));
-//    }
-//
-//    public function resume(Target $target)
-//    {
-//        $target->status = 'running';
-//        $target->save();
-//
-//        // Enqueue remaining pending patterns
-//        $pending = TargetPattern::where('target_id', $target->id)
-//            ->where('status', 'pending')
-//            ->orderBy('popularity_rank')
-//            ->pluck('id');
-//        foreach ($pending as $pid) {
-//            // Job expects only the TargetNamePattern ID
-//            $dispatch = FillPatternSignaturesJob::dispatch((int)$pid);
-//            $queue = config('search.queue');
-//            if (!empty($queue)) { $dispatch->onQueue($queue); }
-//        }
-//
-//        return response()->json(['ok' => true] + $this->lookupProgressPayload($target));
-//    }
-
 
     public function newMatches(Target $target)
     {
-        \Log::info('TargetController.newMatches: request received', [
+        Log::info('TargetController.newMatches: request received', [
             'target_id' => $target->id,
         ]);
         $rows = DB::table('target_token_signature_words as t')
@@ -184,7 +134,7 @@ class TargetController extends Controller
 
     public function processNewMatches(Target $target)
     {
-        \Log::info('TargetController.processNewMatches: request received', [
+        Log::info('TargetController.processNewMatches: request received', [
             'target_id' => $target->id,
         ]);
         // Basic rate-limit: avoid rapid reprocessing within 30 seconds
@@ -195,7 +145,7 @@ class TargetController extends Controller
             if ($last && ($now - $last) < 30) {
                 return response()->json(['ok' => false, 'error' => 'Please wait before retrying'], 429);
             }
-        } catch (\Throwable $e) { /* ignore cache errors */ }
+        } catch (Throwable $e) { /* ignore cache errors */ }
 
         // Determine how many matches are new for processing since the last cycle
         $count = DB::table('target_token_signature_words as t')
@@ -213,7 +163,7 @@ class TargetController extends Controller
             $this->scaledDispatch(FillPatternSignaturesJob::class, (int)$pid);
         }
 
-        try { cache()->put($key, $now, 60); } catch (\Throwable $e) {}
+        try { cache()->put($key, $now, 60); } catch (Throwable $e) {}
 
         return response()->json([
             'ok' => true,
@@ -224,13 +174,13 @@ class TargetController extends Controller
 
     public function markMatchesSeen(Target $target)
     {
-        try { $target->matches_seen_at = now(); $target->save(); } catch (\Throwable $e) {}
+        try { $target->matches_seen_at = now(); $target->save(); } catch (Throwable $e) {}
         return response()->json(['ok' => true]);
     }
 
     public function star(Target $target, Request $request)
     {
-        \Log::info('TargetController.star: request received', [
+        Log::info('TargetController.star: request received', [
             'target_id' => $target->id,
             'ajax' => $request->ajax(),
             'headers' => [
@@ -310,6 +260,9 @@ class TargetController extends Controller
             'alterEgosCount' => $s->alterEgos()->count(),
             'starred' => $s->alterEgos()->where('starred', true)->pluck('phrase')->all(),
             'matchedWords' => $this->buildMatchedWords($s->matchingTokenSignatureWords),
+            'hasUncommitted' => $s->matchingTokenSignatureWords
+                ->filter( fn($w) => is_null($w->committed_at))
+                ->isNotEmpty()
         ];
     }
 

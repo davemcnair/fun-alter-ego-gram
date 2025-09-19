@@ -100,7 +100,11 @@
 
         <div>
             <div class="card" id="addWordCard">
-                <h3 style="margin-top:0; display:flex; align-items:center; gap:10px;">Add a word</h3>
+                <h3 style="margin-top:0; display:flex; align-items:center; gap:10px;">
+                    Add a word
+                    <span style="margin-left:auto;"></span>
+                    <button id="commitBtnTarget" class="" style="background:#2563eb; color:#fff; border:0; border-radius:6px; padding:6px 10px; cursor:pointer; {{ $hasUncommitted ? '' : 'opacity:0.5; cursor:not-allowed;' }}" {{ $hasUncommitted ? '' : 'disabled' }}>Commit Resources</button>
+                </h3>
                 <form id="addWordForm" method="POST" action="{{ route('targets.add-word', $item) }}" aria-describedby="addWordErrors" style="display:grid; grid-template-columns: 1fr 1fr 1fr auto; gap:8px; align-items:end;">
                                     @csrf
                     <div>

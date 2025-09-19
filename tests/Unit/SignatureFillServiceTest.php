@@ -23,7 +23,7 @@ class SignatureFillServiceTest extends TestCase
         ]);
     }
 
-    private function makeTsw(string $tokenName, string $signature, string $list = 'ok'): TokenSignatureWord
+    private function seedTokenSignatureWord(string $tokenName, string $signature, string $list = 'ok'): TokenSignatureWord
     {
         $tokenId = (int)Token::where('name', $tokenName)->firstOrFail()->id;
         $ts = TokenSignature::create(['token_id' => $tokenId, 'signature' => $signature]);
@@ -42,8 +42,8 @@ class SignatureFillServiceTest extends TestCase
         $surnameId = (int)Token::where('name', 'surname')->first()->id;
 
         // Candidates: forename "jane" => aejn, surname "ray" => ary
-        $tswF = $this->makeTsw('forename', 'aejn');
-        $tswS = $this->makeTsw('surname', 'ary');
+        $tswF = $this->seedTokenSignatureWord('forename', 'aejn');
+        $tswS = $this->seedTokenSignatureWord('surname', 'ary');
 
         $targetSig = 'aaejnry'; // sorted signature of "Jane Ray"
         $slots = [0 => $forenameId, 1 => $surnameId];
@@ -60,7 +60,7 @@ class SignatureFillServiceTest extends TestCase
         $surnameId = (int)Token::where('name', 'surname')->first()->id;
 
         // Single candidate that must be used for both surname slots
-        $tsw = $this->makeTsw('surname', 'ciinv');
+        $tsw = $this->seedTokenSignatureWord('surname', 'ciinv');
 
         $targetSig = 'ciinvciinv';
         $slots = [0 => $surnameId, 1 => $surnameId];
@@ -76,7 +76,7 @@ class SignatureFillServiceTest extends TestCase
         $svc = app(SignatureFillService::class);
         $forenameId = (int)Token::where('name', 'forename')->first()->id;
 
-        $this->makeTsw('forename', 'adn');
+        $this->seedTokenSignatureWord('forename', 'adn');
         $targetSig = 'abc';
         $slots = [0 => $forenameId];
 

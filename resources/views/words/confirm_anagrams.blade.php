@@ -41,14 +41,7 @@
                         Use new word "{{ $candidate['word'] ?? '' }}" as search representative
                     </label>
                 </div>
-                @foreach($existing as $ex)
-                    <div class="radio">
-                        <label>
-                            <input type="radio" name="search_choice" value="existing:{{ $ex->id }}" {{ (isset($selected_id) && (int)$selected_id === (int)$ex->id) ? 'checked' : '' }}>
-                            Use existing word "{{ $ex->word }}" as search representative @if($ex->use_for_search) <span class="muted">(currently)</span> @endif
-                        </label>
-                    </div>
-                @endforeach
+
                 <div style="margin-top:12px;">
                     <button type="submit" class="btn">Confirm</button>
                     <a href="{{ route('words.index') }}" class="btn" style="background:#6b7280;">Cancel</a>

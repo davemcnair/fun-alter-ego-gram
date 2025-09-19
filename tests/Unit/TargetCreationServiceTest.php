@@ -8,7 +8,7 @@ use App\Models\Target;
 use App\Models\TargetPattern;
 use App\Models\Token;
 use App\Services\ListPatternsService;
-use App\Services\TargetCreationService;
+use App\Services\TargetService;
 use App\Services\WordMatchService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
@@ -44,7 +44,7 @@ class TargetCreationServiceTest extends TestCase
         $this->bindEmptyPatternsServiceMock();
         $wm = Mockery::mock(WordMatchService::class);
         $this->app->instance(WordMatchService::class, $wm);
-        $svc = app(TargetCreationService::class);
+        $svc = app(TargetService::class);
 
         $this->expectException(HttpException::class);
         try {
@@ -107,7 +107,7 @@ class TargetCreationServiceTest extends TestCase
         $this->app->instance(WordMatchService::class, $wm);
 
         // Use real ListPatternsService so filtering logic is exercised
-        $svc = app(TargetCreationService::class);
+        $svc = app(TargetService::class);
 
         $result = $svc->create('Jane');
 

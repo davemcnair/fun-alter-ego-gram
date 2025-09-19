@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use App\Dtos\SignatureDto;
+
 /**
  * Utility for normalizing human-entered names.
  * - canonicalKey: lowercase, accent-folded, spaces preserved, punctuation removed, single-space collapsed
@@ -37,7 +39,7 @@ class NameNormalizer
         // Collapse spaces
         $ascii = trim(preg_replace('/\s+/', ' ', $ascii) ?? '');
         // Heuristic: if there are no spaces and we find an internal 'mc' surname, split before it
-        if ($ascii !== '' && strpos($ascii, ' ') === false) {
+        if ($ascii !== '' && !str_contains($ascii, ' ')) {
             if (preg_match('/^(.*?)(mc[a-z]+)$/', $ascii, $m)) {
                 $ascii = trim($m[1] . ' ' . $m[2]);
             }
@@ -53,7 +55,7 @@ class NameNormalizer
      *  - keep only [a-z0-9]
      *  - sort characters
      */
-    public static function anagramSignature(string $input): string
+    public static function anagramSignature(string $input): SignatureDto
     {
         $s = trim($input);
         if ($s === '') return '';
@@ -61,12 +63,7 @@ class NameNormalizer
         if ($ascii === false) {
             $ascii = $s;
         }
-        $ascii = strtolower($ascii);
-        $ascii = preg_replace('/[^a-z0-9]/', '', $ascii) ?? '';
-        // Sort characters
-        $chars = str_split($ascii);
-        sort($chars);
-        return implode('', $chars);
+        return SignatureDto::fromWord($ascii);
     }
 
     /**

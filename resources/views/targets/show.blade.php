@@ -265,14 +265,9 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
         window.onerror = function(msg, src, line, col, err){ try { console.error('[UI] window.onerror', msg, src, line, col, err); } catch(e){} };
         window.onunhandledrejection = function(ev){ try { console.error('[UI] unhandledrejection', ev && ev.reason ? ev.reason : ev); } catch(e){} };
     } catch (e) {}
-    // Ping backend to verify connectivity and logging
+    // Debug endpoints removed; no connectivity ping
     try {
-        fetch("{{ route('debug.ping') }}", { headers: { 'X-Requested-With':'XMLHttpRequest', 'Accept':'application/json' }, credentials:'same-origin' })
-            .then(r => r.json()).then(j => { try { console.log('[UI] ping result', j); } catch(e){} })
-            .catch(err => { try { console.warn('[UI] ping failed', err); } catch(e){} });
-        fetch("{{ route('targets.debug', $item) }}", { headers: { 'X-Requested-With':'XMLHttpRequest', 'Accept':'application/json' }, credentials:'same-origin' })
-            .then(r => r.json()).then(j => { try { console.log('[UI] target.debug result', j); } catch(e){} })
-            .catch(err => { try { console.warn('[UI] target.debug failed', err); } catch(e){} });
+        // no-op
     } catch (e) {}
     const id = {{ $item->id }};
     let paused = false;
@@ -304,7 +299,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
             if (URL_ADD_WORD && String(URL_ADD_WORD).length > 1) return URL_ADD_WORD;
         } catch (e) {}
         try { if (typeof id !== 'undefined' && id) return '/targets/' + id + '/add-word'; } catch (e) {}
-        return '/debug/404-add-word';
+        return '/targets/' + id + '/add-word';
     }
     const GROUP_INIT_LIMIT = 5;
     const groupExpanded = Object.create(null); // pattern string -> boolean

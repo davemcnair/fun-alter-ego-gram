@@ -1,5 +1,6 @@
 - create target signature
-- adjust token_signature_word builder
+- is backfill necessary?
+    - target scope has words newer than last run
 
 - ai write docs
     - brief
@@ -8,7 +9,7 @@
     - what else?
 - convert to DDD bounded contexts - Command/Service
 - integration tests?
-- add commited column to tokenSignatureWord
+- add commited column to tokenSignatureWord for resources\token_words
     - seeded words are marked as committed
     - added words are marked as !committed
     - words whose list-type is updated are marked as !committed
@@ -25,11 +26,10 @@
     - make createService more modular reusable parts
     - recompute pattern filters, and regenerate fills, expands with insertOrIgnore
     - lose target status
-    - lose debug endpoint
 - mastering
     - Junie
     - AI assistant
-- insert-multi-anagram-words
+- insert-multi-anagram-words from text file
 
 - target page view preferences
     - fun only

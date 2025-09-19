@@ -9,13 +9,6 @@ use App\Http\Controllers\WordController;
 Route::resource('targets', TargetController::class)->only(['index','store','show','destroy']);
 Route::post('/targets/bulk-destroy', [TargetController::class, 'bulkDestroy'])->name('targets.bulk-destroy');
 
-// Simple debug/ping endpoints for troubleshooting frontend/backend connectivity
-Route::get('/debug/ping', function(){
-    try { Log::info('debug.ping: request received'); } catch (\Throwable $e) {}
-    return response()->json(['ok' => true, 'pong' => true]);
-})->name('debug.ping');
-Route::get('/targets/{target}/debug', [TargetController::class, 'debug'])->name('targets.debug');
-
 // Pattern CRUD
 Route::resource('patterns', PatternController::class)->except(['show']);
 // Inline update for pattern type

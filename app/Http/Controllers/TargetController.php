@@ -23,15 +23,6 @@ class TargetController extends Controller
 {
     use HelpsMatchWords, ScalesJobs;
 
-    public function debug(Target $target, Request $request)
-    {
-        Log::info('TargetController.debug: request received', [
-            'target_id' => $target->id,
-            'route' => $request->path(),
-            'ajax' => $request->ajax(),
-        ]);
-        return response()->json(['ok' => true, 'target_id' => $target->id]);
-    }
 
     public function addWord(Target $target, Request $request, WordMatchService $wordMatchService, TargetService $targetService)
     {

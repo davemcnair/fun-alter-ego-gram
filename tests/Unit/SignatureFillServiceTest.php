@@ -5,6 +5,7 @@ namespace Tests\Unit;
 use App\Models\Token;
 use App\Models\TokenSignature;
 use App\Models\TokenSignatureWord;
+use App\Models\Signature;
 use App\Services\SignatureFillService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -26,7 +27,8 @@ class SignatureFillServiceTest extends TestCase
     private function seedTokenSignatureWord(string $tokenName, string $signature, string $list = 'ok'): TokenSignatureWord
     {
         $tokenId = (int)Token::where('name', $tokenName)->firstOrFail()->id;
-        $ts = TokenSignature::create(['token_id' => $tokenId, 'signature' => $signature]);
+        $sig = Signature::firstOrCreate(['signature' => $signature], ['length' => strlen($signature)]);
+        $ts = TokenSignature::create(['token_id' => $tokenId, 'signature_id' => $sig->id]);
         return TokenSignatureWord::create([
             'token_signature_id' => $ts->id,
             'list_type' => $list,

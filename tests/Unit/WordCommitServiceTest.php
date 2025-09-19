@@ -24,13 +24,16 @@ class WordCommitServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->resourcesBase = base_path('resources/token_words');
-        $this->backupBase = base_path('resources/token_words_backup');
-        // Ensure clean directories for deterministic tests
+        $this->resourcesBase = storage_path('framework/testing/token_words_resources');
+        $this->backupBase = storage_path('framework/testing/token_words_backup');
+        // Ensure clean directories for deterministic tests (only within testing sandbox)
         @File::deleteDirectory($this->resourcesBase);
         @File::deleteDirectory($this->backupBase);
         File::ensureDirectoryExists($this->resourcesBase);
         File::ensureDirectoryExists($this->backupBase);
+        // Point WordCommitService to sandboxed paths so tests never touch real resources/
+        \Config::set('paths.token_words_resources', $this->resourcesBase);
+        \Config::set('paths.token_words_backup', $this->backupBase);
         // Freeze time
         Carbon::setTestNow(Carbon::parse('2025-09-15 12:34:56'));
     }

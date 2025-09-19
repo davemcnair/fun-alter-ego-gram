@@ -11,7 +11,7 @@ class NameNormalizerTest extends TestCase
     {
         $input = 'José Álvarez';
         $this->assertSame('jose alvarez', NameNormalizer::canonicalKey($input));
-        $this->assertSame('aaeejlorsvz', NameNormalizer::anagramSignature($input));
+        $this->assertSame('aaeejlorsvz', NameNormalizer::anagramSignature($input)->signature);
         $this->assertSame('José Álvarez', NameNormalizer::displayName($input));
     }
 
@@ -19,7 +19,7 @@ class NameNormalizerTest extends TestCase
     {
         $input = "O’Connor-Smith"; // curly apostrophe
         $this->assertSame('oconnor smith', NameNormalizer::canonicalKey($input));
-        $this->assertSame('chimnnooorst', NameNormalizer::anagramSignature($input));
+        $this->assertSame('chimnnooorst', NameNormalizer::anagramSignature($input)->signature);
         $this->assertSame("O’Connor-Smith", NameNormalizer::displayName($input));
     }
 }

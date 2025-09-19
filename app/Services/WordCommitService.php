@@ -28,8 +28,8 @@ class WordCommitService
             return ['ok' => true, 'committed_count' => 0, 'backup' => null, 'changes' => []];
         }
 
-        $resourcesBase = base_path('resources/token_words');
-        $backupBase = base_path('resources/token_words_backup');
+        $resourcesBase = (string) (config('paths.token_words_resources') ?? base_path('resources/token_words'));
+        $backupBase = (string) (config('paths.token_words_backup') ?? base_path('resources/token_words_backup'));
         File::ensureDirectoryExists($backupBase);
 
         $timestamp = now()->format('Ymd_His');

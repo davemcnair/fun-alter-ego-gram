@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Models\Signature;
 use App\Models\Token;
 use App\Services\WordMatchService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -31,7 +32,7 @@ class WordMatchServiceTest extends TestCase
     public function test_basic_subset_and_defaults_exclude_boring_and_deferred(): void
     {
         // Target signature for 'adam' -> aadm
-        $targetSignature = 'aadm';
+        $targetSignature = Signature::firstOrCreate(['signature' => 'aadm'], ['length' => 4, 'a_count' => 2, 'd_count' => 1, 'm_count' => 1]);
 
         // Create matching candidates under forename
         // New signature 'aadm' with ok (not deferred since signature is newly created)
@@ -63,7 +64,7 @@ class WordMatchServiceTest extends TestCase
 
     public function test_include_boring_true_includes_boring_words(): void
     {
-        $targetSignature = 'aadm';
+        $targetSignature = Signature::firstOrCreate(['signature' => 'aadm'], ['length' => 4, 'a_count' => 2, 'd_count' => 1, 'm_count' => 1]);
         $ok = $this->svc->addTokenWord('forename', 'adam', 'ok');
         $boring = $this->svc->addTokenWord('forename', 'am', 'boring');
 
@@ -75,7 +76,7 @@ class WordMatchServiceTest extends TestCase
 
     public function test_list_filter_overrides_and_limits_to_specific_list(): void
     {
-        $targetSignature = 'aadm';
+        $targetSignature = Signature::firstOrCreate(['signature' => 'aadm'], ['length' => 4, 'a_count' => 2, 'd_count' => 1, 'm_count' => 1]);
         // Use different matching signatures for OK vs FUN to avoid retroactive deferral of the OK word
         $ok = $this->svc->addTokenWord('forename', 'ada', 'ok');     // signature 'aad'
         $fun = $this->svc->addTokenWord('forename', 'adam', 'fun');  // signature 'aadm'
@@ -96,7 +97,7 @@ class WordMatchServiceTest extends TestCase
 
     public function test_token_filter_limits_to_specific_token(): void
     {
-        $targetSignature = 'aadm';
+        $targetSignature = Signature::firstOrCreate(['signature' => 'aadm'], ['length' => 4, 'a_count' => 2, 'd_count' => 1, 'm_count' => 1]);
         $forenameOk = $this->svc->addTokenWord('forename', 'adam', 'ok');
         $surnameOk = $this->svc->addTokenWord('surname', 'dam', 'ok');
 
@@ -114,7 +115,7 @@ class WordMatchServiceTest extends TestCase
     public function test_zero_letter_counts_are_enforced(): void
     {
         // Target with only b's should not match any word containing 'a'
-        $targetSignature = 'bbb';
+        $targetSignature = Signature::firstOrCreate(['signature' => 'bbb'], ['length' => 3, 'b_count' => 3]);
         $this->svc->addTokenWord('forename', 'bb', 'ok');       // should match
         $aWord = $this->svc->addTokenWord('forename', 'ab', 'ok'); // should not match (has 'a')
 

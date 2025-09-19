@@ -5,6 +5,7 @@ namespace Tests\Unit;
 
 use App\Models\AlterEgo;
 use App\Models\Pattern;
+use App\Models\Signature;
 use App\Models\TargetSignatureIndexedPattern;
 use App\Models\Target;
 use App\Models\TargetPattern;
@@ -32,9 +33,16 @@ class ExpandSignatureIndexedPatternsServiceTest extends TestCase
     public function test_expands_single_signatureIndexed_pattern_with_fun_preference(): void
     {
         // Arrange: a target with one pattern {forename}{surname}
+        $sig = Signature::firstOrCreate(['signature' => 'dmmuy'], [
+            'length' => 5,
+            'd_count' => 1,
+            'm_count' => 2,
+            'u_count' => 1,
+            'y_count' => 1,
+        ]);
         $target = Target::create([
             'name' => 'Dummy',
-            'signature' => 'dmmuy',
+            'signature_id' => $sig->id,
             'normalized_key' => 'dummy',
             'status' => 'running',
         ]);
@@ -76,9 +84,16 @@ class ExpandSignatureIndexedPatternsServiceTest extends TestCase
     public function test_expands_double_surname_hyphenated_and_marks_done(): void
     {
         // Arrange: a pattern with two surnames
+        $sig = Signature::firstOrCreate(['signature' => 'dmmuy'], [
+            'length' => 5,
+            'd_count' => 1,
+            'm_count' => 2,
+            'u_count' => 1,
+            'y_count' => 1,
+        ]);
         $target = Target::create([
             'name' => 'Dummy',
-            'signature' => 'dmmuy',
+            'signature_id' => $sig->id,
             'normalized_key' => 'dummy',
             'status' => 'running',
         ]);

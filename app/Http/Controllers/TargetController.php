@@ -2,15 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Pattern;
 use App\Models\Target;
 use App\Models\TargetPattern;
 use App\Models\AlterEgo;
-use App\Models\TargetTokenSignatureWord;
 use App\Models\TokenSignatureWord;
 use App\Services\TargetService;
 use App\Services\WordMatchService;
-use App\Services\WordStoreService;
 use App\Support\NameNormalizer;
 use App\Traits\HelpsMatchWords;
 use App\Jobs\FillPatternSignaturesJob;

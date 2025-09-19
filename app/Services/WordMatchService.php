@@ -44,11 +44,13 @@ class WordMatchService
 
         $useWordImmediately = $tokenSignature->wasRecentlyCreated || $listType === 'fun';
 
-        $tokenSignatureWord = TokenSignatureWord::create(
+        $tokenSignatureWord = TokenSignatureWord::firstOrCreate(
             [
                 'token_signature_id' => $tokenSignature->id,
                 'list_type' => $listType,
                 'word' => $this->normalize($word),
+            ],
+            [
                 'is_deferred' => !$useWordImmediately,
                 'committed_at' => $committed_at,
             ]

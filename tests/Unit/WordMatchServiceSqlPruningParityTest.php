@@ -2,7 +2,7 @@
 
 namespace Tests\Unit;
 
-use App\Models\Target;
+use App\Models\Signature;
 use App\Models\Token;
 use App\Models\TokenSignatureWord;
 use App\Services\WordMatchService;
@@ -34,10 +34,10 @@ class WordMatchServiceSqlPruningParityTest extends TestCase
         return $counts;
     }
 
-    private function sqlPrunedQuery(string $targetSignature, array $options = [])
+    private function sqlPrunedQuery(Signature $targetSignature, array $options = [])
     {
-        $srcLen = strlen($targetSignature);
-        $counts = $this->countsFromSignature($targetSignature);
+        $srcLen = (int) $targetSignature->length;
+        $counts = $this->countsFromSignature($targetSignature->signature);
         $filterToken = (string)($options['token'] ?? '');
         $filterList = (string)($options['list'] ?? '');
         $includeBoring = (bool)($options['include_boring'] ?? false);
@@ -53,16 +53,18 @@ class WordMatchServiceSqlPruningParityTest extends TestCase
                 }
             })
             ->whereHas('tokenSignature', function($q) use ($srcLen, $counts, $filterToken) {
-                $q->where('length', '<=', $srcLen);
-                // Enforce exact subset: letters present must be <= target counts; letters absent must be 0
-                foreach (range('a','z') as $ch) {
-                    $n = (int)($counts[$ch] ?? 0);
-                    if ($n > 0) {
-                        $q->where($ch . '_count', '<=', $n);
-                    } else {
-                        $q->where($ch . '_count', '=', 0);
+                $q->whereHas('signature', function($qs) use ($srcLen, $counts) {
+                    $qs->where('length', '<=', $srcLen);
+                    // Enforce exact subset: letters present must be <= target counts; letters absent must be 0
+                    foreach (range('a','z') as $ch) {
+                        $n = (int)($counts[$ch] ?? 0);
+                        if ($n > 0) {
+                            $qs->where($ch . '_count', '<=', $n);
+                        } else {
+                            $qs->where($ch . '_count', '=', 0);
+                        }
                     }
-                }
+                });
                 if ($filterToken !== '') {
                     $q->whereHas('token', function($t) use ($filterToken) {
                         $t->where('name', $filterToken);
@@ -83,11 +85,16 @@ class WordMatchServiceSqlPruningParityTest extends TestCase
         $svc->addTokenWord('forename', 'cab', 'boring'); // abc (boring)
         $svc->addTokenWord('forename', 'dddd', 'ok');   // dddd (too long / letters not in target)
 
-        $targetSig = 'aabcc'; // a:2, b:1, c:2
+        $targetSignature = Signature::firstOrCreate(['signature' => 'aabcc'], [
+            'length' => 5,
+            'a_count' => 2,
+            'b_count' => 1,
+            'c_count' => 2,
+        ]);
 
         // Default: exclude boring
-        $phpMatches = $svc->findMatchingTokenSignatureWords($targetSig);
-        $sqlMatches = $this->sqlPrunedQuery($targetSig)->get();
+        $phpMatches = $svc->findMatchingTokenSignatureWords($targetSignature);
+        $sqlMatches = $this->sqlPrunedQuery($targetSignature)->get();
 
         $this->assertEqualsCanonicalizing(
             $phpMatches->pluck('id')->all(),
@@ -96,8 +103,8 @@ class WordMatchServiceSqlPruningParityTest extends TestCase
         );
 
         // Include boring
-        $phpMatchesInc = $svc->findMatchingTokenSignatureWords($targetSig, ['include_boring' => true]);
-        $sqlMatchesInc = $this->sqlPrunedQuery($targetSig, ['include_boring' => true])->get();
+        $phpMatchesInc = $svc->findMatchingTokenSignatureWords($targetSignature, ['include_boring' => true]);
+        $sqlMatchesInc = $this->sqlPrunedQuery($targetSignature, ['include_boring' => true])->get();
         $this->assertEqualsCanonicalizing(
             $phpMatchesInc->pluck('id')->all(),
             $sqlMatchesInc->pluck('id')->all(),
@@ -105,8 +112,8 @@ class WordMatchServiceSqlPruningParityTest extends TestCase
         );
 
         // Filter by list type explicitly
-        $phpOk = $svc->findMatchingTokenSignatureWords($targetSig, ['list' => 'ok']);
-        $sqlOk = $this->sqlPrunedQuery($targetSig, ['list' => 'ok'])->get();
+        $phpOk = $svc->findMatchingTokenSignatureWords($targetSignature, ['list' => 'ok']);
+        $sqlOk = $this->sqlPrunedQuery($targetSignature, ['list' => 'ok'])->get();
         $this->assertEqualsCanonicalizing($phpOk->pluck('id')->all(), $sqlOk->pluck('id')->all());
     }
 }

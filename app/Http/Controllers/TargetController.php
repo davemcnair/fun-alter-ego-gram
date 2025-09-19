@@ -66,7 +66,20 @@ class TargetController extends Controller
 
     public function index()
     {
-        $items = Target::paginate(15);
+        $items = Target::query()
+            ->select('targets.*')
+            ->addSelect([
+                'new_matches_count' => DB::table('target_token_signature_words as ttsw')
+                    ->selectRaw('count(*)')
+                    ->whereColumn('ttsw.target_id', 'targets.id')
+                    ->when(DB::raw('targets.matches_seen_at'), function ($q) {
+                        // Count rows strictly newer than the last seen timestamp
+                        $q->whereRaw('ttsw.created_at > targets.matches_seen_at');
+                    }),
+            ])
+            ->orderByDesc('id')
+            ->paginate(25);
+
         return view('targets.index', compact('items'));
     }
 
@@ -213,7 +226,7 @@ class TargetController extends Controller
 //        if ($to === '') {
 //            return response()->json(['ok' => false, 'error' => 'Empty phrase'], 422);
 //        }
-//        // Try update; if target already exists, delete the source and star the existing
+//        // Try update; if target already exists, delete the target and star the existing
 //        $existing = AlterEgo::where('target_id', $target->id)->where('phrase', $to)->first();
 //        if ($existing) {
 //            AlterEgo::where('target_id', $target->id)->where('phrase', $from)->delete();

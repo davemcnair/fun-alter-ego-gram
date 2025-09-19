@@ -44,7 +44,7 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
      */
     public function tags(): array
     {
-        return ['expand-signatureIndexed-patterns', 'source-name-pattern:' . $this->targetNamePatternId];
+        return ['expand-signatureIndexed-patterns', 'target-pattern:' . $this->targetNamePatternId];
     }
 
     /**

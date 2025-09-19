@@ -45,7 +45,7 @@ class FillPatternSignaturesJob implements ShouldQueue
      */
     public function tags(): array
     {
-        return ['fill-pattern-signatures', 'source-name-pattern:'.$this->targetNamePatternId];
+        return ['fill-pattern-signatures', 'target-pattern:'.$this->targetNamePatternId];
     }
 
     /**

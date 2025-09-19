@@ -60,9 +60,8 @@
             <thead>
             <tr>
                 <th></th>
-                <th>ID</th>
                 <th>Name</th>
-                <th>Progress</th>
+                <th>Patterns</th>
                 <th>Alter egos</th>
                 <th>New matches</th>
                 <th></th>
@@ -72,7 +71,6 @@
             @forelse($items as $s)
                 <tr>
                     <td><input type="checkbox" name="ids[]" value="{{ $s->id }}" class="rowCheck"></td>
-                    <td>{{ $s->id }}</td>
                     <td>{{ $s->name }}</td>
                     @php $total = $s->patterns()->count(); $done = $s->patterns()->where('status','done')->count(); $newCount = DB::table('target_token_signature_words as t')->where('t.target_id', $s->id)->when($s->matches_seen_at, function($q) use ($s){ $q->where('t.created_at','>', $s->matches_seen_at); })->count(); @endphp
                     <td>{{ $done }} / {{ $total }}</td>

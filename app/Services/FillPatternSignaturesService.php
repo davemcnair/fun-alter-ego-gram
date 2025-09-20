@@ -9,6 +9,7 @@ use App\Models\Target;
 use App\Models\TargetPattern;
 use App\Traits\HelpsMatchWords;
 use App\Traits\ScalesJobs;
+use App\Support\Metrics;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -38,8 +39,15 @@ class FillPatternSignaturesService
         $targetPattern->status = 'processing';
         $targetPattern->save();
 
-        $fillStart = microtime(true);
-        try { Log::info('FillPatternSignaturesService: start target=' . ($target->name ?? '') . ' template=' . ((string)$targetPattern->pattern->template)); } catch (\Throwable $e) {}
+        $timer = Metrics::start('fill_duration_ms', [
+            'target_id' => $target->id,
+            'target_pattern_id' => $targetPattern->id,
+        ]);
+        Log::info('fill.start', [
+            'target_id' => $target->id,
+            'target_pattern_id' => $targetPattern->id,
+            'template' => (string)($targetPattern->pattern->template ?? ''),
+        ]);
 
         $patternTokenPositions = Pattern::parsePatternTokenSlotPositions((string)$targetPattern->pattern->template);
 
@@ -85,8 +93,21 @@ class FillPatternSignaturesService
         if (!empty($signaturePatterns)) {
             TargetSignatureIndexedPattern::insert($signaturePatterns);
         }
-        $durationMs = (int) round((microtime(true) - $fillStart) * 1000);
-        try { Log::info($target->name . '/' . ((string)$targetPattern->pattern->template) . ' : fills_completed=' . $count . ' candidates=' . ($candCount ?? 0) . ' duration_ms=' . $durationMs); } catch (Throwable $e) {}
+        Metrics::counter('signature_indexed_patterns_generated', $count, [
+            'target_id' => $target->id,
+            'target_pattern_id' => $targetPattern->id,
+        ]);
+        $durationMs = Metrics::end($timer, [
+            'target_id' => $target->id,
+            'target_pattern_id' => $targetPattern->id,
+            'generated' => $count,
+        ]);
+        Log::info('fill.complete', [
+            'target_id' => $target->id,
+            'target_pattern_id' => $targetPattern->id,
+            'generated' => $count,
+            'duration_ms' => $durationMs,
+        ]);
         // Dispatch expansion; scale based on queue configuration
         $this->scaledDispatch(ExpandSignatureIndexedPatternsJob::class, $targetPattern->id);
     }

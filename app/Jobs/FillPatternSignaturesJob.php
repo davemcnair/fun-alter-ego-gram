@@ -4,12 +4,15 @@ namespace App\Jobs;
 
 use App\Services\FillPatternSignaturesService;
 use App\Services\SignatureFillService;
+use App\Support\Metrics;
+use Illuminate\Support\Facades\Log;
 use App\Traits\HelpsMatchWords;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Throwable;
 
 class FillPatternSignaturesJob implements ShouldQueue
 {
@@ -65,7 +68,7 @@ class FillPatternSignaturesJob implements ShouldQueue
                     $target
                 );
             }
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             // ignore and fall back
         }
         return 'FillPatternSignatures [TP:'.$this->targetNamePatternId.']';
@@ -78,9 +81,34 @@ class FillPatternSignaturesJob implements ShouldQueue
         SignatureFillService $signatureFillService
     ): void
     {
-        // Delegate to extracted service while preserving signature for tests
-        app(FillPatternSignaturesService::class)
-            ->fillWithServices($this->targetNamePatternId, $signatureFillService);
+        Log::info('job.fill.start', [
+            'job' => 'FillPatternSignaturesJob',
+            'target_pattern_id' => $this->targetNamePatternId,
+            'queue' => $this->queue ?? null,
+            'attempt' => method_exists($this, 'attempts') ? $this->attempts() : null,
+        ]);
+        Metrics::counter('job_fill_started', 1, [
+            'target_pattern_id' => $this->targetNamePatternId,
+        ]);
+        try {
+            app(FillPatternSignaturesService::class)
+                ->fillWithServices($this->targetNamePatternId, $signatureFillService);
+            Metrics::counter('job_fill_succeeded', 1, [
+                'target_pattern_id' => $this->targetNamePatternId,
+            ]);
+            Log::info('job.fill.success', [
+                'target_pattern_id' => $this->targetNamePatternId,
+            ]);
+        } catch (Throwable $e) {
+            Metrics::counter('job_fill_failed', 1, [
+                'target_pattern_id' => $this->targetNamePatternId,
+            ]);
+            Log::error('job.fill.error', [
+                'target_pattern_id' => $this->targetNamePatternId,
+                'error' => $e->getMessage(),
+            ]);
+            throw $e;
+        }
     }
 
 }

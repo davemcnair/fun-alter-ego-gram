@@ -6,6 +6,7 @@ use App\Models\AlterEgo;
 use App\Models\Target;
 use App\Models\TargetPattern;
 use App\Models\TokenSignature;
+use App\Support\Metrics;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -33,6 +34,16 @@ final class ExpandSignatureIndexedPatternService
 
         // Build slot order from the pattern template for formatting
         $slotOrder = $this->buildSlotOrderFromTemplate((string)$targetPattern->pattern->template);
+
+        $timer = Metrics::start('expand_duration_ms', [
+            'target_id' => $target->id,
+            'target_pattern_id' => $targetPattern->id,
+        ]);
+        Log::info('expand.start', [
+            'target_id' => $target->id,
+            'target_pattern_id' => $targetPattern->id,
+            'template' => (string)($targetPattern->pattern->template ?? ''),
+        ]);
 
         $createdCount = 0;
         foreach ($targetPattern->signatureIndexedPatterns as $signatureIndexedPattern) {
@@ -90,8 +101,21 @@ final class ExpandSignatureIndexedPatternService
             try { Log::warning('Failed to update Target status for '.$target->id.': '.$e->getMessage()); } catch (Throwable $e2) {}
         }
 
-        // Optional log
-        try { Log::info('Expanded signatureIndexed patterns for TP '.$targetPattern->id.' => '.$createdCount.' phrase(s).'); } catch (Throwable $e) {}
+        Metrics::counter('phrases_generated', $createdCount, [
+            'target_id' => $target->id,
+            'target_pattern_id' => $targetPattern->id,
+        ]);
+        $durationMs = Metrics::end($timer, [
+            'target_id' => $target->id,
+            'target_pattern_id' => $targetPattern->id,
+            'generated' => $createdCount,
+        ]);
+        Log::info('expand.complete', [
+            'target_id' => $target->id,
+            'target_pattern_id' => $targetPattern->id,
+            'generated' => $createdCount,
+            'duration_ms' => $durationMs,
+        ]);
 
         // Processing watermark: mark the time we completed processing new matches for this target
         try {

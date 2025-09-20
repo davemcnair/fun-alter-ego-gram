@@ -4,11 +4,14 @@ namespace App\Jobs;
 
 use App\Services\PhraseBuilderService;
 use App\Services\ExpandSignatureIndexedPatternService;
+use App\Support\Metrics;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Throwable;
 
 class ExpandSignatureIndexedPatternsJob implements ShouldQueue
 {
@@ -64,7 +67,7 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
                     $target
                 );
             }
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             // ignore and fall back
         }
         return 'ExpandSignatureIndexed [TP:'.$this->targetNamePatternId.']';
@@ -77,10 +80,36 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
         PhraseBuilderService $phraseBuilderService
     ): void
     {
-        // Delegate to extracted service to perform the expansion logic while
-        // keeping the same method signature for backwards compatibility in tests.
-        app(ExpandSignatureIndexedPatternService::class)
-            ->expandWithBuilder($this->targetNamePatternId, $phraseBuilderService);
+        Log::info('job.expand.start', [
+            'job' => 'ExpandSignatureIndexedPatternsJob',
+            'target_pattern_id' => $this->targetNamePatternId,
+            'queue' => $this->queue ?? null,
+            'attempt' => method_exists($this, 'attempts') ? $this->attempts() : null,
+        ]);
+        Metrics::counter('job_expand_started', 1, [
+            'target_pattern_id' => $this->targetNamePatternId,
+        ]);
+        try {
+            // Delegate to extracted service to perform the expansion logic while
+            // keeping the same method signature for backwards compatibility in tests.
+            app(ExpandSignatureIndexedPatternService::class)
+                ->expandWithBuilder($this->targetNamePatternId, $phraseBuilderService);
+            Metrics::counter('job_expand_succeeded', 1, [
+                'target_pattern_id' => $this->targetNamePatternId,
+            ]);
+            Log::info('job.expand.success', [
+                'target_pattern_id' => $this->targetNamePatternId,
+            ]);
+        } catch (Throwable $e) {
+            Metrics::counter('job_expand_failed', 1, [
+                'target_pattern_id' => $this->targetNamePatternId,
+            ]);
+            Log::error('job.expand.error', [
+                'target_pattern_id' => $this->targetNamePatternId,
+                'error' => $e->getMessage(),
+            ]);
+            throw $e;
+        }
     }
 
 }

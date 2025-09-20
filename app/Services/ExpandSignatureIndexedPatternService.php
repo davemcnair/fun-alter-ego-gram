@@ -82,8 +82,16 @@ final class ExpandSignatureIndexedPatternService
             $createdCount++;
         }
 
-        // Mark as done after expansion
+        // Mark as done after expansion and record timing
         $targetPattern->status = 'done';
+        // Ensure started_at is set (covers queued and any direct invocations)
+        if ($targetPattern->started_at === null) {
+            $targetPattern->started_at = now();
+        }
+        // Set finished_at now; elapsed will be set using high-resolution timer below
+        $finished = now();
+        $targetPattern->finished_at = $finished;
+        // Persist status/start/finish immediately
         $targetPattern->save();
 
         // Update parent Target status only (completed when no pending/processing remain)
@@ -110,6 +118,14 @@ final class ExpandSignatureIndexedPatternService
             'target_pattern_id' => $targetPattern->id,
             'generated' => $createdCount,
         ]);
+        // Use high-resolution timer to set elapsed_ms reliably even when DB timestamps lack sub-second precision
+        try {
+            $dur = (int) $durationMs;
+            if ($dur > 0 && $dur <= 3_600_000) {
+                $targetPattern->elapsed_ms = $dur;
+                $targetPattern->save();
+            }
+        } catch (\Throwable $e) { /* ignore */ }
         Log::info('expand.complete', [
             'target_id' => $target->id,
             'target_pattern_id' => $targetPattern->id,

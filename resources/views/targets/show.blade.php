@@ -1054,16 +1054,13 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
         }).filter(function(g){ return g.phrases.length > 0; })) : [];
         // Update starred UI/state early so phrase star buttons reflect it
         updateStarredUI((p && p.starred) ? p.starred : []);
-        // Hide patterns searched row when completed; show otherwise
+        // Always show patterns searched row, even after completion, so elapsed remains visible
         if (pattRow) {
-            const isCompleted = String(status || '').toLowerCase() === 'completed';
-            pattRow.style.display = isCompleted ? 'none' : '';
+            pattRow.style.display = '';
         }
-        // Maintain counts when not completed
-        if (String(status || '').toLowerCase() !== 'completed') {
-            pattS.textContent = String((p && p.patternsProcessedCount) || 0);
-            pattT.textContent = String((p && p.patternsCount) || 0);
-        }
+        // Always render counts from the payload (server provides final values when completed)
+        if (pattS) { pattS.textContent = String((p && p.patternsProcessedCount) || 0); }
+        if (pattT) { pattT.textContent = String((p && p.patternsCount) || 0); }
         // Update total elapsed pill next to patterns searched (sum of completed pattern elapsed)
         try {
             var totalMs = 0;
@@ -1186,9 +1183,20 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
         // Track last known status to detect transitions
         let lastStatus = String((initialProgress?.item?.status) || '').toLowerCase();
 
-        // If already terminal on initial render, do not start polling
+        // If already terminal on initial render, perform a one-time reload to ensure final data, then stop.
         if (TERMINAL.includes(lastStatus)) {
-            try { console.log('[progress] initial status is terminal; polling disabled', lastStatus); } catch (e) {}
+            try { console.log('[progress] initial status is terminal; ensuring final render…', lastStatus); } catch (e) {}
+            try {
+                const key = 'target:' + targetId + ':terminal-reloaded';
+                const already = sessionStorage.getItem(key) === '1';
+                if (!already) {
+                    sessionStorage.setItem(key, '1');
+                    // Reload once to render full results that may have completed moments before first paint
+                    location.reload();
+                    return;
+                }
+            } catch (e) { /* ignore storage errors */ }
+            // If we've already reloaded once, just skip polling without reloading again.
             return;
         }
 

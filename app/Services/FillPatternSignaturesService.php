@@ -39,17 +39,10 @@ class FillPatternSignaturesService
         $targetPattern->status = 'processing';
         $targetPattern->save();
 
-        // Inline-only timing: mark start once and capture high-res start time
-        $t0 = null;
-        $isInline = empty(config('search.queue'));
-        if ($isInline) {
-            if ($targetPattern->started_at === null) {
-                // One write at entry
-                $targetPattern->started_at = now();
-                $targetPattern->save();
-            }
-            // Capture monotonic start time (not persisted)
-            $t0 = hrtime(true);
+        // Mark start time when first claimed (works for both inline and queued)
+        if ($targetPattern->started_at === null) {
+            $targetPattern->started_at = now();
+            $targetPattern->save();
         }
 
         $timer = Metrics::start('fill_duration_ms', [
@@ -123,17 +116,8 @@ class FillPatternSignaturesService
         ]);
         // Dispatch expansion; scale based on queue configuration
         $this->scaledDispatch(ExpandSignatureIndexedPatternsJob::class, $targetPattern->id);
-
-        // Inline timing: after successful expand (sync), mark finished and elapsed
-        if ($isInline && $t0 !== null) {
-            $ms = (int) round((hrtime(true) - $t0) / 1_000_000);
-            // Guard against negative or absurd (>1h) values
-            if ($ms > 0 && $ms <= 3_600_000) {
-                $targetPattern->finished_at = now();
-                $targetPattern->elapsed_ms = $ms;
-                // One write at exit
-                $targetPattern->save();
-            }
-        }
+        // Note: finished_at and elapsed_ms are now computed centrally in
+        // ExpandSignatureIndexedPatternService after expansion completes so
+        // that both queued and inline execution paths record timing.
     }
 }

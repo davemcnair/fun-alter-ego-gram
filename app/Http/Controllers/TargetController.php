@@ -307,6 +307,9 @@ class TargetController extends Controller
             'template' => optional($pattern->pattern)->template,
             'signatureIndexedPatternsCount' => $signatureIndexedPatterns->count(),
             'alterEgosCount' => $alterEgos->count(),
+            'elapsed_ms' => $pattern->elapsed_ms,
+            'started_at' => $pattern->started_at,
+            'finished_at' => $pattern->finished_at,
             'signatureIndexedPatterns' => $signatureIndexedPatterns,
             'alterEgos' => $alterEgos,
         ];

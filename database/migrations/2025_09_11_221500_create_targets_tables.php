@@ -26,6 +26,10 @@ return new class extends Migration
             $table->foreignId('pattern_id')->constrained('patterns')->onDelete('cascade');
             $table->unsignedInteger('popularity_rank')->default(0)->index();
             $table->string('status');
+            // Inline timing fields (no queues): record start/finish and elapsed in ms
+            $table->dateTime('started_at', 6)->nullable();
+            $table->dateTime('finished_at', 6)->nullable();
+            $table->unsignedInteger('elapsed_ms')->nullable();
             $table->timestamps();
             $table->unique(['target_id','pattern_id']);
         });

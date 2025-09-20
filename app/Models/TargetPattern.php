@@ -10,8 +10,17 @@ use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 class TargetPattern extends Model
 {
     protected $fillable = [
-        'target_id', 'pattern_id', 'popularity_rank', 'status'
+        'target_id', 'pattern_id', 'popularity_rank', 'status', 'started_at', 'finished_at', 'elapsed_ms'
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'started_at' => 'datetime',
+            'finished_at' => 'datetime',
+            'elapsed_ms' => 'integer',
+        ];
+    }
 
     public function target(): BelongsTo
     {

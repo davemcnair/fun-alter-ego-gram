@@ -41,13 +41,13 @@
     <a href="{{ route('words.index') }}" style="color:#fff; margin-right:10px; text-decoration:none;">Words</a>
 </nav>
 <div class="container">
-    <h1>Searching Alter Egos for: {{ $item->name }}</h1>
+    <h1>Alter Egos for: {{ $item->name }}</h1>
 
     <div class="card">
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items:center;">
             <div>
                 <!-- Status display removed per request -->
-                <div id="patternsRow" style="margin-top:6px;">Patterns searched: <strong id="patternsSearched">0</strong> / <strong id="patternsTotal">0</strong></div>
+                <div id="patternsRow" style="margin-top:6px;">Patterns searched: <strong id="patternsSearched">0</strong> / <strong id="patternsTotal">0</strong><span id="patternsElapsed" class="tag" style="margin-left:6px; display:none;"></span></div>
                 <div style="margin-top:6px;">Alter egos found: <strong id="alterEgosFound">{{$alterEgosCount}}</strong> <span class="muted">in <span id="patternsWithAE">0</span> patterns</span></div>
                 <div style="margin-top:6px;">Fun alter egos found: <strong id="funAlterEgosFound">0</strong> <span class="muted">in <span id="patternsWithFunAE">0</span> patterns</span></div>
             </div>
@@ -64,6 +64,9 @@
                     </label>
                     <label style="display:flex; align-items:center; gap:6px;">
                         <input type="checkbox" id="onlyFunToggle"> Only fun
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px;">
+                        <input type="checkbox" id="showElapsedToggle"> Show elapsed
                     </label>
                 </span>
             </h3>
@@ -278,6 +281,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
     const showPatternSelectionLink = document.getElementById('showPatternSelection');
     const pattS = document.getElementById('patternsSearched');
     const pattT = document.getElementById('patternsTotal');
+    const pattE = document.getElementById('patternsElapsed');
     const aeFound = document.getElementById('alterEgosFound');
     const funAeFound = document.getElementById('funAlterEgosFound');
     const patternsWithAE = document.getElementById('patternsWithAE');
@@ -288,6 +292,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
     const onlyFunToggle = document.getElementById('onlyFunToggle');
     const onlyStarredToggle = document.getElementById('onlyStarredToggle');
     const onlyUsedToggle = document.getElementById('onlyUsedToggle');
+    const showElapsedToggle = document.getElementById('showElapsedToggle');
     const starredSection = document.getElementById('starredSection');
     const starredList = document.getElementById('starredList');
     const starredCount = document.getElementById('starredCount');
@@ -306,6 +311,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
     let onlyFun = false;
     let onlyStarred = false;
     let onlyUsed = true;
+    let showElapsed = true; // default ON per request
     let renderedOnce = false;
     let wordFilter = { word: null, token: null };
     let starredSet = new Set();
@@ -346,6 +352,25 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
                 onlyUsed = !!onlyUsedToggle.checked;
                 try { localStorage.setItem('onlyUsedToggle', onlyUsed ? '1' : '0'); } catch (e) {}
                 // Refresh UI after toggling Only used
+                window.rerender && window.rerender();
+            });
+        } catch (e) { /* ignore */ }
+    }
+
+    if (showElapsedToggle) {
+        try {
+            // Default ON
+            const savedElapsed = localStorage.getItem('showElapsedToggle');
+            if (savedElapsed === null) {
+                showElapsedToggle.checked = true;
+                showElapsed = true;
+            } else {
+                showElapsed = (savedElapsed === '1');
+                showElapsedToggle.checked = showElapsed;
+            }
+            showElapsedToggle.addEventListener('change', function(){
+                showElapsed = !!showElapsedToggle.checked;
+                try { localStorage.setItem('showElapsedToggle', showElapsed ? '1' : '0'); } catch (e) {}
                 window.rerender && window.rerender();
             });
         } catch (e) { /* ignore */ }
@@ -741,6 +766,20 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
         return false;
     }
 
+    function isValidElapsed(ms) {
+        var m = parseInt(ms, 10);
+        return Number.isFinite(m) && m > 0 && m <= 3600000;
+    }
+    function formatElapsed(ms) {
+        var m = parseInt(ms, 10);
+        if (!isValidElapsed(m)) return '';
+        if (m < 1000) { return m + ' ms'; }
+        var s = (m / 1000);
+        if (s < 10) { return s.toFixed(1) + ' s'; }
+        if (s < 100) { return s.toFixed(1) + ' s'; }
+        return s.toFixed(0) + ' s';
+    }
+
     function appendGroupToDom(g) {
         const all = Array.isArray(g.phrases) ? g.phrases.slice() : [];
         const list1 = onlyFun ? all.filter(function(ph){ return hasAnyFunToken(ph, g.pattern); }) : all;
@@ -763,6 +802,14 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
         cnt.style.marginLeft = '6px';
         cnt.textContent = String(list.length);
         head.appendChild(cnt);
+        // elapsed pill (optional)
+        if (showElapsed && isValidElapsed(g.elapsedMs)) {
+            const ep = document.createElement('span');
+            ep.className = 'tag';
+            ep.style.marginLeft = '6px';
+            ep.textContent = formatElapsed(g.elapsedMs);
+            head.appendChild(ep);
+        }
         wrap.appendChild(head);
         const pane = document.createElement('div');
         pane.style.cssText = 'margin-top:6px; max-height:240px; overflow:auto; border:1px solid #eee; border-radius:6px; padding:4px 8px;';
@@ -1002,7 +1049,8 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
         const groupsArr = Array.isArray(p && p.patternsLive) ? (p.patternsLive.map(function(pl){
             const tmpl = pl && (pl.template || (pl.signatureIndexedPatterns && pl.signatureIndexedPatterns[0] && pl.signatureIndexedPatterns[0].pattern) || '');
             const phrases = Array.isArray(pl && pl.alterEgos) ? pl.alterEgos.map(function(ae){ return (ae && ae.phrase) ? ae.phrase : (ae && ae['phrase'] ? ae['phrase'] : ''); }).filter(Boolean) : [];
-            return { pattern: tmpl || '', phrases: phrases };
+            const elapsedMs = pl && (pl.elapsed_ms ?? pl['elapsed_ms']);
+            return { pattern: tmpl || '', phrases: phrases, elapsedMs: elapsedMs };
         }).filter(function(g){ return g.phrases.length > 0; })) : [];
         // Update starred UI/state early so phrase star buttons reflect it
         updateStarredUI((p && p.starred) ? p.starred : []);
@@ -1016,6 +1064,24 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
             pattS.textContent = String((p && p.patternsProcessedCount) || 0);
             pattT.textContent = String((p && p.patternsCount) || 0);
         }
+        // Update total elapsed pill next to patterns searched (sum of completed pattern elapsed)
+        try {
+            var totalMs = 0;
+            var listForSum = Array.isArray(p && p.patternsLive) ? p.patternsLive : [];
+            listForSum.forEach(function(pl){
+                var m = pl && (pl.elapsed_ms ?? pl['elapsed_ms']);
+                if (isValidElapsed(m)) { totalMs += parseInt(m, 10) || 0; }
+            });
+            if (pattE) {
+                if (totalMs > 0) {
+                    pattE.textContent = formatElapsed(totalMs);
+                    pattE.style.display = '';
+                } else {
+                    pattE.textContent = '';
+                    pattE.style.display = 'none';
+                }
+            }
+        } catch (e) { if (pattE) pattE.textContent = ''; }
         // Alter egos counts
         aeFound.textContent = String((p && p.alterEgosCount) || 0);
         // Full recompute of fun/AE counts each render

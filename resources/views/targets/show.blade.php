@@ -1177,6 +1177,58 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
         matchedWords: @json($matchedWords),
     };
     render(initialProgress);
+    // Live polling of progress endpoint (reload only on transition to a terminal state)
+    (function(){
+        const POLL_MS = 1500;
+        const targetId = {{ $item->id }};
+        const TERMINAL = ['processed','completed','error'];
+        let timer = null;
+        // Track last known status to detect transitions
+        let lastStatus = String((initialProgress?.item?.status) || '').toLowerCase();
+
+        // If already terminal on initial render, do not start polling
+        if (TERMINAL.includes(lastStatus)) {
+            try { console.log('[progress] initial status is terminal; polling disabled', lastStatus); } catch (e) {}
+            return;
+        }
+
+        async function poll(){
+            try {
+                const res = await fetch("{{ route('targets.progress', $item) }}");
+                const j = await res.json();
+                if (!j || !j.ok) throw new Error('bad');
+                // Update simple counters
+                try {
+                    const ps = document.getElementById('patternsSearched');
+                    const pt = document.getElementById('patternsTotal');
+                    const ae = document.getElementById('alterEgosFound');
+                    if (ps) ps.textContent = String(j.patterns.completed);
+                    if (pt) pt.textContent = String(j.patterns.total);
+                    if (ae) ae.textContent = String(j.alterEgosCount);
+                } catch (e) { /* ignore */ }
+                const st = String(j.status || '').toLowerCase();
+                try { console.log('[progress]', { status: st, completed: j.patterns.completed, total: j.patterns.total, alterEgos: j.alterEgosCount }); } catch (e) {}
+                if (TERMINAL.includes(st)) {
+                    clearInterval(timer);
+                    timer = null;
+                    if (!TERMINAL.includes(lastStatus)) {
+                        try { console.log('[progress] terminal status reached; reloading…', st); } catch (e) {}
+                        // Reload to render full results once when transitioning to terminal
+                        location.reload();
+                        return;
+                    } else {
+                        try { console.log('[progress] terminal status confirmed; no reload'); } catch (e) {}
+                        return; // Stop polling without reload if already terminal previously
+                    }
+                }
+                // Update last status for next tick
+                lastStatus = st;
+            } catch (e) { /* ignore transient */ }
+        }
+        timer = setInterval(poll, POLL_MS);
+        // Kick off immediately
+        poll();
+    })();
 })();
 // Add Word form handling and matched words re-rendering
 (function(){

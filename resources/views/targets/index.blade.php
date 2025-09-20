@@ -30,7 +30,7 @@
 </nav>
 <div class="container">
     <h1>New Search</h1>
-    <form method="post" action="{{ route('targets.store') }}">
+    <form id="createForm" method="post" action="{{ route('targets.store') }}">
         @csrf
         <div class="row" style="margin-bottom: 12px;">
             <div class="field">
@@ -184,6 +184,23 @@
             alert('Failed to process new matches');
         }
     };
+  })();
+  // Heartbeat check on create
+  (function(){
+    var form = document.getElementById('createForm');
+    if (!form) return;
+    form.addEventListener('submit', async function(e){
+      try {
+        e.preventDefault();
+        var res = await fetch('{{ route('system.heartbeat') }}');
+        var json = await res.json();
+        if (!json.fresh) {
+          var proceed = confirm('No queue worker detected (last seen ' + (json.age === null ? 'never' : json.age + 's ago') + ').\nStart "php artisan queue:work" and try again.\n\nDispatch anyway?');
+          if (!proceed) { return; }
+        }
+      } catch (err) { /* ignore */ }
+      form.submit();
+    });
   })();
   </script>
   </body>

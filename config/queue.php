@@ -2,6 +2,9 @@
 
 return [
 
+    // Heartbeat freshness threshold (seconds) for queue workers; used by SystemController::heartbeat
+    'heartbeat_fresh_seconds' => (int) env('QUEUE_HEARTBEAT_FRESH_SECONDS', 15),
+
     /*
     |--------------------------------------------------------------------------
     | Default Queue Connection Name

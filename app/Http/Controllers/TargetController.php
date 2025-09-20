@@ -97,8 +97,27 @@ class TargetController extends Controller
             return response()->json(['message' => 'Name is invalid after normalization'], 422);
         }
 
-        $result = $targetService->create($data['name'], $includeBoring);
-        $target = is_array($result) ? ($result['target'] ?? null) : $result;
+        // Create/find minimal Target with queued status
+        $display = NameNormalizer::displayName($data['name']);
+        $sigDto = \App\Support\NameNormalizer::anagramSignature($display);
+        $signature = \App\Models\Signature::firstOrCreate(['signature' => $sigDto->signature], $sigDto->defaults);
+        $target = Target::firstOrCreate(
+            ['normalized_key' => $canonical],
+            [
+                'name' => $display,
+                'status' => 'queued',
+                'signature_id' => $signature->id,
+            ]
+        );
+
+        // Always set status to queued if newly created or if idle
+        if (in_array($target->status, ['idle'])) {
+            $target->status = 'queued';
+            $target->save();
+        }
+
+        // Dispatch async creation job
+        $this->scaledDispatch(\App\Jobs\CreateTargetJob::class, $target->id, $includeBoring);
 
         return redirect()->route('targets.show', $target);
     }
@@ -108,6 +127,37 @@ class TargetController extends Controller
         $target->fresh();
         $data = $this->lookupProgressPayload($target);
         return view('targets.show', $data);
+    }
+
+    public function progress(Target $target)
+    {
+        $target->fresh();
+        $data = $this->lookupProgressPayload($target);
+        // Lightweight observability for UI polling
+        try {
+            \Log::info('target.progress', [
+                'target_id' => $target->id,
+                'status' => $target->status,
+                'patterns_total' => $data['patternsCount'],
+                'patterns_completed' => $target->patterns()->where('status','done')->count(),
+                'patterns_running' => $target->patterns()->where('status','processing')->count(),
+                'patterns_pending' => $target->patterns()->whereIn('status', ['pending','deferred'])->count(),
+                'alter_egos' => $data['alterEgosCount'],
+            ]);
+        } catch (\Throwable $e) { /* ignore */ }
+        return response()->json([
+            'ok' => true,
+            'status' => $target->status,
+            'updated_at' => optional($target->updated_at)?->toIso8601String(),
+            'patterns' => [
+                'total' => $data['patternsCount'],
+                'completed' => $target->patterns()->where('status','done')->count(),
+                'running' => $target->patterns()->where('status','processing')->count(),
+                'pending' => $target->patterns()->whereIn('status', ['pending','deferred'])->count(),
+            ],
+            'signatureIndexedPatternsCount' => $data['signatureIndexedPatternsCount'],
+            'alterEgosCount' => $data['alterEgosCount'],
+        ]);
     }
 
     public function newMatches(Target $target)

@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\TargetController;
 use App\Http\Controllers\PatternController;
 use App\Http\Controllers\WordController;
+use App\Http\Controllers\SystemController;
 
 Route::resource('targets', TargetController::class)->only(['index','store','show','destroy']);
 Route::post('/targets/bulk-destroy', [TargetController::class, 'bulkDestroy'])->name('targets.bulk-destroy');
@@ -32,6 +33,10 @@ Route::post('/words/commit-resources', [WordController::class, 'commitResources'
 Route::get('/targets/{target}/new-matches', [TargetController::class, 'newMatches'])->name('targets.new-matches');
 Route::post('/targets/{target}/process-new-matches', [TargetController::class, 'processNewMatches'])->name('targets.process-new-matches');
 Route::post('/targets/{target}/mark-matches-seen', [TargetController::class, 'markMatchesSeen'])->name('targets.mark-matches-seen');
+// Target progress endpoint (JSON)
+Route::get('/targets/{target}/progress', [TargetController::class, 'progress'])->name('targets.progress');
+// System heartbeat endpoint
+Route::get('/system/heartbeat', [SystemController::class, 'heartbeat'])->name('system.heartbeat');
 // Add word in context of a target and trigger immediate generation
 Route::post('/targets/{target}/add-word', [TargetController::class, 'addWord'])->name('targets.add-word');
 //Route::post('/targets/{target}/start', [TargetController::class, 'start'])->name('targets.start');

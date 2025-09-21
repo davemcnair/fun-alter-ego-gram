@@ -108,7 +108,7 @@
                     <span style="margin-left:auto;"></span>
                     <button id="commitBtnTarget" class="" style="background:#2563eb; color:#fff; border:0; border-radius:6px; padding:6px 10px; cursor:pointer; {{ $hasUncommitted ? '' : 'opacity:0.5; cursor:not-allowed;' }}" {{ $hasUncommitted ? '' : 'disabled' }}>Commit Resources</button>
                 </h3>
-                <form id="addWordForm" method="POST" action="{{ route('targets.add-word', $item) }}" aria-describedby="addWordErrors" style="display:grid; grid-template-columns: 1fr 1fr 1fr auto; gap:8px; align-items:end;">
+                <form id="addWordForm" method="POST" action="#" aria-describedby="addWordErrors" style="display:grid; grid-template-columns: 1fr 1fr 1fr auto; gap:8px; align-items:end;">
                                     @csrf
                     <div>
                         <label for="tokenType" style="display:block; font-size:14px; margin-bottom:4px;">Token type</label>
@@ -296,15 +296,11 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
     const starredSection = document.getElementById('starredSection');
     const starredList = document.getElementById('starredList');
     const starredCount = document.getElementById('starredCount');
-    const URL_STAR = "{{ route('targets.star', $item) }}";
-    const URL_UNSTAR = "{{ route('targets.unstar', $item) }}";
-    const URL_ADD_WORD = "{{ route('targets.add-word', $item) }}";
+    const URL_STAR = '/api/targets/' + id + '/star';
+    const URL_UNSTAR = '/api/targets/' + id + '/unstar';
+    const URL_ADD_WORD = '/api/targets/' + id + '/add-word';
     window.ADD_WORD_URL = function(){
-        try {
-            if (URL_ADD_WORD && String(URL_ADD_WORD).length > 1) return URL_ADD_WORD;
-        } catch (e) {}
-        try { if (typeof id !== 'undefined' && id) return '/targets/' + id + '/add-word'; } catch (e) {}
-        return '/targets/' + id + '/add-word';
+        return URL_ADD_WORD;
     }
     const GROUP_INIT_LIMIT = 5;
     const groupExpanded = Object.create(null); // pattern string -> boolean
@@ -725,7 +721,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
         try {
             if (!id) return;
             if (!confirm('Promote ' + word + ' to fun?')) return;
-            const url = '{{ route('words.promote', ['word' => 'WORD_ID']) }}'.replace('WORD_ID', String(id));
+            const url = '{{ route('api.words.promote', ['word' => 'WORD_ID']) }}'.replace('WORD_ID', String(id));
             const res = await callJson(url, {});
             if (res && res.ok) {
                 // easiest, reliable refresh so counts and fun filters update
@@ -1202,7 +1198,7 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
 
         async function poll(){
             try {
-                const res = await fetch("{{ route('targets.progress', $item) }}");
+                const res = await fetch('/api/targets/' + id + '/progress');
                 const j = await res.json();
                 if (!j || !j.ok) throw new Error('bad');
                 // Update simple counters

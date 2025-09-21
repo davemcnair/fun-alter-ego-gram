@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Signature;
 use App\Models\Target;
 use App\Models\TargetPattern;
 use App\Models\AlterEgo;
@@ -99,8 +100,8 @@ class TargetController extends Controller
 
         // Create/find minimal Target with queued status
         $display = NameNormalizer::displayName($data['name']);
-        $sigDto = \App\Support\NameNormalizer::anagramSignature($display);
-        $signature = \App\Models\Signature::firstOrCreate(['signature' => $sigDto->signature], $sigDto->defaults);
+        $sigDto = NameNormalizer::anagramSignature($display);
+        $signature = Signature::firstOrCreate(['signature' => $sigDto->signature], $sigDto->defaults);
         $target = Target::firstOrCreate(
             ['normalized_key' => $canonical],
             [
@@ -120,6 +121,105 @@ class TargetController extends Controller
         $this->scaledDispatch(\App\Jobs\CreateTargetJob::class, $target->id, $includeBoring);
 
         return redirect()->route('targets.show', $target);
+    }
+
+    public function apiStore(Request $request, TargetService $targetService)
+    {
+        $data = $request->validate([
+            'name' => ['required','string','min:1','max:100'],
+            'allow_boring' => ['nullable','boolean'],
+        ]);
+        $includeBoring = (bool)($data['allow_boring'] ?? false);
+
+        $canonical = NameNormalizer::canonicalKey($data['name']);
+        if ($canonical === '') {
+            return response()->json(['ok' => false, 'error' => 'Name is invalid after normalization'], 422);
+        }
+
+        $display = NameNormalizer::displayName($data['name']);
+        $sigDto = NameNormalizer::anagramSignature($display);
+        $signature = Signature::firstOrCreate(['signature' => $sigDto->signature], $sigDto->defaults);
+        $target = Target::firstOrCreate(
+            ['normalized_key' => $canonical],
+            [
+                'name' => $display,
+                'status' => 'queued',
+                'signature_id' => $signature->id,
+            ]
+        );
+
+        if (in_array($target->status, ['idle'])) {
+            $target->status = 'queued';
+            $target->save();
+        }
+
+        $this->scaledDispatch(\App\Jobs\CreateTargetJob::class, $target->id, $includeBoring);
+
+        try { \Log::info('api.targets.store', ['target_id' => $target->id, 'created' => (bool)$target->wasRecentlyCreated]); } catch (\Throwable $e) {}
+
+        return response()->json([
+            'ok' => true,
+            'id' => $target->id,
+            'redirect' => route('api.targets.show', $target),
+        ]);
+    }
+
+    // JSON-only Targets index for API v1
+    public function apiIndex(Request $request)
+    {
+        $perPage = (int) $request->query('per_page', 25);
+        $perPage = $perPage > 0 && $perPage <= 100 ? $perPage : 25;
+
+        $query = Target::query()
+            ->select('targets.*')
+            ->addSelect([
+                'new_matches_count' => DB::table('target_token_signature_words as ttsw')
+                    ->selectRaw('count(*)')
+                    ->whereColumn('ttsw.target_id', 'targets.id')
+                    ->when(DB::raw('targets.matches_seen_at'), function ($q) {
+                        $q->whereRaw('ttsw.created_at > targets.matches_seen_at');
+                    }),
+            ])
+            ->orderByDesc('id');
+
+        $paginator = $query->paginate($perPage);
+
+        return response()->json([
+            'ok' => true,
+            'data' => $paginator->items(),
+            'meta' => [
+                'pagination' => [
+                    'page' => $paginator->currentPage(),
+                    'per_page' => $paginator->perPage(),
+                    'total' => $paginator->total(),
+                    'total_pages' => $paginator->lastPage(),
+                ],
+            ],
+        ]);
+    }
+
+    // JSON-only Target detail for API v1
+    public function apiShow(Target $target)
+    {
+        $target->fresh();
+        $payload = $this->lookupProgressPayload($target);
+
+        return response()->json([
+            'ok' => true,
+            'data' => [
+                'id' => $target->id,
+                'name' => $target->name,
+                'status' => $target->status,
+                'updated_at' => optional($target->updated_at)?->toIso8601String(),
+                'metrics' => [
+                    'patterns_processed' => $payload['patternsProcessedCount'],
+                    'patterns_total' => $payload['patternsCount'],
+                    'alter_egos' => $payload['alterEgosCount'],
+                    'signature_indexed_patterns' => $payload['signatureIndexedPatternsCount'],
+                ],
+                'starred' => $payload['starred'],
+            ],
+        ]);
     }
 
     public function show(Target $target)
@@ -373,6 +473,13 @@ class TargetController extends Controller
         return redirect()->route('targets.index')->with('status', "Deleted: {$name}");
     }
 
+    public function apiDestroy(Target $target)
+    {
+        $id = $target->id;
+        $target->delete();
+        return response()->json(['ok' => true, 'id' => $id]);
+    }
+
     public function bulkDestroy(Request $request)
     {
         $data = $request->validate([
@@ -391,5 +498,23 @@ class TargetController extends Controller
             }
         });
         return redirect()->route('targets.index')->with('status', 'Deleted '.count($ids).' target(s).');
+    }
+
+    public function apiBulkDestroy(Request $request)
+    {
+        $data = $request->validate([
+            'ids' => ['required','array'],
+            'ids.*' => ['integer'],
+        ]);
+        $ids = array_values(array_unique(array_map('intval', $data['ids'])));
+        $deleted = 0;
+        DB::transaction(function () use ($ids, &$deleted) {
+            $toDelete = Target::whereIn('id', $ids)->get();
+            foreach ($toDelete as $s) {
+                $s->delete();
+                $deleted++;
+            }
+        });
+        return response()->json(['ok' => true, 'deleted' => $deleted]);
     }
 }

@@ -197,7 +197,7 @@
     document.querySelectorAll('.js-promote').forEach(btn => {
         btn.addEventListener('click', function(){
             const id = this.dataset.id;
-            const url = '{{ route('words.promote', ['word' => 'WORD_ID']) }}'.replace('WORD_ID', String(id));
+            const url = '{{ route('api.words.promote', ['word' => 'WORD_ID']) }}'.replace('WORD_ID', String(id));
             postJson(url, {}).then(res => {
                 if (res && res.ok) {
                     location.reload();

@@ -39,7 +39,7 @@
             <h2 style="margin:0;">Words</h2>
             <div class="flex" style="gap:8px;">
                 <button id="commitBtn" class="btn" {{ $hasUncommitted ? '' : 'disabled' }} title="Commit DB words to resources" >Commit Resources</button>
-                <a href="{{ route('api.words.create') }}" class="btn">Add word</a>
+                <a href="{{ route('words.create') }}" class="btn">Add word</a>
             </div>
         </div>
     </div>

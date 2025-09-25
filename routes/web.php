@@ -12,3 +12,5 @@ Route::post('/targets/bulk-destroy', [TargetController::class, 'bulkDestroy'])->
 // Admin UI pages
 Route::get('/patterns', [PatternController::class, 'index'])->name('patterns.index');
 Route::get('/words', [WordController::class, 'index'])->name('words.index');
+Route::get('/words/create', [WordController::class, 'create'])->name('words.create');
+Route::post('/words', [WordController::class, 'store'])->name('words.store');

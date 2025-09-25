@@ -27,7 +27,7 @@
 <div class="container">
     <div class="card">
         <h2 style="margin-top:0;">Add Word</h2>
-        <form method="post" action="{{ route('api.words.store') }}">
+        <form method="post" action="{{ route('words.store') }}">
             @csrf
             <div class="field">
                 <label for="word">Word</label>

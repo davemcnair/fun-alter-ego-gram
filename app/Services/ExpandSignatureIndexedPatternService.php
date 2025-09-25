@@ -16,10 +16,12 @@ use Throwable;
  */
 final class ExpandSignatureIndexedPatternService
 {
-    public function expandWithBuilder(int $targetPatternId, PhraseBuilderService $phraseBuilderService): void
+    public function __construct(protected PhraseBuilderService $phraseBuilderService)
+    {}
+
+    public function expandWithBuilder(int $targetPatternId): void
     {
-        // Load TP with parent Target and signatureIndexed patterns
-        $targetPattern = TargetPattern::with(['target','signatureIndexedPatterns', 'pattern'])
+        $targetPattern = TargetPattern::with(['signatureIndexedPatterns'])
             ->find($targetPatternId);
         if (!$targetPattern) return;
         /** @var Target $target */
@@ -28,7 +30,7 @@ final class ExpandSignatureIndexedPatternService
         // If already done, skip
         if ($targetPattern->status === 'done') return;
 
-        // Claim the pattern for expansion (reuse existing allowed status)
+        // Claim the pattern for expansion
         $targetPattern->status = 'processing';
         $targetPattern->save();
 
@@ -57,20 +59,18 @@ final class ExpandSignatureIndexedPatternService
                         $q->where('signature', $pair['signature']);
                     })
                     ->first();
-
+                $nonDeferredWords = collect();
                 if ($ts) {
                     // Prefer 'fun' list, then 'ok', then any other; only non-deferred words
                     $nonDeferredWords = $ts->words()
                         ->where('is_deferred', false)
                         ->orderByRaw("CASE list_type WHEN 'fun' THEN 0 WHEN 'ok' THEN 1 ELSE 2 END")
                         ->pluck('word');
-                } else {
-                    $nonDeferredWords = collect();
                 }
                 $slotWords[] = $nonDeferredWords;
             }
 
-            $phrase = $phraseBuilderService->formatPhraseBySlots($slotWords, $slotOrder, false);
+            $phrase = $this->phraseBuilderService->formatPhraseBySlots($slotWords, $slotOrder, false);
 
             // Persist as AlterEgo (idempotent)
             AlterEgo::firstOrCreate(
@@ -84,10 +84,6 @@ final class ExpandSignatureIndexedPatternService
 
         // Mark as done after expansion and record timing
         $targetPattern->status = 'done';
-        // Ensure started_at is set (covers queued and any direct invocations)
-        if ($targetPattern->started_at === null) {
-            $targetPattern->started_at = now();
-        }
         // Set finished_at now; elapsed will be set using high-resolution timer below
         $finished = now();
         $targetPattern->finished_at = $finished;

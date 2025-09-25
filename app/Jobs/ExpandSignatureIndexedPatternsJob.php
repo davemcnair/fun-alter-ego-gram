@@ -2,7 +2,7 @@
 
 namespace App\Jobs;
 
-use App\Services\PhraseBuilderService;
+use App\Models\TargetPattern;
 use App\Services\ExpandSignatureIndexedPatternService;
 use App\Support\Metrics;
 use Illuminate\Support\Facades\Log;
@@ -55,20 +55,16 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
      */
     public function displayName(): string
     {
-        try {
-            $tp = \App\Models\TargetPattern::with(['target', 'pattern'])->find($this->targetNamePatternId);
-            if ($tp) {
-                $target = $tp->target?->name ?? 'unknown-target';
-                $template = (string)($tp->pattern->template ?? '');
-                return sprintf(
-                    'ExpandSignatureIndexed [TP:%d "%s" for "%s"]',
-                    $tp->id,
-                    $template,
-                    $target
-                );
-            }
-        } catch (Throwable $e) {
-            // ignore and fall back
+        $tp = TargetPattern::find($this->targetNamePatternId);
+        if ($tp) {
+            $target = $tp->target?->name ?? 'unknown-target';
+            $template = (string)($tp->pattern->template ?? '');
+            return sprintf(
+                'ExpandSignatureIndexed [TP:%d "%s" for "%s"]',
+                $tp->id,
+                $template,
+                $target
+            );
         }
         return 'ExpandSignatureIndexed [TP:'.$this->targetNamePatternId.']';
     }
@@ -77,7 +73,7 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
      * Handle filling pattern signatures for the associated TargetNamePattern.
      */
     public function handle(
-        PhraseBuilderService $phraseBuilderService
+        ExpandSignatureIndexedPatternService $expandService
     ): void
     {
         Log::info('job.expand.start', [
@@ -90,10 +86,7 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
             'target_pattern_id' => $this->targetNamePatternId,
         ]);
         try {
-            // Delegate to extracted service to perform the expansion logic while
-            // keeping the same method signature for backwards compatibility in tests.
-            app(ExpandSignatureIndexedPatternService::class)
-                ->expandWithBuilder($this->targetNamePatternId, $phraseBuilderService);
+            $expandService->expandWithBuilder($this->targetNamePatternId, $phraseBuilderService);
             Metrics::counter('job_expand_succeeded', 1, [
                 'target_pattern_id' => $this->targetNamePatternId,
             ]);

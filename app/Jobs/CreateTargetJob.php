@@ -2,12 +2,10 @@
 
 namespace App\Jobs;
 
-use App\Models\Signature;
 use App\Models\Target;
 use App\Services\TargetService;
 use App\Services\WordMatchService;
 use App\Support\Metrics;
-use App\Support\NameNormalizer;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -50,7 +48,7 @@ class CreateTargetJob implements ShouldQueue
         }
 
         $timer = Metrics::start('create_target_job_ms', [ 'target_id' => $target->id ]);
-        // Mark as processing if queued/idle
+        // Mark as processing and set start time if not already set
         $target->status = 'processing';
         $target->save();
 

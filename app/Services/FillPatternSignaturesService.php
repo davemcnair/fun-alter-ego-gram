@@ -24,8 +24,7 @@ class FillPatternSignaturesService
         int $targetPatternId,
         SignatureFillService $signatureFillService
     ): void {
-        $targetPattern = TargetPattern::with('target')
-            ->find($targetPatternId);
+        $targetPattern = TargetPattern::find($targetPatternId);
         if (!$targetPattern) {
             return; // Nothing to do
         }
@@ -59,7 +58,7 @@ class FillPatternSignaturesService
 
         // Algorithmic ordering
         // Use the normalized signature string from the related Signature model
-        $targetSig = (string) ($target->signature->signature ?? '');
+        $targetSig = $target->signature->signature;
 
         // Rarity-first slot ordering: order by ascending candidate count per token
         $candidateCounts = [];

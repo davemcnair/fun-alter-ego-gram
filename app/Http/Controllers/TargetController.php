@@ -95,7 +95,7 @@ class TargetController extends Controller
         // Ensure normalization yields a non-empty signature
         $canonical = NameNormalizer::canonicalKey($data['name']);
         if ($canonical === '') {
-            return response()->json(['message' => 'Name is invalid after normalization'], 422);
+            return back()->withErrors(['name' => 'Name is invalid after normalization'])->withInput();
         }
 
         // Create/find minimal Target with queued status
@@ -155,7 +155,7 @@ class TargetController extends Controller
 
         $this->scaledDispatch(\App\Jobs\CreateTargetJob::class, $target->id, $includeBoring);
 
-        try { \Log::info('api.targets.store', ['target_id' => $target->id, 'created' => (bool)$target->wasRecentlyCreated]); } catch (\Throwable $e) {}
+        try { \Log::info('api.targets.store', ['target_id' => $target->id, 'created' => (bool)$target->wasRecentlyCreated]); } catch (Throwable $e) {}
 
         return response()->json([
             'ok' => true,
@@ -224,14 +224,14 @@ class TargetController extends Controller
 
     public function show(Target $target)
     {
-        $target->fresh();
+//        $target->fresh();
         $data = $this->lookupProgressPayload($target);
         return view('targets.show', $data);
     }
 
     public function progress(Target $target)
     {
-        $target->fresh();
+//        $target->fresh();
         $data = $this->lookupProgressPayload($target);
         // Lightweight observability for UI polling
         try {
@@ -244,7 +244,7 @@ class TargetController extends Controller
                 'patterns_pending' => $target->patterns()->whereIn('status', ['pending','deferred'])->count(),
                 'alter_egos' => $data['alterEgosCount'],
             ]);
-        } catch (\Throwable $e) { /* ignore */ }
+        } catch (Throwable $e) { /* ignore */ }
         return response()->json([
             'ok' => true,
             'status' => $target->status,

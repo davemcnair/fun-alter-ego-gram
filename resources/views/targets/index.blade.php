@@ -24,13 +24,13 @@
 </head>
 <body>
 <nav style="background:#111827; color:#fff; padding:8px 12px;">
-    <a href="{{ route('api.targets.index') }}" style="color:#fff; margin-right:10px; text-decoration:none;"><strong>Targets</strong></a>
+    <a href="{{ route('targets.index') }}" style="color:#fff; margin-right:10px; text-decoration:none;"><strong>Targets</strong></a>
     <a href="{{ route('api.patterns.index') }}" style="color:#fff; margin-right:10px; text-decoration:none;">Patterns</a>
     <a href="{{ route('api.words.index') }}" style="color:#fff; margin-right:10px; text-decoration:none;">Words</a>
 </nav>
 <div class="container">
     <h1>New Search</h1>
-    <form id="createForm" method="post" action="#">
+    <form id="createForm" method="post" action="{{ route('targets.store') }}">
         @csrf
         <div class="row" style="margin-bottom: 12px;">
             <div class="field">
@@ -50,7 +50,7 @@
         <div style="margin:10px 0; padding:10px 12px; background:#ecfeff; color:#155e75; border:1px solid #67e8f9; border-radius:6px;">{{ session('status') }}</div>
     @endif
 
-    <form id="bulkForm" method="post" action="{{ route('api.targets.bulk-destroy') }}" onsubmit="return confirm('Delete selected Target names? This will remove their patterns and alter egos.');">
+    <form id="bulkForm" method="post" action="{{ route('targets.bulk-destroy') }}" onsubmit="return confirm('Delete selected Target names? This will remove their patterns and alter egos.');">
         @csrf
         <div style="margin: 8px 0; display:flex; gap:8px; align-items:center;">
             <label><input type="checkbox" id="selectAll"> Select all</label>
@@ -185,52 +185,20 @@
         }
     };
   })();
-  // Heartbeat check on create
+  // Heartbeat check on create (non-blocking)
   (function(){
     var form = document.getElementById('createForm');
     if (!form) return;
-    form.addEventListener('submit', async function(e){
-      try {
-        e.preventDefault();
-        var res = await fetch('/api/system/heartbeat');
-        var json = await res.json();
-        if (!json.fresh) {
-          var proceed = confirm('No queue worker detected (last seen ' + (json.age === null ? 'never' : json.age + 's ago') + ').\nStart "php artisan queue:work" and try again.\n\nDispatch anyway?');
-          if (!proceed) { return; }
-        }
-      } catch (err) { /* ignore */ }
-      // Create via API
-      try {
-        var name = document.getElementById('name')?.value || '';
-        var payload = { name: name };
-        var createRes = await fetch('/api/targets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-        var createJson = await createRes.json();
-        if (createJson && createJson.ok && createJson.redirect) {
-          location.href = createJson.redirect;
-          return;
-        }
-        alert('Failed to create.');
-      } catch (err) {
-        alert('Failed to create.');
-      }
+    // Allow normal submission to the web route so the server redirect works.
+    form.addEventListener('submit', function(){
+      try { fetch('/api/system/heartbeat').catch(function(){}); } catch (e) {}
     });
 
-    // Intercept bulk delete to call API
+    // Allow native form submission for bulk delete so server redirects back with status
     var bulk = document.getElementById('bulkForm');
     if (bulk) {
-      bulk.addEventListener('submit', async function(e){
-        e.preventDefault();
-        try {
-          var ids = Array.from(document.querySelectorAll('.rowCheck'))
-            .filter(function(c){ return c.checked; })
-            .map(function(c){ return parseInt(c.value, 10); })
-            .filter(function(v){ return !isNaN(v); });
-          if (ids.length === 0) { alert('No items selected.'); return; }
-          var resp = await fetch('/api/targets/bulk-destroy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: ids }) });
-          var js = await resp.json();
-          if (js && js.ok) { location.reload(); return; }
-          alert('Bulk delete failed.');
-        } catch (err) { alert('Bulk delete failed.'); }
+      bulk.addEventListener('submit', function(e){
+        // no interception
       });
     }
   })();

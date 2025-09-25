@@ -39,7 +39,7 @@
             <h2 style="margin:0;">Words</h2>
             <div class="flex" style="gap:8px;">
                 <button id="commitBtn" class="btn" {{ $hasUncommitted ? '' : 'disabled' }} title="Commit DB words to resources" >Commit Resources</button>
-                <a href="{{ route('words.create') }}" class="btn">Add word</a>
+                <a href="{{ route('api.words.create') }}" class="btn">Add word</a>
             </div>
         </div>
     </div>
@@ -137,8 +137,8 @@
                                 @endif
                             </td>
                             <td>
-                                <a class="btn" href="{{ route('words.edit', $w) }}">Edit</a>
-                                <form method="post" action="{{ route('words.destroy', $w) }}" style="display:inline;" onsubmit="return confirm('Delete this word?');">
+                                <a class="btn" href="{{ route('api.words.edit', $w) }}">Edit</a>
+                                <form method="post" action="{{ route('api.words.destroy', $w) }}" style="display:inline;" onsubmit="return confirm('Delete this word?');">
                                     @csrf
                                     @method('DELETE')
                                     <button type="submit" class="btn danger">Delete</button>
@@ -177,7 +177,7 @@
             if (this.hasAttribute('disabled')) return;
             this.setAttribute('disabled', 'disabled');
             this.textContent = 'Committing...';
-            postJson('{{ route('words.commit-resources') }}', {}).then(res => {
+            postJson('{{ route('api.words.commit-resources') }}', {}).then(res => {
                 if (res && res.ok) {
                     alert('Committed ' + (res.committed_count || 0) + ' word(s). Backup: ' + (res.backup || 'n/a'));
                     location.reload();

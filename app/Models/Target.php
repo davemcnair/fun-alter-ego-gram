@@ -18,7 +18,8 @@ class Target extends Model
     protected $with = ['signature'];
 
     protected $fillable = [
-        'name', 'signature', 'normalized_key', 'status', 'signature_id'
+        'name', 'normalized_key', 'status', 'signature_id',  'last_processed_matches_at',
+        'filled_matches_count', 'new_matches_count'
     ];
 
     protected $casts = [

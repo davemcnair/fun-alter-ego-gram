@@ -70,13 +70,29 @@ class TargetController extends Controller
         $items = Target::query()
             ->select('targets.*')
             ->addSelect([
+                'filled_matches_count' => DB::table('target_token_signature_words as ttsw')
+                    ->selectRaw('count(*)')
+                    ->whereColumn('ttsw.target_id', 'targets.id')
+                    // Only apply the cutoff when last_processed_matches_at is set
+                    ->when(
+                        DB::raw('1'),
+                        function ($q) {
+                            $q->whereRaw('ttsw.created_at <= targets.last_processed_matches_at');
+                        }
+                    )
+                    ->whereNotNull('targets.last_processed_matches_at'),
+
                 'new_matches_count' => DB::table('target_token_signature_words as ttsw')
                     ->selectRaw('count(*)')
                     ->whereColumn('ttsw.target_id', 'targets.id')
-                    ->when(DB::raw('targets.matches_seen_at'), function ($q) {
-                        // Count rows strictly newer than the last seen timestamp
-                        $q->whereRaw('ttsw.created_at > targets.matches_seen_at');
-                    }),
+                    // Only apply the cutoff when last_processed_matches_at is set
+                    ->when(
+                        DB::raw('1'),
+                        function ($q) {
+                            $q->whereRaw('ttsw.created_at > targets.last_processed_matches_at');
+                        }
+                    )
+                    ->whereNotNull('targets.last_processed_matches_at'),
             ])
             ->orderByDesc('id')
             ->paginate(25);
@@ -173,11 +189,17 @@ class TargetController extends Controller
         $query = Target::query()
             ->select('targets.*')
             ->addSelect([
+                'filled_matches_count' => DB::table('target_token_signature_words as ttsw')
+                    ->selectRaw('count(*)')
+                    ->whereColumn('ttsw.target_id', 'targets.id')
+                    ->when(DB::raw('targets.matches_seen_at'), function ($q) {
+                        $q->whereRaw('ttsw.created_at <= targets.last_processed_matches_at');
+                    }),
                 'new_matches_count' => DB::table('target_token_signature_words as ttsw')
                     ->selectRaw('count(*)')
                     ->whereColumn('ttsw.target_id', 'targets.id')
                     ->when(DB::raw('targets.matches_seen_at'), function ($q) {
-                        $q->whereRaw('ttsw.created_at > targets.matches_seen_at');
+                        $q->whereRaw('ttsw.created_at > targets.last_processed_matches_at');
                     }),
             ])
             ->orderByDesc('id');

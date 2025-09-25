@@ -63,7 +63,8 @@
                 <th>Name</th>
                 <th>Patterns</th>
                 <th>Alter egos</th>
-                <th>New matches</th>
+                <th>Matches (new)</th>
+                <th>Last Processed</th>
                 <th></th>
             </tr>
             </thead>
@@ -77,12 +78,13 @@
                     <td>{{ $s->alterEgos()->count() }}</td>
                     <td>
                         @if($newCount > 0)
-                            <button type="button" class="tag" id="nm-btn-{{ $s->id }}" aria-expanded="false" onclick="toggleNewMatches({{ $s->id }})">{{ $newCount }}</button>
+                            <button type="button" class="tag" id="nm-btn-{{ $s->id }}" aria-expanded="false" onclick="toggleNewMatches({{ $s->id }})">{{ $s->filled_matches_count }} ({{ $s->new_matches_count}})</button>
                             <div id="nm-{{ $s->id }}" style="display:none; margin-top:6px; max-height:140px; overflow:auto; border:1px solid #e5e7eb; padding:6px; border-radius:4px;"></div>
                         @else
                             <span class="tag" style="background:#f3f4f6; color:#6b7280;">0</span>
                         @endif
                     </td>
+                    <td>{{ $s->last_processed_matches_at }}</td>
                     <td style="display:flex; gap:6px; align-items:center;">
                         <a class="btn" href="{{ route('targets.show', $s) }}">Open</a>
                         <button type="button" onclick="processNewMatches({{ $s->id }})" {{ $newCount > 0 ? '' : 'disabled' }}>Fill with new words</button>

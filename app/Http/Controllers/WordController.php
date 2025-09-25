@@ -33,7 +33,6 @@ class WordController extends Controller
                 'token_signature_words.word',
                 'token_signature_words.list_type',
                 'token_signature_words.is_deferred',
-                'token_signatures.signature as signature',
                 'token_signatures.id as token_signature_id',
                 'tokens.name as token_type',
             ])

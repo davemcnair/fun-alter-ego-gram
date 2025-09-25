@@ -27,21 +27,21 @@
 <div class="container">
     <div class="card">
         <h2 style="margin-top:0;">Add Word</h2>
-        <form method="post" action="{{ route('words.store') }}">
+        <form method="post" action="{{ route('api.words.store') }}">
             @csrf
             <div class="field">
                 <label for="word">Word</label>
-                <input type="text" id="word" name="word" value="{{ old('word', $word->word ?? '') }}">
+                <input type="text" id="word" name="word" value="{{ old('word', ($word ?? null)?->word) }}">
                 @error('word')<div class="error">{{ $message }}</div>@enderror
             </div>
             <div class="field">
                 <label for="token_type">Token type</label>
-                <input type="text" id="token_type" name="token_type" value="{{ old('token_type', $word->token_type ?? '') }}" placeholder="e.g. forename, surname, initial">
+                <input type="text" id="token_type" name="token_type" value="{{ old('token_type', ($word ?? null)?->token_type) }}" placeholder="e.g. forename, surname, initial">
                 @error('token_type')<div class="error">{{ $message }}</div>@enderror
             </div>
             <div class="field">
                 <label for="list_type">List type</label>
-                <input type="text" id="list_type" name="list_type" value="{{ old('list_type', $word->list_type ?? '') }}" placeholder="e.g. fun, ok, adj, noun">
+                <input type="text" id="list_type" name="list_type" value="{{ old('list_type', ($word ?? null)?->list_type) }}" placeholder="e.g. fun, ok, adj, noun">
                 @error('list_type')<div class="error">{{ $message }}</div>@enderror
             </div>
             <div class="field">

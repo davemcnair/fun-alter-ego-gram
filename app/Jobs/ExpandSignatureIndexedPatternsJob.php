@@ -86,7 +86,7 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
             'target_pattern_id' => $this->targetNamePatternId,
         ]);
         try {
-            $expandService->expandWithBuilder($this->targetNamePatternId, $phraseBuilderService);
+            $expandService->expandWithBuilder($this->targetNamePatternId);
             Metrics::counter('job_expand_succeeded', 1, [
                 'target_pattern_id' => $this->targetNamePatternId,
             ]);

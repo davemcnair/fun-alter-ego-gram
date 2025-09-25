@@ -12,6 +12,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Schema;
 
 class BackfillNewWordMatchesJob implements ShouldQueue
 {
@@ -27,37 +28,26 @@ class BackfillNewWordMatchesJob implements ShouldQueue
     public function handle(): void
     {
         /** @var TokenSignatureWord|null $tsw */
-        $tsw = TokenSignatureWord::with('tokenSignature')->find($this->tokenSignatureWordId);
+        $tsw = TokenSignatureWord::find($this->tokenSignatureWordId);
         if (!$tsw) return;
         if ($tsw->is_deferred) return; // skip deferred
         if (!in_array($tsw->list_type, ['fun','ok'], true)) return; // skip boring
 
-        $sig = (string) optional($tsw->tokenSignature)->signature;
-        if ($sig === '') return;
-
-        $hist = $this->letterCountsFromSignature($sig);
-        $len = strlen($sig);
+        $sig = $tsw->tokenSignature->signature;
 
         // Build target query with SQL-side pruning using letter count columns when present
-        $query = Target::query();
-        // Prefer modern columns if present
-        $hasLen = \Schema::hasColumn('targets', 'signature_length');
-        $hasCounts = \Schema::hasColumn('targets', 'a_count');
-        if ($hasLen) {
-            $query->where('signature_length', '>=', $len);
-        }
-        // Fallback to legacy check on signature string length
-        if (!$hasLen) {
-            $query->whereRaw('LENGTH(signature) >= ?', [$len]);
-        }
-        if ($hasCounts) {
-            foreach (range('a','z') as $ch) {
-                $n = (int)($hist[$ch] ?? 0);
-                if ($n > 0) {
-                    $query->where($ch . '_count', '>=', $n);
+        $query = Target::query()
+            ->whereHas('signature', function ($q) use ($sig) {
+                // Ensure targets are at least as long as the word's signature
+                $q->where('length', '>=', (int)($sig->length ?? 0));
+                // For each letter a-z, target counts must be >= the word's signature counts
+                foreach (range('a', 'z') as $ch) {
+                    $n = (int)($sig->{$ch . '_count'} ?? 0);
+                    if ($n > 0) {
+                        $q->where($ch . '_count', '>=', $n);
+                    }
                 }
-            }
-        }
+            });
 
         $count = 0;
         $query->orderBy('id')->chunkById(1000, function($targets) use ($tsw, &$count) {

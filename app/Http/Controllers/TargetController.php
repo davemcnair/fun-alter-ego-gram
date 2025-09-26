@@ -2,17 +2,21 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\CreateTargetJob;
 use App\Models\Signature;
 use App\Models\Target;
 use App\Models\TargetPattern;
 use App\Models\AlterEgo;
 use App\Models\TokenSignatureWord;
+use App\Services\FillPatternSignaturesService;
+use App\Services\SignatureFillService;
 use App\Services\TargetService;
 use App\Services\WordMatchService;
 use App\Support\NameNormalizer;
 use App\Traits\HelpsMatchWords;
 use App\Jobs\FillPatternSignaturesJob;
 use App\Traits\ScalesJobs;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -28,7 +32,7 @@ class TargetController extends Controller
      * Run fill/expand for a single TargetPattern.
      * Idempotent: if already processing/done, returns current stats.
      */
-    public function searchTargetPattern(\App\Models\TargetPattern $pattern, \App\Services\FillPatternSignaturesService $fillService, \App\Services\SignatureFillService $signatureFillService): \Illuminate\Http\JsonResponse
+    public function searchTargetPattern(TargetPattern $pattern, FillPatternSignaturesService $fillService, SignatureFillService $signatureFillService): JsonResponse
     {
         $start = microtime(true);
         $prev = $pattern->status;
@@ -107,8 +111,7 @@ class TargetController extends Controller
 
         // Step 1: Find matches and link to this target
         $wordMatchService->linkMatchesToTarget($target);
-
-        // Step 2: compute min lengths (id-keyed arrays)
+        // Steps 2–5: compute mins, filter, insert, and enqueue fills for this target
         $targetService->fillMatchedPatternsForTarget($target->fresh());
 
         return response()->json(['ok' => true] + $this->lookupProgressPayload($target->fresh()));
@@ -149,7 +152,7 @@ class TargetController extends Controller
         return view('targets.index', compact('items'));
     }
 
-    public function store(Request $request, TargetService $targetService)
+    public function store(Request $request)
     {
         $data = $request->validate([
             'name' => ['required','string','min:1','max:100'],
@@ -183,7 +186,7 @@ class TargetController extends Controller
         }
 
         // Dispatch async creation job
-        $this->scaledDispatch(\App\Jobs\CreateTargetJob::class, $target->id, $includeBoring);
+        $this->scaledDispatch(CreateTargetJob::class, $target->id, $includeBoring);
 
         return redirect()->route('targets.show', $target);
     }
@@ -218,7 +221,7 @@ class TargetController extends Controller
             $target->save();
         }
 
-        $this->scaledDispatch(\App\Jobs\CreateTargetJob::class, $target->id, $includeBoring);
+        $this->scaledDispatch(CreateTargetJob::class, $target->id, $includeBoring);
 
         try { \Log::info('api.targets.store', ['target_id' => $target->id, 'created' => (bool)$target->wasRecentlyCreated]); } catch (Throwable $e) {}
 
@@ -379,9 +382,9 @@ class TargetController extends Controller
             ->count();
 
         // Enqueue fill/expand for each target pattern
-        $patterns = TargetPattern::where('target_id', $target->id)->orderBy('popularity_rank')->pluck('id')->all();
+        $patternIds = TargetPattern::where('target_id', $target->id)->orderBy('popularity_rank')->pluck('id')->all();
         $attempted = 0;
-        foreach ($patterns as $pid) {
+        foreach ($patternIds as $pid) {
             $attempted++;
             $this->scaledDispatch(FillPatternSignaturesJob::class, (int)$pid);
         }

@@ -21,6 +21,9 @@ Route::post('/targets/{target}/star', [TargetController::class, 'star'])->name('
 Route::post('/targets/{target}/unstar', [TargetController::class, 'unstar'])->name('api.targets.unstar');
 Route::post('/targets/{target}/rephrase', [TargetController::class, 'rephrase'])->name('api.targets.rephrase');
 
+// Target Patterns API
+Route::post('/target-patterns/{pattern}/search', [TargetController::class, 'searchTargetPattern'])->name('api.target-patterns.search');
+
 // Patterns API
 Route::get('/patterns', [PatternController::class, 'index'])->name('api.patterns.index');
 Route::post('/patterns', [PatternController::class, 'store'])->name('api.patterns.store');

@@ -217,6 +217,56 @@
                 </div>
             </div>
 
+            <div class="card" id="unsearchedPatternsCard">
+                <h3 style="margin-top:0; display:flex; align-items:center; gap:10px;">
+                    Unsearched Target Patterns
+                    <span style="margin-left:auto;"><button id="searchAllBtn" type="button">Search All</button></span>
+                </h3>
+                @php
+                    $unsearched = collect($patternsWaiting ?? [])->filter(function($p){
+                        $st = strtolower((string)($p['status'] ?? ''));
+                        $ae = (int)($p['alterEgosCount'] ?? 0);
+                        return in_array($st, ['pending','deferred'], true) && $ae === 0;
+                    });
+                @endphp
+                @if(($unsearched->count() ?? 0) === 0)
+                    <div class="muted">No unsearched patterns right now.</div>
+                @else
+                    <table id="unsearchedTable" style="width:100%; border-collapse: collapse;">
+                        <thead>
+                        <tr>
+                            <th style="text-align:left; padding:8px; background:#f3f4f6;">Pattern</th>
+                            <th style="text-align:left; padding:8px; background:#f3f4f6;">Popularity</th>
+                            <th style="text-align:left; padding:8px; background:#f3f4f6;">Status</th>
+                            <th style="text-align:left; padding:8px; background:#f3f4f6;">Last started</th>
+                            <th style="text-align:left; padding:8px; background:#f3f4f6;">Last finished</th>
+                            <th style="text-align:left; padding:8px; background:#f3f4f6;">Action</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        @foreach($unsearched as $p)
+                            @php
+                                $pid = (int)($p['id'] ?? 0);
+                                $started = $p['started_at'] ?? null;
+                                $finished = $p['finished_at'] ?? null;
+                            @endphp
+                            <tr id="unp-row-{{ $pid }}" data-id="{{ $pid }}" style="border-bottom:1px solid #e5e7eb;">
+                                <td style="padding:8px;">{{ $p['template'] ?? '' }}</td>
+                                <td style="padding:8px;">{{ $p['popularity_rank'] ?? '' }}</td>
+                                <td style="padding:8px;"><span class="tag" id="unp-status-{{ $pid }}">{{ $p['status'] ?? '' }}</span></td>
+                                <td style="padding:8px;" id="unp-started-{{ $pid }}">{{ $started ? (is_string($started) ? $started : optional($started)->toDateTimeString()) : '' }}</td>
+                                <td style="padding:8px;" id="unp-finished-{{ $pid }}">{{ $finished ? (is_string($finished) ? $finished : optional($finished)->toDateTimeString()) : '' }}</td>
+                                <td style="padding:8px;">
+                                    <button type="button" id="unp-btn-{{ $pid }}" data-id="{{ $pid }}" aria-busy="false" onclick="searchPattern({{ $pid }})">Search</button>
+                                </td>
+                            </tr>
+                        @endforeach
+                        </tbody>
+                    </table>
+                @endif
+                <div id="toast" role="status" aria-live="polite" style="display:none; margin-top:8px; font-size:14px; color:#b91c1c;"></div>
+            </div>
+
         </div>
     </div>
 
@@ -302,6 +352,95 @@ const ALL_FORENAME = new Set(@json(array_keys($allForename)));
     window.ADD_WORD_URL = function(){
         return URL_ADD_WORD;
     }
+
+    // Unsearched Target Patterns helpers
+    const URL_SEARCH_PATTERN = (pid) => {
+        return '{{ route('api.target-patterns.search', ['pattern' => 'PATTERN_ID']) }}'.replace('PATTERN_ID', String(pid));
+    };
+    function showToast(msg){
+        const t = document.getElementById('toast');
+        if (!t) return;
+        t.textContent = String(msg || '');
+        t.style.display = 'block';
+        setTimeout(function(){ t.style.display = 'none'; }, 3500);
+    }
+    async function refreshSimpleProgress(){
+        try {
+            const res = await fetch('/api/targets/' + id + '/progress');
+            const j = await res.json();
+            if (!j || !j.ok) return;
+            const ps = document.getElementById('patternsSearched');
+            const pt = document.getElementById('patternsTotal');
+            const ae = document.getElementById('alterEgosFound');
+            if (ps) ps.textContent = String(j.patterns.completed);
+            if (pt) pt.textContent = String(j.patterns.total);
+            if (ae) ae.textContent = String(j.alterEgosCount);
+        } catch (e) { /* ignore */ }
+    }
+    window.searchPattern = async function(pid){
+        const btn = document.getElementById('unp-btn-' + pid);
+        const statusEl = document.getElementById('unp-status-' + pid);
+        if (!btn) return;
+        btn.disabled = true;
+        btn.setAttribute('aria-busy', 'true');
+        if (statusEl) { statusEl.textContent = 'processing'; }
+        try {
+            const res = await fetch(URL_SEARCH_PATTERN(pid), {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').getAttribute('content') }
+            });
+            if (res.status === 404) {
+                // pattern gone, remove row
+                const tr = document.getElementById('unp-row-' + pid);
+                if (tr && tr.parentNode) tr.parentNode.removeChild(tr);
+                return;
+            }
+            if (res.status === 429) {
+                showToast('Please wait before retrying.');
+                return;
+            }
+            if (res.status >= 500) {
+                showToast('Server error. Try again.');
+                return;
+            }
+            const j = await res.json();
+            if (!j || !j.ok) throw new Error('bad');
+            const p = j.pattern || {};
+            if (statusEl && p.status) statusEl.textContent = String(p.status);
+            // If moved to processing/done, remove from Unsearched table
+            if (['processing','done'].includes(String(p.status || '').toLowerCase())){
+                const tr = document.getElementById('unp-row-' + pid);
+                if (tr && tr.parentNode) tr.parentNode.removeChild(tr);
+            }
+            await refreshSimpleProgress();
+        } catch (e) {
+            showToast('Failed to search.');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.setAttribute('aria-busy', 'false');
+            }
+        }
+    };
+    // Search All with simple concurrency limit
+    (function(){
+        const btn = document.getElementById('searchAllBtn');
+        if (!btn) return;
+        btn.addEventListener('click', async function(){
+            const rows = Array.from(document.querySelectorAll('#unsearchedTable tbody tr'));
+            const ids = rows.map(r => parseInt(r.getAttribute('data-id'), 10)).filter(n => !isNaN(n));
+            const limit = 3;
+            let i = 0;
+            const runNext = async () => {
+                if (i >= ids.length) return;
+                const pid = ids[i++];
+                try { await window.searchPattern(pid); } catch (e) {}
+                setTimeout(runNext, 150);
+            };
+            for (let k = 0; k < limit; k++) { runNext(); }
+        });
+    })();
+
     const GROUP_INIT_LIMIT = 5;
     const groupExpanded = Object.create(null); // pattern string -> boolean
     let onlyFun = false;

@@ -24,6 +24,55 @@ class TargetController extends Controller
 {
     use HelpsMatchWords, ScalesJobs;
 
+    /**
+     * Run fill/expand for a single TargetPattern.
+     * Idempotent: if already processing/done, returns current stats.
+     */
+    public function searchTargetPattern(\App\Models\TargetPattern $pattern, \App\Services\FillPatternSignaturesService $fillService, \App\Services\SignatureFillService $signatureFillService): \Illuminate\Http\JsonResponse
+    {
+        $start = microtime(true);
+        $prev = $pattern->status;
+        try { \Log::info('ui.search.click', ['target_id' => $pattern->target_id, 'target_pattern_id' => $pattern->id, 'previous_status' => $prev]); } catch (\Throwable $e) { /* ignore */ }
+
+        // If done or processing, return current stats
+        if (in_array($pattern->status, ['done','processing'], true)) {
+            $payload = [
+                'id' => $pattern->id,
+                'status' => $pattern->status,
+                'signatureIndexedPatternsCount' => $pattern->signatureIndexedPatterns()->count(),
+                'alterEgosCount' => $pattern->alterEgos()->count(),
+                'elapsed_ms' => $pattern->elapsed_ms,
+                'started_at' => optional($pattern->started_at)?->toIso8601String(),
+                'finished_at' => optional($pattern->finished_at)?->toIso8601String(),
+            ];
+            return response()->json(['ok' => true, 'pattern' => $payload]);
+        }
+
+        // Otherwise, kick off fill which will enqueue expand; mark started if not already
+        if ($pattern->started_at === null) {
+            $pattern->started_at = now();
+            $pattern->save();
+        }
+        // Run fill inline (it will set status=processing and dispatch expand)
+        $fillService->fillWithServices($pattern->id, $signatureFillService);
+
+        $pattern->refresh();
+        $payload = [
+            'id' => $pattern->id,
+            'status' => $pattern->status,
+            'signatureIndexedPatternsCount' => $pattern->signatureIndexedPatterns()->count(),
+            'alterEgosCount' => $pattern->alterEgos()->count(),
+            'elapsed_ms' => $pattern->elapsed_ms,
+            'started_at' => optional($pattern->started_at)?->toIso8601String(),
+            'finished_at' => optional($pattern->finished_at)?->toIso8601String(),
+        ];
+
+        $elapsedMs = (int) round((microtime(true) - $start) * 1000);
+        try { \Log::info('ui.search.complete', ['target_id' => $pattern->target_id, 'target_pattern_id' => $pattern->id, 'previous_status' => $prev, 'new_status' => $pattern->status, 'elapsed_ms' => $elapsedMs]); } catch (\Throwable $e) { /* ignore */ }
+
+        return response()->json(['ok' => true, 'pattern' => $payload]);
+    }
+
 
     public function addWord(Target $target, Request $request, WordMatchService $wordMatchService, TargetService $targetService)
     {
@@ -475,8 +524,9 @@ class TargetController extends Controller
         $alterEgos = $pattern->alterEgos;
         return [
             'id' => $pattern->id,
-            'status' => $status,
+            'status' => $pattern->status, // use pattern status (not target status)
             'template' => optional($pattern->pattern)->template,
+            'popularity_rank' => $pattern->popularity_rank,
             'signatureIndexedPatternsCount' => $signatureIndexedPatterns->count(),
             'alterEgosCount' => $alterEgos->count(),
             'elapsed_ms' => $pattern->elapsed_ms,

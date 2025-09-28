@@ -232,8 +232,8 @@ class TargetController extends Controller
                 'target_id' => $target->id,
                 'status' => $target->status,
                 'patterns_total' => $data['patternsCount'],
-                'patterns_completed' => $target->patterns()->where('status','done')->count(),
-                'patterns_running' => $target->patterns()->where('status','processing')->count(),
+                'patterns_completed' => $target->patterns()->where('status', TargetPatternStatus::filled)->count(),
+                'patterns_running' => $target->patterns()->where('status', TargetPatternStatus::processing)->count(),
                 'patterns_pending' => $target->patterns()->whereIn('status', ['pending','deferred'])->count(),
                 'alter_egos' => $data['alterEgosCount'],
             ]);
@@ -244,9 +244,9 @@ class TargetController extends Controller
             'updated_at' => optional($target->updated_at)?->toIso8601String(),
             'patterns' => [
                 'total' => $data['patternsCount'],
-                'completed' => $target->patterns()->where('status','done')->count(),
+                'completed' => $target->patterns()->where('status', TargetPatternStatus::filled)->count(),
                 'running' => $target->patterns()->where('status','processing')->count(),
-                'pending' => $target->patterns()->whereIn('status', ['pending','deferred'])->count(),
+                'pending' => $target->patterns()->whereIn('status', [TargetPatternStatus::pending, TargetPatternStatus::deferred])->count(),
             ],
             'signatureIndexedPatternsCount' => $data['signatureIndexedPatternsCount'],
             'alterEgosCount' => $data['alterEgosCount'],
@@ -265,7 +265,7 @@ class TargetController extends Controller
         try { \Log::info('ui.search.click', ['target_id' => $pattern->target_id, 'target_pattern_id' => $pattern->id, 'previous_status' => $prev]); } catch (\Throwable $e) { /* ignore */ }
 
         // If done or processing, return current stats
-        if (in_array($pattern->status, ['done','processing'], true)) {
+        if (in_array($pattern->status, [TargetPatternStatus::filled, TargetPatternStatus::processing], true)) {
             $payload = [
                 'id' => $pattern->id,
                 'status' => $pattern->status,
@@ -408,9 +408,9 @@ class TargetController extends Controller
             ->whereIn('status', [TargetPatternStatus::deferred]);
         return [
             'item' => $target,
-            'patternsProcessedCount' => $target->patterns()->where('status','done')->count(),
+            'patternsProcessedCount' => $target->patterns()->where('status', TargetPatternStatus::filled)->count(),
             'patternsCount' => $target->patterns->count(),
-            'patternsLive' => $target->patterns()->whereIn('status', ['done','processing'])->get()
+            'patternsLive' => $target->patterns()->whereIn('status', [TargetPatternStatus::filled, TargetPatternStatus::processing])->get()
                 ->map(fn($pattern) => $this->lookupPatternPayload($pattern)),
             'deferredPatternsCount' => $deferredPatternsQuery->count(),
             'deferredPatterns' => $deferredPatternsQuery

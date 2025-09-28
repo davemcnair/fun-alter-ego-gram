@@ -78,7 +78,7 @@ class ExpandSignatureIndexedPatternsServiceTest extends TestCase
         $this->assertSame('Adam Invic', $ae->phrase);
 
         // Status should be marked done
-        $this->assertSame('done', $targetPattern->fresh()->status);
+        $this->assertSame('filled', $targetPattern->fresh()->status);
     }
 
     public function test_expands_double_surname_hyphenated_and_marks_done(): void
@@ -124,6 +124,6 @@ class ExpandSignatureIndexedPatternsServiceTest extends TestCase
         $ae = $snp->alterEgos()->first();
         $this->assertNotNull($ae);
         $this->assertSame('Ray-Vinci', $ae->phrase);
-        $this->assertSame('done', $snp->fresh()->status);
+        $this->assertSame('filled', $snp->fresh()->status);
     }
 }

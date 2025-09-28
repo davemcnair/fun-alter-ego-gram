@@ -602,7 +602,7 @@
                 const p = j.pattern || {};
                 if (statusEl && p.status) statusEl.textContent = String(p.status);
                 // If moved to processing/done, remove from Unsearched table
-                if (['processing', 'done'].includes(String(p.status || '').toLowerCase())) {
+                if (['processing', 'filled'].includes(String(p.status || '').toLowerCase())) {
                     const tr = document.getElementById('unp-row-' + pid);
                     if (tr && tr.parentNode) tr.parentNode.removeChild(tr);
                 }

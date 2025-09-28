@@ -49,7 +49,7 @@ class TargetPatternSearchApiTest extends TestCase
             'target_id' => $target->id,
             'pattern_id' => $p->id,
             'popularity_rank' => $p->popularity_rank,
-            'status' => 'done',
+            'status' => 'filled',
             'started_at' => now()->subMinute(),
             'finished_at' => now(),
             'elapsed_ms' => 123,
@@ -60,7 +60,7 @@ class TargetPatternSearchApiTest extends TestCase
         $json = $res->json();
         $this->assertTrue($json['ok'] ?? false);
         $this->assertSame($tp->id, $json['pattern']['id'] ?? null);
-        $this->assertSame('done', $json['pattern']['status'] ?? null);
+        $this->assertSame('filled', $json['pattern']['status'] ?? null);
         $this->assertArrayHasKey('signatureIndexedPatternsCount', $json['pattern']);
         $this->assertArrayHasKey('alterEgosCount', $json['pattern']);
         $this->assertArrayHasKey('elapsed_ms', $json['pattern']);

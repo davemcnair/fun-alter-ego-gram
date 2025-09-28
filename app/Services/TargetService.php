@@ -8,10 +8,12 @@ use App\Jobs\FillPatternSignaturesJob;
 use App\Models\Pattern;
 use App\Models\Signature;
 use App\Models\Target;
+use App\Models\TargetTokenSignatureWord;
 use App\Support\NameNormalizer;
 use App\Support\Metrics;
 use App\Traits\HelpsMatchWords;
 use App\Traits\ScalesJobs;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 
@@ -32,8 +34,9 @@ class TargetService
      * @param bool $includeBoring
      * @return Target
      */
-    public function create(string $name, bool $includeBoring = false): Target
+    public function create(string $name): Target
     {
+        // todo: store , bool $includeBoring = false
         $originalInput = $name;
         $name = trim($name);
         $normalizedKey = NameNormalizer::canonicalKey($name);
@@ -50,30 +53,48 @@ class TargetService
         $signatureDto = NameNormalizer::anagramSignature($name);
         // if word has anagram, its signature will be found, otherwise created
         $signature = Signature::firstOrCreate(['signature' => $signatureDto->signature], $signatureDto->defaults);
-        return Target::firstOrCreate(
-            ['normalized_key' => $normalizedKey],
-            [
-                'name' => $display,
-                'status' => TargetStatus::filterable,
-                'signature_id' => $signature->id
-            ]
-        );
+        $found = Target::where('normalized_key', $normalizedKey)->first();
+        if ($found) { return $found; }
+        $target = new Target();
+        $target->normalized_key = $normalizedKey;
+        $target->name = $display;
+        $target->status = TargetStatus::filterable;
+        $target->signature_id = $signature->id;
+        $target->save();
+        return $target;
     }
 
-    public function fillPatterns(Target $target, bool $includeBoring = false): void
+    public function processTarget(Target $target, Collection $matchingWords): void
+    {
+        if (!$target->isProcessable()) {
+            Log::warning('TargetCreationService.processTarget not processable', []);
+            return;
+        }
+        if ($matchingWords->isEmpty()) {
+            $target->status = TargetStatus::processed;
+            $target->save();
+            return;
+        }
+
+        $target->status = TargetStatus::filterable;
+        $target->save();
+        $this->fillPatterns($target, $matchingWords);
+        $this->processPendingPatterns($target);
+    }
+
+    private function fillPatterns(Target $target, Collection $matchingWords): void
     {
         if ($target->status!=TargetStatus::filterable) {
             Log::warning('TargetService.process not in status fillable');
             return;
         }
-        // Step 1: Find matches and link to this target
-        $this->wordMatchService->linkMatchesToTarget($target, ['include_boring' => $includeBoring]);
+        TargetTokenSignatureWord::bulkInsertOrIgnore($target, $matchingWords);
 
         // Steps 2–5: compute mins, filter, insert, and enqueue fills for this target
-        $this->filterMatchingPatternsForTarget($target->fresh());
+        $this->filterMatchingPatternsForTarget($target);
     }
 
-    public function processPendingPatterns(Target $target): void
+    private function processPendingPatterns(Target $target): void
     {
         $target->status = TargetStatus::processing;
         $target->save();
@@ -81,6 +102,7 @@ class TargetService
             ->patterns()
             ->where('status', TargetPatternStatus::pending)
             ->pluck('id');
+
         Log::info('fill_jobs.dispatch', [
             'target_id' => $target->id,
             'pending_count' => $pendingIds->count(),
@@ -95,12 +117,11 @@ class TargetService
      */
     private function filterMatchingPatternsForTarget(Target $target): void
     {
-        $timer = Metrics::start('fill_matched_patterns_ms', [
-            'target_id' => $target->id,
-        ]);
+        $target->loadMissing(['tokenSignatureWords', 'signature']);
+
         // Compute minimum lengths from current matching words
         [$storedMinLengths, $matchedMinLengths] =
-            $this->wordMatchService->extractTargetTokenSignatureWordMinimumLengths($target->matchingTokenSignatureWords);
+            $this->wordMatchService->extractTargetTokenSignatureWordMinimumLengths($target->tokenSignatureWords);
 
         // List patterns within the target signature length
         $standardShortEnoughPatterns = $this->patternsService->listWithinMinLength((int) $target->signature->length);
@@ -131,7 +152,9 @@ class TargetService
                 'target_id' => $target->id,
                 'pattern_id' => $pattern->id,
                 'popularity_rank' => $pattern->popularity_rank,
-                'status' => $pattern->pattern_type == 'standard' ? 'pending' : 'deferred',
+                'status' => $pattern->pattern_type == 'standard'
+                    ? TargetPatternStatus::pending
+                    : TargetPatternStatus::deferred,
                 'created_at' => $now,
                 'updated_at' => $now,
             ];

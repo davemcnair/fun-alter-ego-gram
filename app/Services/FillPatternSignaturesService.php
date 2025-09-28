@@ -2,10 +2,10 @@
 
 namespace App\Services;
 
+use App\Enums\TargetPatternStatus;
 use App\Jobs\ExpandSignatureIndexedPatternsJob;
 use App\Models\Pattern;
 use App\Models\TargetSignatureIndexedPattern;
-use App\Models\Target;
 use App\Models\TargetPattern;
 use App\Traits\HelpsMatchWords;
 use App\Traits\ScalesJobs;
@@ -17,25 +17,23 @@ class FillPatternSignaturesService
 {
     use HelpsMatchWords, ScalesJobs;
 
+    public function __construct(public SignatureFillService $signatureFillService) {}
     /**
      * Execute the fill step for a TargetNamePattern using the provided collaborator services.
      */
     public function fillWithServices(
         int $targetPatternId,
-        SignatureFillService $signatureFillService
     ): void {
+        /** @var TargetPattern $targetPattern */
         $targetPattern = TargetPattern::find($targetPatternId);
         if (!$targetPattern) {
-            return; // Nothing to do
+            return;
         }
-        /** @var Target $target */
-        $target = $targetPattern->target;
 
-        // If already done, skip
-        if ($targetPattern->status === 'done') return;
+        if (!$targetPattern->status === TargetPatternStatus::pending) return;
 
         // Atomically claim the pattern if it's pending
-        $targetPattern->status = 'processing';
+        $targetPattern->status = TargetPatternStatus::processing;
         $targetPattern->save();
 
         // Mark start time when first claimed (works for both inline and queued)
@@ -45,11 +43,11 @@ class FillPatternSignaturesService
         }
 
         $timer = Metrics::start('fill_duration_ms', [
-            'target_id' => $target->id,
+            'target_id' => $targetPattern->target_id,
             'target_pattern_id' => $targetPattern->id,
         ]);
         Log::info('fill.start', [
-            'target_id' => $target->id,
+            'target_id' => $targetPattern->target_id,
             'target_pattern_id' => $targetPattern->id,
             'template' => (string)($targetPattern->pattern->template ?? ''),
         ]);
@@ -58,13 +56,13 @@ class FillPatternSignaturesService
 
         // Algorithmic ordering
         // Use the normalized signature string from the related Signature model
-        $targetSig = $target->signature->signature;
+        $targetSignature = $targetPattern->target->signature->signature;
 
         // Rarity-first slot ordering: order by ascending candidate count per token
         $candidateCounts = [];
-        foreach ($target->matchingTokenSignatureWords as $tokenSignatureWord) {
-            $tid = (int)$tokenSignatureWord->tokenSignature->token_id;
-            $candidateCounts[$tid] = ($candidateCounts[$tid] ?? 0) + 1;
+        foreach ($targetPattern->target->tokenSignatureWords as $targetTokenSignatureWord) {
+            $token_id = (int)$targetTokenSignatureWord->tokenSignatureWord->tokenSignature->token_id;
+            $candidateCounts[$token_id] = ($candidateCounts[$token_id] ?? 0) + 1;
         }
         $orderedSlots = $patternTokenPositions; // copy
         uasort($orderedSlots, function($aTokenId, $bTokenId) use ($candidateCounts) {
@@ -77,10 +75,10 @@ class FillPatternSignaturesService
 
         $signaturePatterns = [];
         $count = 0;
-        foreach ($signatureFillService->generateSignaturePatterns(
-            $targetSig,
+        foreach ($this->signatureFillService->generateSignaturePatterns(
+            $targetSignature,
             $orderedSlots,
-            $target->matchingTokenSignatureWords
+            $targetPattern->target->tokenSignatureWords
         ) as $signaturePattern) {
             $signaturePatterns[] = [
                 'target_pattern_id' => $targetPattern->id,
@@ -88,7 +86,9 @@ class FillPatternSignaturesService
             ];
             $count++;
             if ($count % 1000 === 0) {
-                try { Log::info($target->name . '/' . ((string)$targetPattern->pattern->template) . ' :' . $count . ' filled'); } catch (Throwable $e) {}
+                try {
+                    Log::info($targetPattern->target->name . '/' . ((string)$targetPattern->pattern->template) . ' :' . $count . ' filled');
+                } catch (Throwable $e) {}
                 TargetSignatureIndexedPattern::insert($signaturePatterns);
                 $signaturePatterns = [];
             }
@@ -99,16 +99,16 @@ class FillPatternSignaturesService
             TargetSignatureIndexedPattern::insert($signaturePatterns);
         }
         Metrics::counter('signature_indexed_patterns_generated', $count, [
-            'target_id' => $target->id,
+            'target_id' => $targetPattern->target_id,
             'target_pattern_id' => $targetPattern->id,
         ]);
         $durationMs = Metrics::end($timer, [
-            'target_id' => $target->id,
+            'target_id' => $targetPattern->target_id,
             'target_pattern_id' => $targetPattern->id,
             'generated' => $count,
         ]);
         Log::info('fill.complete', [
-            'target_id' => $target->id,
+            'target_id' => $targetPattern->target_id,
             'target_pattern_id' => $targetPattern->id,
             'generated' => $count,
             'duration_ms' => $durationMs,

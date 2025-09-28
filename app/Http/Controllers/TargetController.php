@@ -2,20 +2,15 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\TargetStatus;
+use App\Enums\TargetPatternStatus;
 use App\Models\Target;
 use App\Models\TargetPattern;
 use App\Models\AlterEgo;
-use App\Models\TokenSignatureWord;
-use App\Services\FillPatternSignaturesService;
-use App\Services\SignatureFillService;
 use App\Services\TargetService;
 use App\Services\WordMatchService;
 use App\Traits\HelpsMatchWords;
 use App\Traits\ScalesJobs;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -25,70 +20,21 @@ class TargetController extends Controller
 {
     use HelpsMatchWords, ScalesJobs;
 
-    /**
-     * Run fill/expand for a single TargetPattern.
-     * Idempotent: if already processing/done, returns current stats.
-     */
-    public function searchTargetPattern(TargetPattern $pattern, FillPatternSignaturesService $fillService, SignatureFillService $signatureFillService): JsonResponse
-    {
-        $start = microtime(true);
-        $prev = $pattern->status;
-        try { \Log::info('ui.search.click', ['target_id' => $pattern->target_id, 'target_pattern_id' => $pattern->id, 'previous_status' => $prev]); } catch (\Throwable $e) { /* ignore */ }
-
-        // If done or processing, return current stats
-        if (in_array($pattern->status, ['done','processing'], true)) {
-            $payload = [
-                'id' => $pattern->id,
-                'status' => $pattern->status,
-                'signatureIndexedPatternsCount' => $pattern->signatureIndexedPatterns()->count(),
-                'alterEgosCount' => $pattern->alterEgos()->count(),
-                'elapsed_ms' => $pattern->elapsed_ms,
-                'started_at' => optional($pattern->started_at)?->toIso8601String(),
-                'finished_at' => optional($pattern->finished_at)?->toIso8601String(),
-            ];
-            return response()->json(['ok' => true, 'pattern' => $payload]);
-        }
-
-        // Otherwise, kick off fill which will enqueue expand; mark started if not already
-        if ($pattern->started_at === null) {
-            $pattern->started_at = now();
-            $pattern->save();
-        }
-        // Run fill inline (it will set status=processing and dispatch expand)
-        $fillService->fillWithServices($pattern->id, $signatureFillService);
-
-        $pattern->refresh();
-        $payload = [
-            'id' => $pattern->id,
-            'status' => $pattern->status,
-            'signatureIndexedPatternsCount' => $pattern->signatureIndexedPatterns()->count(),
-            'alterEgosCount' => $pattern->alterEgos()->count(),
-            'elapsed_ms' => $pattern->elapsed_ms,
-            'started_at' => optional($pattern->started_at)?->toIso8601String(),
-            'finished_at' => optional($pattern->finished_at)?->toIso8601String(),
-        ];
-
-        $elapsedMs = (int) round((microtime(true) - $start) * 1000);
-        try { \Log::info('ui.search.complete', ['target_id' => $pattern->target_id, 'target_pattern_id' => $pattern->id, 'previous_status' => $prev, 'new_status' => $pattern->status, 'elapsed_ms' => $elapsedMs]); } catch (\Throwable $e) { /* ignore */ }
-
-        return response()->json(['ok' => true, 'pattern' => $payload]);
-    }
-
     // vimto/vomit
     public function addWord(Target $target, Request $request, WordMatchService $wordMatchService, TargetService $targetService)
     {
         // Perform explicit validation so we can return a consistent JSON error shape on failure
         $validator = Validator::make($request->all(), [
-            'token_type' => ['required','string'],
-            'word' => ['required','string','min:1'],
-            'list_type' => ['nullable','string'],
+            'token_type' => ['required', 'string'],
+            'word' => ['required', 'string', 'min:1'],
+            'list_type' => ['nullable', 'string'],
         ]);
         if ($validator->fails()) {
             $errors = $validator->errors()->toArray();
             Log::warning('TargetController.addWord: validation failed', [
                 'target_id' => $target->id,
                 'errors' => $errors,
-                'input' => $request->only(['token_type','word','list_type']),
+                'input' => $request->only(['token_type', 'word', 'list_type']),
             ]);
             return response()->json([
                 'ok' => false,
@@ -100,16 +46,14 @@ class TargetController extends Controller
 
         // Normalize and validate list type (default to ok)
         $listType = strtolower(trim((string)($data['list_type'] ?? 'ok')));
-        if (!in_array($listType, ['ok','fun'], true)) {
+        if (!in_array($listType, ['ok', 'fun'], true)) {
             return response()->json(['ok' => false, 'error' => 'Invalid list_type'], 422);
         }
 
         $wordMatchService->addTokenWord($data['token_type'], $data['word'], $listType);
+        $matchingWords = $wordMatchService->findMatchingTokenSignatureWords($target->signature);
 
-        // Step 1: Find matches and link to this target
-        $wordMatchService->linkMatchesToTarget($target);
-        // Steps 2–5: compute mins, filter, insert, and enqueue fills for this target
-        $targetService->fillMatchedPatternsForTarget($target->fresh());
+        $targetService->processTarget($target, $matchingWords);
 
         return response()->json(['ok' => true] + $this->lookupProgressPayload($target->fresh()));
     }
@@ -149,25 +93,20 @@ class TargetController extends Controller
         return view('targets.index', compact('items'));
     }
 
-    public function store(Request $request, TargetService $targetService)
+    public function store(Request $request, TargetService $targetService, WordMatchService $wordMatchService)
     {
         $data = $request->validate([
             'name' => ['required','string','min:1','max:100'],
             'allow_boring' => ['nullable','boolean'],
         ]);
         $includeBoring = (bool)($data['allow_boring'] ?? false);
-        $target = $targetService->create($data['name'], $includeBoring);
-        $targetService->fillPatterns($target, $includeBoring);
-        $targetService->processPendingPatterns($target);
-        return redirect()->route('targets.show', $target);
-    }
+        $target = $targetService->create($data['name']);
 
-    public function reprocess(Target $target)
-    {
-        // Todo: prevent reprocessing while not done
-        if (!$target->status == TargetStatus::processed){
-            return;
-        }
+        $matchingWords = $wordMatchService->findMatchingTokenSignatureWords($target->signature, [
+            'includeBoring' => $includeBoring
+        ]);
+
+        $targetService->processTarget($target, $matchingWords);
         return redirect()->route('targets.show', $target);
     }
 
@@ -255,7 +194,7 @@ class TargetController extends Controller
     // JSON-only Target detail for API v1
     public function apiShow(Target $target)
     {
-        $target->fresh();
+     //   $target->fresh();
         $payload = $this->lookupProgressPayload($target);
 
         return response()->json([
@@ -313,6 +252,57 @@ class TargetController extends Controller
             'alterEgosCount' => $data['alterEgosCount'],
         ]);
     }
+
+
+    /**
+     * Run fill/expand for a single TargetPattern.
+     * Idempotent: if already processing/done, returns current stats.
+     */
+    public function searchTargetPattern(TargetPattern $pattern, FillPatternSignaturesService $fillService, SignatureFillService $signatureFillService): JsonResponse
+    {
+        $start = microtime(true);
+        $prev = $pattern->status;
+        try { \Log::info('ui.search.click', ['target_id' => $pattern->target_id, 'target_pattern_id' => $pattern->id, 'previous_status' => $prev]); } catch (\Throwable $e) { /* ignore */ }
+
+        // If done or processing, return current stats
+        if (in_array($pattern->status, ['done','processing'], true)) {
+            $payload = [
+                'id' => $pattern->id,
+                'status' => $pattern->status,
+                'signatureIndexedPatternsCount' => $pattern->signatureIndexedPatterns()->count(),
+                'alterEgosCount' => $pattern->alterEgos()->count(),
+                'elapsed_ms' => $pattern->elapsed_ms,
+                'started_at' => optional($pattern->started_at)?->toIso8601String(),
+                'finished_at' => optional($pattern->finished_at)?->toIso8601String(),
+            ];
+            return response()->json(['ok' => true, 'pattern' => $payload]);
+        }
+
+        // Otherwise, kick off fill which will enqueue expand; mark started if not already
+        if ($pattern->started_at === null) {
+            $pattern->started_at = now();
+            $pattern->save();
+        }
+        // Run fill inline (it will set status=processing and dispatch expand)
+        $fillService->fillWithServices($pattern->id, $signatureFillService);
+
+        $pattern->refresh();
+        $payload = [
+            'id' => $pattern->id,
+            'status' => $pattern->status,
+            'signatureIndexedPatternsCount' => $pattern->signatureIndexedPatterns()->count(),
+            'alterEgosCount' => $pattern->alterEgos()->count(),
+            'elapsed_ms' => $pattern->elapsed_ms,
+            'started_at' => optional($pattern->started_at)?->toIso8601String(),
+            'finished_at' => optional($pattern->finished_at)?->toIso8601String(),
+        ];
+
+        $elapsedMs = (int) round((microtime(true) - $start) * 1000);
+        try { \Log::info('ui.search.complete', ['target_id' => $pattern->target_id, 'target_pattern_id' => $pattern->id, 'previous_status' => $prev, 'new_status' => $pattern->status, 'elapsed_ms' => $elapsedMs]); } catch (\Throwable $e) { /* ignore */ }
+
+        return response()->json(['ok' => true, 'pattern' => $payload]);
+    }
+
 
 //    public function newMatches(Target $target)
 //    {
@@ -412,69 +402,44 @@ class TargetController extends Controller
 //        return response()->json(['ok' => true] + $this->lookupProgressPayload($target->fresh()));
 //    }
 
-    private function lookupProgressPayload(Target $s): array
+    private function lookupProgressPayload(Target $target): array
     {
+        $deferredPatternsQuery =$target->patterns()
+            ->whereIn('status', [TargetPatternStatus::deferred]);
         return [
-            'item' => $s,
-            'patternsProcessedCount' => $s->patterns()->where('status','done')->count(),
-            'patternsCount' => $s->patterns->count(),
-            'patternsLive' => $s->patterns()->whereIn('status', ['done','processing'])->get()
-                ->map(fn($pattern) => $this->lookupPatternPayload($s->status, $pattern)),
-            'patternsWaiting' => $s->patterns()->whereIn('status', ['pending','deferred'])->get()
-                ->map(fn($pattern) => $this->lookupPatternPayload($s->status, $pattern)),
-            'signatureIndexedPatternsCount' => $s->signatureIndexedPatterns()->count(),
-            'alterEgosCount' => $s->alterEgos()->count(),
-            'starred' => $s->alterEgos()->where('starred', true)->pluck('phrase')->all(),
-            'matchedWords' => $this->buildMatchedWords($s->matchingTokenSignatureWords),
-            'hasUncommitted' => $s->matchingTokenSignatureWords
+            'item' => $target,
+            'patternsProcessedCount' => $target->patterns()->where('status','done')->count(),
+            'patternsCount' => $target->patterns->count(),
+            'patternsLive' => $target->patterns()->whereIn('status', ['done','processing'])->get()
+                ->map(fn($pattern) => $this->lookupPatternPayload($pattern)),
+            'deferredPatternsCount' => $deferredPatternsQuery->count(),
+            'deferredPatterns' => $deferredPatternsQuery
+                ->get()
+                ->map(fn($pattern) => $this->lookupPatternPayload($pattern)),
+            'signatureIndexedPatternsCount' => $target->signatureIndexedPatterns()->count(),
+            'alterEgosCount' => $target->alterEgos()->count(),
+            'starred' => $target->alterEgos()->where('starred', true)->pluck('phrase')->all(),
+            'matchedWordsCount' => $target->tokenSignatureWords()->count(),
+            'matchedWords' => $target->matchingWordsByTokenAndType(),
+            'hasUncommitted' => $target->tokenSignatureWords
                 ->filter( fn($w) => is_null($w->committed_at))
                 ->isNotEmpty()
         ];
     }
 
-    /**
-     * Build grouped token word matches for the Target Results page.
-     * Returns an array like [ tokenName => [ listType => [ [id, word], ... ] ] ]
-     */
-    private function buildMatchedWords(Collection $matchingTokenSignatureWords): array
+    private function lookupPatternPayload(TargetPattern $targetPattern): array
     {
-        $out = [];
-        /** @var TokenSignatureWord $tokenSignatureWord */
-        foreach ($matchingTokenSignatureWords as $tokenSignatureWord) {
-            $token = $tokenSignatureWord->tokenSignature->token->name;
-            $list = $tokenSignatureWord->list_type;
-            if (!isset($out[$token])) $out[$token] = [];
-            if (!isset($out[$token][$list])) $out[$token][$list] = [];
-            $out[$token][$list][] = [
-                'id' => $tokenSignatureWord->id,
-                'word' => $tokenSignatureWord->word,
-            ];
-        }
-        // Sort words alphabetically within each group for stable UI
-        foreach ($out as $token => &$lists) {
-            foreach ($lists as $list => &$items) {
-                usort($items, function($a, $b) {
-                    return strcasecmp($a['word'], $b['word']);
-                });
-            }
-        }
-        return $out;
-    }
-
-    private function lookupPatternPayload(string $status, TargetPattern $pattern): array
-    {
-        $signatureIndexedPatterns = $pattern->signatureIndexedPatterns;
-        $alterEgos = $pattern->alterEgos;
+        $signatureIndexedPatterns = $targetPattern->signatureIndexedPatterns;
+        $alterEgos = $targetPattern->alterEgos;
         return [
-            'id' => $pattern->id,
-            'status' => $pattern->status, // use pattern status (not target status)
-            'template' => optional($pattern->pattern)->template,
-            'popularity_rank' => $pattern->popularity_rank,
+            'id' => $targetPattern->id,
+            'status' => $targetPattern->status,
+            'template' => optional($targetPattern->pattern)->template,
             'signatureIndexedPatternsCount' => $signatureIndexedPatterns->count(),
             'alterEgosCount' => $alterEgos->count(),
-            'elapsed_ms' => $pattern->elapsed_ms,
-            'started_at' => $pattern->started_at,
-            'finished_at' => $pattern->finished_at,
+            'elapsed_ms' => $targetPattern->elapsed_ms,
+            'started_at' => $targetPattern->started_at,
+            'finished_at' => $targetPattern->finished_at,
             'signatureIndexedPatterns' => $signatureIndexedPatterns,
             'alterEgos' => $alterEgos,
         ];

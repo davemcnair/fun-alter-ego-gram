@@ -42,7 +42,7 @@ class WordMatchService
             'signature_id' => $signature->id,
         ]);
 
-        $useWordImmediately = $tokenSignature->wasRecentlyCreated || $listType === 'fun';
+        $useWordImmediately = $listType === 'fun';
 
         $tokenSignatureWord = TokenSignatureWord::firstOrCreate(
             [
@@ -57,7 +57,7 @@ class WordMatchService
         );
 
         // Retroactively defer the earliest non-fun word when a FUN word exists on the same token/signature
-        $shouldCheckRetroactive = $listType === 'fun' || !$tokenSignature->wasRecentlyCreated;
+        $shouldCheckRetroactive = $listType === 'fun';
         if ($shouldCheckRetroactive) {
             $firstNonFun = $tokenSignature->words()
                 ->where('list_type', '!=', 'fun')
@@ -175,22 +175,21 @@ class WordMatchService
      * Find and link matching TokenSignatureWord rows to a target.
      * Wraps findMatchingTokenSignatureWords + bulk insert with signature resolution.
      */
-    public function linkMatchesToTarget(Target $target, array $options = []): void
+    public function linkMatchesToTarget(Target $target,Collection $matchingWords): void
     {
-        $words = $this->findMatchingTokenSignatureWords($target->signature, $options);
-        TargetTokenSignatureWord::bulkInsertOrIgnore($target, $words);
+
     }
 
     /**
-     * @param Collection<TokenSignatureWord> $matchingTokenSignatureWords
+     * @param Collection<TokenSignatureWord> $targetTokenSignatureWords
      * @return array[]
      */
-    public function extractTargetTokenSignatureWordMinimumLengths(Collection $matchingTokenSignatureWords): array
+    public function extractTargetTokenSignatureWordMinimumLengths(Collection $targetTokenSignatureWords): array
     {
         $storedWordBasedMins = [];
         $matchingWordBasedMins = [];
-        foreach($matchingTokenSignatureWords as $matchedWord) {
-            $tokenSignature = $matchedWord->tokenSignature;
+        foreach($targetTokenSignatureWords as $targetTokenSignatureWord) {
+            $tokenSignature = $targetTokenSignatureWord->tokenSignatureWord->tokenSignature;
             $length = (int) ($tokenSignature->signature->length ?? 0);
             $token_id = $tokenSignature->token_id;
             $storedWordBasedMins[$token_id] = $tokenSignature->token->min_length;

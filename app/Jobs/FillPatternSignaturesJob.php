@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Models\TargetPattern;
 use App\Services\FillPatternSignaturesService;
 use App\Services\SignatureFillService;
 use App\Support\Metrics;
@@ -57,7 +58,7 @@ class FillPatternSignaturesJob implements ShouldQueue
     public function displayName(): string
     {
         try {
-            $tp = \App\Models\TargetPattern::with(['target', 'pattern'])->find($this->targetNamePatternId);
+            $tp = TargetPattern::with(['target', 'pattern'])->find($this->targetNamePatternId);
             if ($tp) {
                 $target = $tp->target?->name ?? 'unknown-target';
                 $template = (string)($tp->pattern->template ?? '');
@@ -78,7 +79,7 @@ class FillPatternSignaturesJob implements ShouldQueue
      * Handle filling pattern signatures for the associated TargetNamePattern.
      */
     public function handle(
-        SignatureFillService $signatureFillService
+        FillPatternSignaturesService $fillPatternSignaturesService
     ): void
     {
         Log::info('job.fill.start', [
@@ -91,8 +92,7 @@ class FillPatternSignaturesJob implements ShouldQueue
             'target_pattern_id' => $this->targetNamePatternId,
         ]);
         try {
-            app(FillPatternSignaturesService::class)
-                ->fillWithServices($this->targetNamePatternId, $signatureFillService);
+            $fillPatternSignaturesService->fillWithServices($this->targetNamePatternId);
             Metrics::counter('job_fill_succeeded', 1, [
                 'target_pattern_id' => $this->targetNamePatternId,
             ]);

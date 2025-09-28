@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Enums\TargetPatternStatus;
+use App\Enums\TargetStatus;
 use App\Models\AlterEgo;
 use App\Models\Target;
 use App\Models\TargetPattern;
@@ -28,10 +30,10 @@ final class ExpandSignatureIndexedPatternService
         $target = $targetPattern->target;
 
         // If already done, skip
-        if ($targetPattern->status === 'done') return;
+        if ($targetPattern->status === TargetPatternStatus::filled) return;
 
         // Claim the pattern for expansion
-        $targetPattern->status = 'processing';
+        $targetPattern->status = TargetPatternStatus::processing;
         $targetPattern->save();
 
         // Build slot order from the pattern template for formatting
@@ -73,17 +75,20 @@ final class ExpandSignatureIndexedPatternService
             $phrase = $this->phraseBuilderService->formatPhraseBySlots($slotWords, $slotOrder, false);
 
             // Persist as AlterEgo (idempotent)
-            AlterEgo::firstOrCreate(
-                [
-                    'target_signature_indexed_pattern_id' => $signatureIndexedPattern->id,
-                    'phrase' => $phrase,
-                ]
-            );
+            $alterEgo = AlterEgo::where('target_signature_indexed_pattern_id', $signatureIndexedPattern->id)
+                ->where('phrase',$phrase)
+                ->first();
+            if (!$alterEgo) {
+                $alterEgo = new AlterEgo();
+                $alterEgo->target_signature_indexed_pattern_id = $signatureIndexedPattern->id;
+                $alterEgo->phrase = $phrase;
+                $alterEgo->save();
+            }
             $createdCount++;
         }
 
         // Mark as done after expansion and record timing
-        $targetPattern->status = 'done';
+        $targetPattern->status = TargetPatternStatus::filled;
         // Set finished_at now; elapsed will be set using high-resolution timer below
         $finished = now();
         $targetPattern->finished_at = $finished;
@@ -93,12 +98,15 @@ final class ExpandSignatureIndexedPatternService
         // Update parent Target status only (completed when no pending/processing remain)
         try {
             $remaining = TargetPattern::where('target_id', $target->id)
-                ->whereIn('status', ['pending', 'processing'])
+                ->whereIn('status', [
+                    TargetPatternStatus::processing,
+                    TargetPatternStatus::deferred,
+                ])
                 ->count();
             if ($remaining === 0) {
-                $target->status = 'completed';
-            } else if ($target->status !== 'paused') {
-                $target->status = 'running';
+                $target->status = TargetStatus::processed;
+            } else {
+                $target->status = TargetStatus::processing;
             }
             $target->save();
         } catch (Throwable $e) {
@@ -121,7 +129,7 @@ final class ExpandSignatureIndexedPatternService
                 $targetPattern->elapsed_ms = $dur;
                 $targetPattern->save();
             }
-        } catch (\Throwable $e) { /* ignore */ }
+        } catch (Throwable $e) { /* ignore */ }
         Log::info('expand.complete', [
             'target_id' => $target->id,
             'target_pattern_id' => $targetPattern->id,

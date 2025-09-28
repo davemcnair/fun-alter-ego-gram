@@ -7,8 +7,8 @@ use App\Http\Controllers\WordController;
 use App\Http\Controllers\SystemController;
 
 // Targets API (JSON only; no Blade views)
-Route::get('/targets', [TargetController::class, 'apiIndex'])->name('api.targets.index');
-Route::post('/targets', [TargetController::class, 'apiStore'])->name('api.targets.store');
+//Route::get('/targets', [TargetController::class, 'apiIndex'])->name('api.targets.index');
+//Route::post('/targets', [TargetController::class, 'apiStore'])->name('api.targets.store');
 Route::get('/targets/{target}', [TargetController::class, 'apiShow'])->name('api.targets.show');
 Route::delete('/targets/{target}', [TargetController::class, 'apiDestroy'])->name('api.targets.destroy');
 Route::post('/targets/bulk-destroy', [TargetController::class, 'apiBulkDestroy'])->name('api.targets.bulk-destroy');

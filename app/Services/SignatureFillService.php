@@ -47,16 +47,14 @@ class SignatureFillService
     private function precomputeCandidateSignaturesByTokenId(Collection $matchingTokenSignatureWords): array
     {
         $candidateSignaturesByTokenId = [];
-        foreach ($matchingTokenSignatureWords as $tokenSignatureWord) {
-            $sigModel = $tokenSignatureWord->tokenSignature->signature;
-            $signature = is_object($sigModel) ? (string)($sigModel->signature ?? '') : (string)$sigModel;
-            $length = is_object($sigModel) ? (int)($sigModel->length ?? strlen($signature)) : strlen($signature);
-            $token_id = $tokenSignatureWord->tokenSignature->token_id;
+        foreach ($matchingTokenSignatureWords as $targetTokenSignatureWord) {
+            $tokenSignature = $targetTokenSignatureWord->tokenSignatureWord->tokenSignature;
+            $signature = $tokenSignature->signature;
             // Step 1: build candidate list with per-candidate histograms
-            $candidateSignaturesByTokenId[$token_id]['signatures'][] = [
-                'signature' => $signature,
-                'len' => $length,
-                'hist' => $this->letterCountsFromSignature($signature),
+            $candidateSignaturesByTokenId[$tokenSignature->token_id]['signatures'][] = [
+                'signature' => $signature->signature,
+                'len' => $signature->length,
+                'hist' => $this->letterCountsFromSignature($signature->signature),
             ];
         }
         foreach ($candidateSignaturesByTokenId as $token_id => &$bucket) {

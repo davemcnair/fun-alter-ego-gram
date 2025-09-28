@@ -13,7 +13,7 @@ Route::get('/targets/{target}', [TargetController::class, 'apiShow'])->name('api
 Route::delete('/targets/{target}', [TargetController::class, 'apiDestroy'])->name('api.targets.destroy');
 Route::post('/targets/bulk-destroy', [TargetController::class, 'apiBulkDestroy'])->name('api.targets.bulk-destroy');
 Route::get('/targets/{target}/new-matches', [TargetController::class, 'newMatches'])->name('api.targets.new-matches');
-Route::post('/targets/{target}/process-new-matches', [TargetController::class, 'processNewMatches'])->name('api.targets.process-new-matches');
+Route::post('/targets/{target}/process-new-matches', [TargetController::class, 'reprocess'])->name('api.targets.process-new-matches');
 Route::post('/targets/{target}/mark-matches-seen', [TargetController::class, 'markMatchesSeen'])->name('api.targets.mark-matches-seen');
 Route::get('/targets/{target}/progress', [TargetController::class, 'progress'])->name('api.targets.progress');
 Route::post('/targets/{target}/add-word', [TargetController::class, 'addWord'])->name('targets.add-word');

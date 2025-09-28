@@ -5,27 +5,117 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Targets</title>
     <style>
-        body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; padding: 0; background: #f7fafc; color: #111827; }
-        .container { max-width: 960px; margin: 0 auto; padding: 24px; }
-        h1 { font-weight: 600; font-size: 24px; margin: 8px 0 16px; }
-        form { background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
-        .row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
-        .field { display: flex; flex-direction: column; gap: 6px; }
-        .field label { font-size: 12px; color: #4b5563; }
-        input[type=text] { padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 6px; min-width: 300px; }
-        button { background: #2563eb; color: white; border: 0; border-radius: 6px; padding: 10px 14px; cursor: pointer; }
-        button:hover { background: #1d4ed8; }
-        table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,.06); margin-top: 20px; }
-        th, td { padding: 10px 12px; border-bottom: 1px solid #e5e7eb; text-align: left; font-size: 14px; }
-        th { background: #f3f4f6; color: #374151; font-weight: 600; }
-        .tag { background: #eef2ff; color: #3730a3; padding: 2px 8px; border-radius: 9999px; font-size: 12px; }
-        a.btn { color: white; background: #10b981; padding: 6px 10px; border-radius: 6px; text-decoration: none; }
+        body {
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #f7fafc;
+            color: #111827;
+        }
+
+        .container {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        h1 {
+            font-weight: 600;
+            font-size: 24px;
+            margin: 8px 0 16px;
+        }
+
+        form {
+            background: #fff;
+            border-radius: 8px;
+            padding: 16px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, .06);
+        }
+
+        .row {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .field label {
+            font-size: 12px;
+            color: #4b5563;
+        }
+
+        input[type=text] {
+            padding: 10px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            min-width: 300px;
+        }
+
+        button {
+            background: #2563eb;
+            color: white;
+            border: 0;
+            border-radius: 6px;
+            padding: 10px 14px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #1d4ed8;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #fff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, .06);
+            margin-top: 20px;
+        }
+
+        th, td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #e5e7eb;
+            text-align: left;
+            font-size: 14px;
+        }
+
+        th {
+            background: #f3f4f6;
+            color: #374151;
+            font-weight: 600;
+        }
+
+        .tag {
+            background: #eef2ff;
+            color: #3730a3;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            font-size: 12px;
+        }
+
+        a.btn {
+            color: white;
+            background: #10b981;
+            padding: 6px 10px;
+            border-radius: 6px;
+            text-decoration: none;
+        }
     </style>
 </head>
 <body>
 <nav style="background:#111827; color:#fff; padding:8px 12px;">
-    <a href="{{ route('targets.index') }}" style="color:#fff; margin-right:10px; text-decoration:none;"><strong>Targets</strong></a>
-    <a href="{{ route('api.patterns.index') }}" style="color:#fff; margin-right:10px; text-decoration:none;">Patterns</a>
+    <a href="{{ route('targets.index') }}"
+       style="color:#fff; margin-right:10px; text-decoration:none;"><strong>Targets</strong></a>
+    <a href="{{ route('api.patterns.index') }}"
+       style="color:#fff; margin-right:10px; text-decoration:none;">Patterns</a>
     <a href="{{ route('api.words.index') }}" style="color:#fff; margin-right:10px; text-decoration:none;">Words</a>
 </nav>
 <div class="container">
@@ -35,8 +125,10 @@
         <div class="row" style="margin-bottom: 12px;">
             <div class="field">
                 <label for="name">Source name</label>
-                <input id="name" name="name" type="text" value="{{ old('name') }}" placeholder="e.g., John Adam Doe" required>
-                @error('name')<div style="color:#b91c1c; font-size: 12px;">{{ $message }}</div>@enderror
+                <input id="name" name="name" type="text" value="{{ old('name') }}" placeholder="e.g., John Adam Doe"
+                       required>
+                @error('name')
+                <div style="color:#b91c1c; font-size: 12px;">{{ $message }}</div>@enderror
             </div>
         </div>
         <div class="row" style="gap:12px; align-items:center;">
@@ -47,10 +139,12 @@
     <h1 style="margin-top:28px;">Recent Targets</h1>
 
     @if(session('status'))
-        <div style="margin:10px 0; padding:10px 12px; background:#ecfeff; color:#155e75; border:1px solid #67e8f9; border-radius:6px;">{{ session('status') }}</div>
+        <div
+            style="margin:10px 0; padding:10px 12px; background:#ecfeff; color:#155e75; border:1px solid #67e8f9; border-radius:6px;">{{ session('status') }}</div>
     @endif
 
-    <form id="bulkForm" method="post" action="{{ route('targets.bulk-destroy') }}" onsubmit="return confirm('Delete selected Target names? This will remove their patterns and alter egos.');">
+    <form id="bulkForm" method="post" action="{{ route('targets.bulk-destroy') }}"
+          onsubmit="return confirm('Delete selected Target names? This will remove their patterns and alter egos.');">
         @csrf
         <div style="margin: 8px 0; display:flex; gap:8px; align-items:center;">
             <label><input type="checkbox" id="selectAll"> Select all</label>
@@ -69,30 +163,31 @@
             </tr>
             </thead>
             <tbody>
-            @forelse($items as $s)
+            @forelse($items as $t)
                 <tr>
-                    <td><input type="checkbox" name="ids[]" value="{{ $s->id }}" class="rowCheck"></td>
-                    <td>{{ $s->name }}</td>
-                    @php $total = $s->patterns()->count(); $done = $s->patterns()->where('status','done')->count(); $newCount = DB::table('target_token_signature_words as t')->where('t.target_id', $s->id)->when($s->matches_seen_at, function($q) use ($s){ $q->where('t.created_at','>', $s->matches_seen_at); })->count(); @endphp
+                    <td><input type="checkbox" name="ids[]" value="{{ $t->id }}" class="rowCheck"></td>
+                    <td>{{ $t->name }}</td>
+                    @php $total = $t->patterns()->count(); $done = $t->patterns()->where('status','done')->count(); $newCount = DB::table('target_token_signature_words as t')->where('t.target_id', $t->id)->when($t->matches_seen_at, function($q) use ($t){ $q->where('t.created_at','>', $t->matches_seen_at); })->count(); @endphp
                     <td>{{ $done }} / {{ $total }}</td>
-                    <td>{{ $s->alterEgos()->count() }}</td>
+                    <td>{{ $t->alterEgos()->count() }}</td>
                     <td>
-                        @if($newCount > 0)
-                            <button type="button" class="tag" id="nm-btn-{{ $s->id }}" aria-expanded="false" onclick="toggleNewMatches({{ $s->id }})">{{ $s->filled_matches_count }} ({{ $s->new_matches_count}})</button>
-                            <div id="nm-{{ $s->id }}" style="display:none; margin-top:6px; max-height:140px; overflow:auto; border:1px solid #e5e7eb; padding:6px; border-radius:4px;"></div>
-                        @else
-                            <span class="tag" style="background:#f3f4f6; color:#6b7280;">0</span>
-                        @endif
+                        {{ $t->filled_matches_count }}({{ $t->new_matches_count}})
                     </td>
-                    <td>{{ $s->last_processed_matches_at }}</td>
+                    <td>{{ $t->last_processed_matches_at }}</td>
                     <td style="display:flex; gap:6px; align-items:center;">
-                        <a class="btn" href="{{ route('targets.show', $s) }}">Open</a>
-                        <button type="button" onclick="processNewMatches({{ $s->id }})" {{ $newCount > 0 ? '' : 'disabled' }}>Fill with new words</button>
-                        <button type="button" onclick="deleteSingle({{ $s->id }})" style="background:#dc2626;">Delete</button>
+                        <a class="btn" href="{{ route('targets.show', $t) }}">Open</a>
+                        <button type="button"
+                                onclick="processNewMatches({{ $t->id }})" {{ $newCount > 0 ? '' : 'disabled' }}>Fill
+                            with new words
+                        </button>
+                        <button type="button" onclick="deleteSingle({{ $t->id }})" style="background:#dc2626;">Delete
+                        </button>
                     </td>
                 </tr>
             @empty
-                <tr><td colspan="6">No Targets yet.</td></tr>
+                <tr>
+                    <td colspan="6">No Targets yet.</td>
+                </tr>
             @endforelse
             </tbody>
         </table>
@@ -100,110 +195,86 @@
     <div style="margin-top: 12px;">{{ $items->links() }}</div>
 </div>
 <script>
-// Suppress a known noisy Chrome extension console error about duplicate context menu ids
-(function(){
-    try {
-        var origError = console.error;
-        console.error = function() {
-            try {
-                var msg = arguments.length ? String(arguments[0]) : '';
-                if (msg.indexOf('runtime.lastError') !== -1 && msg.indexOf('Cannot create item with duplicate id') !== -1) {
-                    return; // swallow only this specific extension noise
+    // Suppress a known noisy Chrome extension console error about duplicate context menu ids
+    (function () {
+        try {
+            var origError = console.error;
+            console.error = function () {
+                try {
+                    var msg = arguments.length ? String(arguments[0]) : '';
+                    if (msg.indexOf('runtime.lastError') !== -1 && msg.indexOf('Cannot create item with duplicate id') !== -1) {
+                        return; // swallow only this specific extension noise
+                    }
+                } catch (e) {
                 }
-            } catch (e) {}
-            return origError.apply(console, arguments);
-        };
-    } catch (e) { /* ignore */ }
-    // Select all handling
-    (function(){
-        var selectAll = document.getElementById('selectAll');
-        if (selectAll) {
-            selectAll.addEventListener('change', function(){
+                return origError.apply(console, arguments);
+            };
+        } catch (e) { /* ignore */
+        }
+        // Select all handling
+        (function () {
+            var selectAll = document.getElementById('selectAll');
+            if (selectAll) {
+                selectAll.addEventListener('change', function () {
+                    var checks = document.querySelectorAll('.rowCheck');
+                    checks.forEach(function (c) {
+                        c.checked = selectAll.checked;
+                    });
+                });
+            }
+        })();
+        // Single delete helper uses the bulk form
+        window.deleteSingle = function (id) {
+            try {
+                if (!confirm('Delete this Target and all related data?')) return;
+                var form = document.getElementById('bulkForm');
+                if (!form) return;
                 var checks = document.querySelectorAll('.rowCheck');
-                checks.forEach(function(c){ c.checked = selectAll.checked; });
+                checks.forEach(function (c) {
+                    c.checked = (parseInt(c.value, 10) === parseInt(id, 10));
+                });
+                form.submit();
+            } catch (e) { /* ignore */
+            }
+        };
+
+        window.processNewMatches = async function (targetId) {
+            var btn = document.getElementById('nm-btn-' + targetId);
+            var oldLabel = btn ? btn.textContent : '';
+            if (btn) btn.textContent = '…';
+            try {
+                // reprocess, diff last run
+                var res = await fetch('/api/targets/' + targetId + '/process-new-matches', {method: 'POST'});
+                var json = await res.json();
+                // Refresh the page to update counts
+                location.reload();
+            } catch (e) {
+                if (btn) btn.textContent = oldLabel || '0';
+                alert('Failed to process new matches');
+            }
+        };
+    })();
+    // Heartbeat check on create (non-blocking)
+    (function () {
+        var form = document.getElementById('createForm');
+        if (!form) return;
+        // Allow normal submission to the web route so the server redirect works.
+        form.addEventListener('submit', function () {
+            try {
+                fetch('/api/system/heartbeat').catch(function () {
+                });
+            } catch (e) {
+            }
+        });
+
+        // Allow native form submission for bulk delete so server redirects back with status
+        var bulk = document.getElementById('bulkForm');
+        if (bulk) {
+            bulk.addEventListener('submit', function (e) {
+                // no interception
             });
         }
     })();
-    // Single delete helper uses the bulk form
-    window.deleteSingle = function(id){
-        try {
-            if (!confirm('Delete this Target and all related data?')) return;
-            var form = document.getElementById('bulkForm');
-            if (!form) return;
-            var checks = document.querySelectorAll('.rowCheck');
-            checks.forEach(function(c){ c.checked = (parseInt(c.value, 10) === parseInt(id, 10)); });
-            form.submit();
-        } catch (e) { /* ignore */ }
-    };
-    // New matches UI handlers
-    window.toggleNewMatches = async function(targetId){
-        var panel = document.getElementById('nm-' + targetId);
-        var btn = document.getElementById('nm-btn-' + targetId);
-        if (!panel) return;
-        var visible = panel.style.display !== 'none';
-        if (visible) {
-            panel.style.display = 'none';
-            if (btn) btn.setAttribute('aria-expanded', 'false');
-            return;
-        }
-        // Load list via AJAX
-        panel.innerHTML = '<div>Loading…</div>';
-        try {
-            var res = await fetch('/api/targets/' + targetId + '/new-matches');
-            var json = await res.json();
-            if (json && json.items) {
-                if (json.items.length === 0) {
-                    panel.innerHTML = '<div style="color:#6b7280;">No new matches.</div>';
-                } else {
-                    var html = '<ul style="margin:0; padding-left: 16px;">';
-                    json.items.forEach(function(it){
-                        html += '<li><span class="tag" style="margin-right:6px;">' + it.token + '</span> <em>(' + it.list_type + ')</em> ' + it.word + '</li>';
-                    });
-                    html += '</ul>';
-                    panel.innerHTML = html;
-                }
-            } else {
-                panel.innerHTML = '<div style="color:#b91c1c;">Failed to load.</div>';
-            }
-        } catch (e) {
-            panel.innerHTML = '<div style="color:#b91c1c;">Error loading.</div>';
-        }
-        panel.style.display = 'block';
-        if (btn) btn.setAttribute('aria-expanded', 'true');
-    };
-
-    window.processNewMatches = async function(targetId){
-        var btn = document.getElementById('nm-btn-' + targetId);
-        var oldLabel = btn ? btn.textContent : '';
-        if (btn) btn.textContent = '…';
-        try {
-            var res = await fetch('/api/targets/' + targetId + '/process-new-matches', { method: 'POST' });
-            var json = await res.json();
-            // Refresh the page to update counts
-            location.reload();
-        } catch (e) {
-            if (btn) btn.textContent = oldLabel || '0';
-            alert('Failed to process new matches');
-        }
-    };
-  })();
-  // Heartbeat check on create (non-blocking)
-  (function(){
-    var form = document.getElementById('createForm');
-    if (!form) return;
-    // Allow normal submission to the web route so the server redirect works.
-    form.addEventListener('submit', function(){
-      try { fetch('/api/system/heartbeat').catch(function(){}); } catch (e) {}
-    });
-
-    // Allow native form submission for bulk delete so server redirects back with status
-    var bulk = document.getElementById('bulkForm');
-    if (bulk) {
-      bulk.addEventListener('submit', function(e){
-        // no interception
-      });
-    }
-  })();
-  </script>
-  </body>
-  </html>
+</script>
+</body>
+</html>

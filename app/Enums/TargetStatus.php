@@ -4,8 +4,8 @@ namespace App\Enums;
 
 enum TargetStatus
 {
-    case idle;
+    case filterable;
+    case fillable;
     case processing;
     case processed;
-    case error;
 }

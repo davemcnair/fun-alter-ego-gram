@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Enums\TargetPatternStatus;
+use App\Enums\TargetStatus;
 use App\Jobs\FillPatternSignaturesJob;
 use App\Models\Pattern;
 use App\Models\Signature;
@@ -23,10 +25,75 @@ class TargetService
     ) {}
 
     /**
-     * Fill matched patterns for a target by computing mins, filtering, inserting,
-     * and enqueuing fills for pending patterns.
+     * Create a Target from the provided display name, link candidate patterns,
+     * enqueue pending fills, and return the created Target.
+     *
+     * @param string $name
+     * @param bool $includeBoring
+     * @return Target
      */
-    public function fillMatchedPatternsForTarget(Target $target): void
+    public function create(string $name, bool $includeBoring = false): Target
+    {
+        $originalInput = $name;
+        $name = trim($name);
+        $normalizedKey = NameNormalizer::canonicalKey($name);
+
+        // Validation: normalized key must be non-empty
+        if ($normalizedKey === '') {
+            Log::warning('TargetCreationService.create invalid name after normalization', [
+                'original_input' => mb_substr($originalInput, 0, 80),
+            ]);
+            abort(422, 'Name is invalid after normalization');
+        }
+        $display = NameNormalizer::displayName($name);
+
+        $signatureDto = NameNormalizer::anagramSignature($name);
+        // if word has anagram, its signature will be found, otherwise created
+        $signature = Signature::firstOrCreate(['signature' => $signatureDto->signature], $signatureDto->defaults);
+        return Target::firstOrCreate(
+            ['normalized_key' => $normalizedKey],
+            [
+                'name' => $display,
+                'status' => TargetStatus::filterable,
+                'signature_id' => $signature->id
+            ]
+        );
+    }
+
+    public function fillPatterns(Target $target, bool $includeBoring = false): void
+    {
+        if ($target->status!=TargetStatus::filterable) {
+            Log::warning('TargetService.process not in status fillable');
+            return;
+        }
+        // Step 1: Find matches and link to this target
+        $this->wordMatchService->linkMatchesToTarget($target, ['include_boring' => $includeBoring]);
+
+        // Steps 2–5: compute mins, filter, insert, and enqueue fills for this target
+        $this->filterMatchingPatternsForTarget($target->fresh());
+    }
+
+    public function processPendingPatterns(Target $target): void
+    {
+        $target->status = TargetStatus::processing;
+        $target->save();
+        $pendingIds = $target
+            ->patterns()
+            ->where('status', TargetPatternStatus::pending)
+            ->pluck('id');
+        Log::info('fill_jobs.dispatch', [
+            'target_id' => $target->id,
+            'pending_count' => $pendingIds->count(),
+        ]);
+        foreach ($pendingIds as $pid) {
+            $this->scaledDispatch(FillPatternSignaturesJob::class, (int)$pid);
+        }
+    }
+
+    /**
+     * Create filtered matched patterns for a target by computing mins
+     */
+    private function filterMatchingPatternsForTarget(Target $target): void
     {
         $timer = Metrics::start('fill_matched_patterns_ms', [
             'target_id' => $target->id,
@@ -74,78 +141,6 @@ class TargetService
             DB::table('target_patterns')->insertOrIgnore($bulk->toArray());
             Metrics::counter('target_patterns_inserted', $filteredCount, [ 'target_id' => $target->id ]);
         }
-
-        // Dispatch fills for pending
-        $pendingIds = $target->fresh()->patterns()->where('status', 'pending')->pluck('id');
-        Log::info('fill_jobs.dispatch', [
-            'target_id' => $target->id,
-            'pending_count' => $pendingIds->count(),
-        ]);
-        foreach ($pendingIds as $pid) {
-            $this->scaledDispatch(FillPatternSignaturesJob::class, (int)$pid);
-        }
-        Metrics::counter('fill_jobs_dispatched', (int)$pendingIds->count(), [ 'target_id' => $target->id ]);
-        // Step 6: set target to running
-        $target->status = 'running';
-        $target->save();
-        Metrics::end($timer, [ 'target_id' => $target->id ]);
     }
 
-    /**
-     * Create a Target from the provided display name, link candidate patterns,
-     * enqueue pending fills, and return the created Target.
-     *
-     * @param string $name
-     * @param bool $includeBoring
-     * @return Target
-     */
-    public function create(string $name, bool $includeBoring = false): Target
-    {
-        $originalInput = $name;
-        $name = trim($name);
-        $normalizedKey = NameNormalizer::canonicalKey($name);
-
-        $signatureDto = NameNormalizer::anagramSignature($name);
-        $display = NameNormalizer::displayName($name);
-
-
-        // Validation: normalized key must be non-empty
-        if ($normalizedKey === '') {
-            Log::warning('TargetCreationService.create invalid name after normalization', [
-                'original_input' => mb_substr($originalInput, 0, 80),
-            ]);
-            abort(422, 'Name is invalid after normalization');
-        }
-
-        // Log observability fields
-        Log::info('target.create.begin', [
-            'original_input' => mb_substr($originalInput, 0, 80),
-            'normalized_key' => $normalizedKey,
-            'include_boring' => $includeBoring,
-        ]);
-
-        $tTimer = Metrics::start('target_create_ms', [ 'normalized_key' => $normalizedKey ]);
-        // if word has anagram, its signature will be found, otherwise created
-        $signature = Signature::firstOrCreate(['signature' => $signatureDto->signature], $signatureDto->defaults);
-        Log::info('signature.ensure', [ 'signature_id' => $signature->id, 'signature' => $signature->signature ]);
-        $target = Target::firstOrCreate(
-            ['normalized_key' => $normalizedKey],
-            [
-                'name' => $display,
-                'status' => 'idle',
-                'signature_id' => $signature->id
-            ]
-        );
-        Metrics::counter('targets_created', 1, [ 'target_id' => $target->id ]);
-
-        // Step 1: Find matches and link to this target
-        $this->wordMatchService->linkMatchesToTarget($target, ['include_boring' => $includeBoring]);
-
-        // Steps 2–5: compute mins, filter, insert, and enqueue fills for this target
-        $this->fillMatchedPatternsForTarget($target->fresh());
-        Metrics::end($tTimer, [ 'target_id' => $target->id ]);
-        Log::info('target.create.end', [ 'target_id' => $target->id ]);
-
-        return $target;
-    }
 }

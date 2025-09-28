@@ -2,8 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Jobs\CreateTargetJob;
-use App\Models\Signature;
+use App\Enums\TargetStatus;
 use App\Models\Target;
 use App\Models\TargetPattern;
 use App\Models\AlterEgo;
@@ -12,9 +11,7 @@ use App\Services\FillPatternSignaturesService;
 use App\Services\SignatureFillService;
 use App\Services\TargetService;
 use App\Services\WordMatchService;
-use App\Support\NameNormalizer;
 use App\Traits\HelpsMatchWords;
-use App\Jobs\FillPatternSignaturesJob;
 use App\Traits\ScalesJobs;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -77,7 +74,7 @@ class TargetController extends Controller
         return response()->json(['ok' => true, 'pattern' => $payload]);
     }
 
-
+    // vimto/vomit
     public function addWord(Target $target, Request $request, WordMatchService $wordMatchService, TargetService $targetService)
     {
         // Perform explicit validation so we can return a consistent JSON error shape on failure
@@ -152,125 +149,108 @@ class TargetController extends Controller
         return view('targets.index', compact('items'));
     }
 
-    public function store(Request $request)
+    public function store(Request $request, TargetService $targetService)
     {
         $data = $request->validate([
             'name' => ['required','string','min:1','max:100'],
             'allow_boring' => ['nullable','boolean'],
         ]);
         $includeBoring = (bool)($data['allow_boring'] ?? false);
-
-        // Ensure normalization yields a non-empty signature
-        $canonical = NameNormalizer::canonicalKey($data['name']);
-        if ($canonical === '') {
-            return back()->withErrors(['name' => 'Name is invalid after normalization'])->withInput();
-        }
-
-        // Create/find minimal Target with queued status
-        $display = NameNormalizer::displayName($data['name']);
-        $sigDto = NameNormalizer::anagramSignature($display);
-        $signature = Signature::firstOrCreate(['signature' => $sigDto->signature], $sigDto->defaults);
-        $target = Target::firstOrCreate(
-            ['normalized_key' => $canonical],
-            [
-                'name' => $display,
-                'status' => 'queued',
-                'signature_id' => $signature->id,
-            ]
-        );
-
-        // Always set status to queued if newly created or if idle
-        if (in_array($target->status, ['idle'])) {
-            $target->status = 'queued';
-            $target->save();
-        }
-
-        // Dispatch async creation job
-        $this->scaledDispatch(CreateTargetJob::class, $target->id, $includeBoring);
-
+        $target = $targetService->create($data['name'], $includeBoring);
+        $targetService->fillPatterns($target, $includeBoring);
+        $targetService->processPendingPatterns($target);
         return redirect()->route('targets.show', $target);
     }
 
-    public function apiStore(Request $request, TargetService $targetService)
+    public function reprocess(Target $target)
     {
-        $data = $request->validate([
-            'name' => ['required','string','min:1','max:100'],
-            'allow_boring' => ['nullable','boolean'],
-        ]);
-        $includeBoring = (bool)($data['allow_boring'] ?? false);
-
-        $canonical = NameNormalizer::canonicalKey($data['name']);
-        if ($canonical === '') {
-            return response()->json(['ok' => false, 'error' => 'Name is invalid after normalization'], 422);
+        // Todo: prevent reprocessing while not done
+        if (!$target->status == TargetStatus::processed){
+            return;
         }
-
-        $display = NameNormalizer::displayName($data['name']);
-        $sigDto = NameNormalizer::anagramSignature($display);
-        $signature = Signature::firstOrCreate(['signature' => $sigDto->signature], $sigDto->defaults);
-        $target = Target::firstOrCreate(
-            ['normalized_key' => $canonical],
-            [
-                'name' => $display,
-                'status' => 'queued',
-                'signature_id' => $signature->id,
-            ]
-        );
-
-        if (in_array($target->status, ['idle'])) {
-            $target->status = 'queued';
-            $target->save();
-        }
-
-        $this->scaledDispatch(CreateTargetJob::class, $target->id, $includeBoring);
-
-        try { \Log::info('api.targets.store', ['target_id' => $target->id, 'created' => (bool)$target->wasRecentlyCreated]); } catch (Throwable $e) {}
-
-        return response()->json([
-            'ok' => true,
-            'id' => $target->id,
-            'redirect' => route('api.targets.show', $target),
-        ]);
+        return redirect()->route('targets.show', $target);
     }
 
-    // JSON-only Targets index for API v1
-    public function apiIndex(Request $request)
-    {
-        $perPage = (int) $request->query('per_page', 25);
-        $perPage = $perPage > 0 && $perPage <= 100 ? $perPage : 25;
+//    public function apiStore(Request $request, TargetService $targetService)
+//    {
+//        $data = $request->validate([
+//            'name' => ['required','string','min:1','max:100'],
+//            'allow_boring' => ['nullable','boolean'],
+//        ]);
+//        $includeBoring = (bool)($data['allow_boring'] ?? false);
+//
+//        $canonical = NameNormalizer::canonicalKey($data['name']);
+//        if ($canonical === '') {
+//            return response()->json(['ok' => false, 'error' => 'Name is invalid after normalization'], 422);
+//        }
+//
+//        $display = NameNormalizer::displayName($data['name']);
+//        $sigDto = NameNormalizer::anagramSignature($display);
+//        $signature = Signature::firstOrCreate(['signature' => $sigDto->signature], $sigDto->defaults);
+//        $target = Target::firstOrCreate(
+//            ['normalized_key' => $canonical],
+//            [
+//                'name' => $display,
+//                'status' => 'queued',
+//                'signature_id' => $signature->id,
+//            ]
+//        );
+//
+//        if (in_array($target->status, ['idle'])) {
+//            $target->status = 'queued';
+//            $target->save();
+//        }
+//
+//        $this->scaledDispatch(CreateTargetJob::class, $target->id, $includeBoring);
+//
+//        try { \Log::info('api.targets.store', ['target_id' => $target->id, 'created' => (bool)$target->wasRecentlyCreated]); } catch (Throwable $e) {}
+//
+//        return response()->json([
+//            'ok' => true,
+//            'id' => $target->id,
+//            'redirect' => route('api.targets.show', $target),
+//        ]);
+//    }
 
-        $query = Target::query()
-            ->select('targets.*')
-            ->addSelect([
-                'filled_matches_count' => DB::table('target_token_signature_words as ttsw')
-                    ->selectRaw('count(*)')
-                    ->whereColumn('ttsw.target_id', 'targets.id')
-                    ->when(DB::raw('targets.matches_seen_at'), function ($q) {
-                        $q->whereRaw('ttsw.created_at <= targets.last_processed_matches_at');
-                    }),
-                'new_matches_count' => DB::table('target_token_signature_words as ttsw')
-                    ->selectRaw('count(*)')
-                    ->whereColumn('ttsw.target_id', 'targets.id')
-                    ->when(DB::raw('targets.matches_seen_at'), function ($q) {
-                        $q->whereRaw('ttsw.created_at > targets.last_processed_matches_at');
-                    }),
-            ])
-            ->orderByDesc('id');
-
-        $paginator = $query->paginate($perPage);
-
-        return response()->json([
-            'ok' => true,
-            'data' => $paginator->items(),
-            'meta' => [
-                'pagination' => [
-                    'page' => $paginator->currentPage(),
-                    'per_page' => $paginator->perPage(),
-                    'total' => $paginator->total(),
-                    'total_pages' => $paginator->lastPage(),
-                ],
-            ],
-        ]);
-    }
+//    // JSON-only Targets index for API v1
+//    public function apiIndex(Request $request)
+//    {
+//        $perPage = (int) $request->query('per_page', 25);
+//        $perPage = $perPage > 0 && $perPage <= 100 ? $perPage : 25;
+//
+//        $query = Target::query()
+//            ->select('targets.*')
+//            ->addSelect([
+//                'filled_matches_count' => DB::table('target_token_signature_words as ttsw')
+//                    ->selectRaw('count(*)')
+//                    ->whereColumn('ttsw.target_id', 'targets.id')
+//                    ->when(DB::raw('targets.matches_seen_at'), function ($q) {
+//                        $q->whereRaw('ttsw.created_at <= targets.last_processed_matches_at');
+//                    }),
+//                'new_matches_count' => DB::table('target_token_signature_words as ttsw')
+//                    ->selectRaw('count(*)')
+//                    ->whereColumn('ttsw.target_id', 'targets.id')
+//                    ->when(DB::raw('targets.matches_seen_at'), function ($q) {
+//                        $q->whereRaw('ttsw.created_at > targets.last_processed_matches_at');
+//                    }),
+//            ])
+//            ->orderByDesc('id');
+//
+//        $paginator = $query->paginate($perPage);
+//
+//        return response()->json([
+//            'ok' => true,
+//            'data' => $paginator->items(),
+//            'meta' => [
+//                'pagination' => [
+//                    'page' => $paginator->currentPage(),
+//                    'per_page' => $paginator->perPage(),
+//                    'total' => $paginator->total(),
+//                    'total_pages' => $paginator->lastPage(),
+//                ],
+//            ],
+//        ]);
+//    }
 
     // JSON-only Target detail for API v1
     public function apiShow(Target $target)
@@ -334,69 +314,29 @@ class TargetController extends Controller
         ]);
     }
 
-    public function newMatches(Target $target)
-    {
-        Log::info('TargetController.newMatches: request received', [
-            'target_id' => $target->id,
-        ]);
-        $rows = DB::table('target_token_signature_words as t')
-            ->join('token_signature_words as w', 'w.id', '=', 't.token_signature_word_id')
-            ->join('token_signatures as s', 's.id', '=', 'w.token_signature_id')
-            ->join('tokens as tok', 'tok.id', '=', 's.token_id')
-            ->where('t.target_id', $target->id)
-            ->when($target->matches_seen_at, function($q) use ($target){
-                $q->where('t.created_at', '>', $target->matches_seen_at);
-            })
-            ->orderBy('tok.name')
-            ->orderBy('w.list_type')
-            ->orderBy('w.word')
-            ->get(['w.id as id', 'tok.name as token', 'w.list_type', 'w.word']);
-        return response()->json([
-            'ok' => true,
-            'count' => $rows->count(),
-            'items' => $rows,
-        ]);
-    }
-
-    public function processNewMatches(Target $target)
-    {
-        Log::info('TargetController.processNewMatches: request received', [
-            'target_id' => $target->id,
-        ]);
-        // Basic rate-limit: avoid rapid reprocessing within 30 seconds
-        $key = 'target:'.$target->id.':process_new_matches_at';
-        $now = time();
-        try {
-            $last = (int) (cache()->get($key) ?? 0);
-            if ($last && ($now - $last) < 30) {
-                return response()->json(['ok' => false, 'error' => 'Please wait before retrying'], 429);
-            }
-        } catch (Throwable $e) { /* ignore cache errors */ }
-
-        // Determine how many matches are new for processing since the last cycle
-        $count = DB::table('target_token_signature_words as t')
-            ->where('t.target_id', $target->id)
-            ->when($target->last_processed_matches_at, function($q) use ($target){
-                $q->where('t.created_at', '>', $target->last_processed_matches_at);
-            })
-            ->count();
-
-        // Enqueue fill/expand for each target pattern
-        $patternIds = TargetPattern::where('target_id', $target->id)->orderBy('popularity_rank')->pluck('id')->all();
-        $attempted = 0;
-        foreach ($patternIds as $pid) {
-            $attempted++;
-            $this->scaledDispatch(FillPatternSignaturesJob::class, (int)$pid);
-        }
-
-        try { cache()->put($key, $now, 60); } catch (Throwable $e) {}
-
-        return response()->json([
-            'ok' => true,
-            'patterns_attempted' => $attempted,
-            'new_matches_count' => $count,
-        ]);
-    }
+//    public function newMatches(Target $target)
+//    {
+//        Log::info('TargetController.newMatches: request received', [
+//            'target_id' => $target->id,
+//        ]);
+//        $rows = DB::table('target_token_signature_words as t')
+//            ->join('token_signature_words as w', 'w.id', '=', 't.token_signature_word_id')
+//            ->join('token_signatures as s', 's.id', '=', 'w.token_signature_id')
+//            ->join('tokens as tok', 'tok.id', '=', 's.token_id')
+//            ->where('t.target_id', $target->id)
+//            ->when($target->matches_seen_at, function($q) use ($target){
+//                $q->where('t.created_at', '>', $target->matches_seen_at);
+//            })
+//            ->orderBy('tok.name')
+//            ->orderBy('w.list_type')
+//            ->orderBy('w.word')
+//            ->get(['w.id as id', 'tok.name as token', 'w.list_type', 'w.word']);
+//        return response()->json([
+//            'ok' => true,
+//            'count' => $rows->count(),
+//            'items' => $rows,
+//        ]);
+//    }
 
     public function markMatchesSeen(Target $target)
     {

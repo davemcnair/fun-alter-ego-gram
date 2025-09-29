@@ -8,6 +8,7 @@ use App\Jobs\FillPatternSignaturesJob;
 use App\Models\Pattern;
 use App\Models\Signature;
 use App\Models\Target;
+use App\Models\TargetPattern;
 use App\Models\TargetTokenSignatureWord;
 use App\Support\NameNormalizer;
 use App\Support\Metrics;
@@ -155,13 +156,25 @@ class TargetService
                 'status' => $pattern->pattern_type == 'standard'
                     ? TargetPatternStatus::pending
                     : TargetPatternStatus::deferred,
-                'created_at' => $now,
-                'updated_at' => $now,
             ];
         });
         if ($bulk->isNotEmpty()) {
-            // Use insertOrIgnore to respect unique (target_id, pattern_id) and keep operation idempotent
-            DB::table('target_patterns')->insertOrIgnore($bulk->toArray());
+            // idempotent
+            foreach ($bulk as $data) {
+                $found = TargetPattern::where('target_id', $data['target_id'])
+                    ->where('pattern_id', $data['pattern_id'])
+                    ->first();
+                if ($found) {
+                    $found->status = $data['status'];
+                    $found->save();
+                } else {
+                    $new = new TargetPattern();
+                    $new->target_id = $data['target_id'];
+                    $new->pattern_id = $data['pattern_id'];
+                    $new->status = $data['status'];
+                    $new->save();
+                }
+            }
             Metrics::counter('target_patterns_inserted', $filteredCount, [ 'target_id' => $target->id ]);
         }
     }

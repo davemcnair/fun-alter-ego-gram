@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Dtos\TargetShowDto;
 use App\Enums\TargetPatternStatus;
 use App\Models\Target;
 use App\Models\TargetPattern;
@@ -194,7 +195,6 @@ class TargetController extends Controller
     // JSON-only Target detail for API v1
     public function apiShow(Target $target)
     {
-     //   $target->fresh();
         $payload = $this->lookupProgressPayload($target);
 
         return response()->json([
@@ -202,13 +202,12 @@ class TargetController extends Controller
             'data' => [
                 'id' => $target->id,
                 'name' => $target->name,
-                'status' => $target->status,
+                'status' => $target->status->label(),
                 'updated_at' => optional($target->updated_at)?->toIso8601String(),
                 'metrics' => [
                     'patterns_processed' => $payload['patternsProcessedCount'],
                     'patterns_total' => $payload['patternsCount'],
                     'alter_egos' => $payload['alterEgosCount'],
-                    'signature_indexed_patterns' => $payload['signatureIndexedPatternsCount'],
                 ],
                 'starred' => $payload['starred'],
             ],
@@ -217,41 +216,40 @@ class TargetController extends Controller
 
     public function show(Target $target)
     {
-//        $target->fresh();
-        $data = $this->lookupProgressPayload($target);
-        return view('targets.show', $data);
+        $dto = TargetShowDto::fromTarget($target);
+        return view('targets.show', ['dto' => $dto]);
     }
 
-    public function progress(Target $target)
-    {
-//        $target->fresh();
-        $data = $this->lookupProgressPayload($target);
-        // Lightweight observability for UI polling
-        try {
-            \Log::info('target.progress', [
-                'target_id' => $target->id,
-                'status' => $target->status,
-                'patterns_total' => $data['patternsCount'],
-                'patterns_completed' => $target->patterns()->where('status', TargetPatternStatus::filled)->count(),
-                'patterns_running' => $target->patterns()->where('status', TargetPatternStatus::processing)->count(),
-                'patterns_pending' => $target->patterns()->whereIn('status', ['pending','deferred'])->count(),
-                'alter_egos' => $data['alterEgosCount'],
-            ]);
-        } catch (Throwable $e) { /* ignore */ }
-        return response()->json([
-            'ok' => true,
-            'status' => $target->status,
-            'updated_at' => optional($target->updated_at)?->toIso8601String(),
-            'patterns' => [
-                'total' => $data['patternsCount'],
-                'completed' => $target->patterns()->where('status', TargetPatternStatus::filled)->count(),
-                'running' => $target->patterns()->where('status','processing')->count(),
-                'pending' => $target->patterns()->whereIn('status', [TargetPatternStatus::pending, TargetPatternStatus::deferred])->count(),
-            ],
-            'signatureIndexedPatternsCount' => $data['signatureIndexedPatternsCount'],
-            'alterEgosCount' => $data['alterEgosCount'],
-        ]);
-    }
+//    public function progress(Target $target)
+//    {
+////        $target->fresh();
+//        $data = $this->lookupProgressPayload($target);
+//        // Lightweight observability for UI polling
+//        try {
+//            \Log::info('target.progress', [
+//                'target_id' => $target->id,
+//                'status' => $target->status,
+//                'patterns_total' => $data['patternsCount'],
+//                'patterns_completed' => $target->patterns()->where('status', TargetPatternStatus::filled)->count(),
+//                'patterns_running' => $target->patterns()->where('status', TargetPatternStatus::processing)->count(),
+//                'patterns_pending' => $target->patterns()->whereIn('status', [TargetPatternStatus::pending, TargetPatternStatus::deferred])->count(),
+//                'alter_egos' => $data['alterEgosCount'],
+//            ]);
+//        } catch (Throwable $e) { /* ignore */ }
+//        return response()->json([
+//            'ok' => true,
+//            'status' => $target->status,
+//            'updated_at' => optional($target->updated_at)?->toIso8601String(),
+//            'patterns' => [
+//                'total' => $data['patternsCount'],
+//                'completed' => $target->patterns()->where('status', TargetPatternStatus::filled)->count(),
+//                'running' => $target->patterns()->where('status', TargetPatternStatus::processing)->count(),
+//                'pending' => $target->patterns()->whereIn('status', [TargetPatternStatus::pending, TargetPatternStatus::deferred])->count(),
+//            ],
+//            'signatureIndexedPatternsCount' => $data['signatureIndexedPatternsCount'],
+//            'alterEgosCount' => $data['alterEgosCount'],
+//        ]);
+//    }
 
 
     /**
@@ -284,7 +282,7 @@ class TargetController extends Controller
             $pattern->save();
         }
         // Run fill inline (it will set status=processing and dispatch expand)
-        $fillService->fillWithServices($pattern->id, $signatureFillService);
+        $fillService->fillWithServices($pattern->id);
 
         $pattern->refresh();
         $payload = [
@@ -406,10 +404,10 @@ class TargetController extends Controller
     {
         $deferredPatternsQuery =$target->patterns()
             ->whereIn('status', [TargetPatternStatus::deferred]);
-        return [
+        $data = [
             'item' => $target,
             'patternsProcessedCount' => $target->patterns()->where('status', TargetPatternStatus::filled)->count(),
-            'patternsCount' => $target->patterns->count(),
+            'patternsCount' => $target->patterns()->count(),
             'patternsLive' => $target->patterns()->whereIn('status', [TargetPatternStatus::filled, TargetPatternStatus::processing])->get()
                 ->map(fn($pattern) => $this->lookupPatternPayload($pattern)),
             'deferredPatternsCount' => $deferredPatternsQuery->count(),
@@ -425,6 +423,7 @@ class TargetController extends Controller
                 ->filter( fn($w) => is_null($w->committed_at))
                 ->isNotEmpty()
         ];
+        return $data;
     }
 
     private function lookupPatternPayload(TargetPattern $targetPattern): array

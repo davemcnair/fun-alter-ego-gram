@@ -79,7 +79,16 @@ class Target extends Model
 
     /**
      * Build grouped token word matches for the Target Results page.
-     * Returns an array like [ tokenName => [ listType => [ [id, word], ... ] ] ]
+     * Returns an array like
+     * [
+     *      tokenName => [
+     *          listType => [
+     *              [id, word, used],
+     *              ...
+     *          ]
+     *      ]
+     *      ...
+     * ]
      */
     public function matchingWordsByTokenAndType(): array
     {
@@ -94,6 +103,7 @@ class Target extends Model
             $out[$token][$list][] = [
                 'id' => $tokenSignatureWord->id,
                 'word' => $tokenSignatureWord->word,
+                'used' =>
             ];
         }
         // Sort words alphabetically within each group for stable UI

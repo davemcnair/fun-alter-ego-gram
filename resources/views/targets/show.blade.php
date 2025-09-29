@@ -1,11 +1,11 @@
-@php use App\Models\Token; @endphp
+@php use App\Enums\TargetStatus;use App\Models\Token; @endphp
     <!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>Search: {{ $item->name }}</title>
+    <title>Search: {{ $dto->name }}</title>
     <style>
         body {
             font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
@@ -177,7 +177,7 @@
     <a href="{{ route('words.index') }}" style="color:#fff; margin-right:10px; text-decoration:none;">Words</a>
 </nav>
 <div class="container">
-    <h1>Alter Egos for: {{ $item->name }}</h1>
+    <h1>Alter Egos for: {{ $dto->name }}</h1>
 
     <div class="card">
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items:center;">
@@ -186,7 +186,7 @@
                 <div id="patternsRow" style="margin-top:6px;">Patterns searched: <strong
                         id="patternsSearched">0</strong> / <strong id="patternsTotal">0</strong><span
                         id="patternsElapsed" class="tag" style="margin-left:6px; display:none;"></span></div>
-                <div style="margin-top:6px;">Alter egos found: <strong id="alterEgosFound">{{$alterEgosCount}}</strong>
+                <div style="margin-top:6px;">Alter egos found: <strong id="alterEgosFound">{{ $dto->alterEgosCount }}</strong>
                     <span class="muted">in <span id="patternsWithAE">0</span> patterns</span></div>
                 <div style="margin-top:6px;">Fun alter egos found: <strong id="funAlterEgosFound">0</strong> <span
                         class="muted">in <span id="patternsWithFunAE">0</span> patterns</span></div>
@@ -218,18 +218,13 @@
             </div>
             <div id="alterEgoGroups">
                 @php $hasAny = false; @endphp
-                @foreach(($patternsLive ?? []) as $p)
-                    @php
-                        $alterEgos = isset($p['alterEgos']) ? $p['alterEgos'] : [];
-                        $count = is_iterable($alterEgos) ? count($alterEgos) : (is_object($alterEgos) && method_exists($alterEgos,'count') ? $alterEgos->count() : 0);
-                    @endphp
-                    @if($count > 0)
+                @foreach($dto->patternsProcessed as $p)
+                    @if(count($p->alterEgoPhrases)) > 0)
                         @php $hasAny = true; @endphp
                         <div style="margin-bottom:10px;">
-                            <div><strong>{{ $p['template'] ?? '' }}</strong> <span class="tag">{{ $count }}</span></div>
+                            <div><strong>{{ $p->template }}</strong> <span class="tag">{{ count($p->alterEgoPhrases) }}</span></div>
                             <ul style="margin-top:6px; max-height:240px; overflow:auto; border:1px solid #eee; border-radius:6px; padding:4px 8px; list-style:none; padding-left:0;">
-                                @foreach($alterEgos as $ae)
-                                    @php $phrase = is_array($ae) ? ($ae['phrase'] ?? '') : (is_object($ae) ? ($ae->phrase ?? '') : ''); @endphp
+                                @foreach($p->alterEgoPhrases as $phrase)
                                     <li>{{ $phrase }}</li>
                                 @endforeach
                             </ul>
@@ -248,7 +243,7 @@
                     Add a word
                     <span style="margin-left:auto;"></span>
                     <button id="commitBtnTarget" class=""
-                            style="background:#2563eb; color:#fff; border:0; border-radius:6px; padding:6px 10px; cursor:pointer; {{ $hasUncommitted ? '' : 'opacity:0.5; cursor:not-allowed;' }}" {{ $hasUncommitted ? '' : 'disabled' }}>
+                            style="background:#2563eb; color:#fff; border:0; border-radius:6px; padding:6px 10px; cursor:pointer; {{ $dto->hasUncommitted ? '' : 'opacity:0.5; cursor:not-allowed;' }}" {{ $dto->hasUncommittedWords ? '' : 'disabled' }}>
                         Commit Resources
                     </button>
                 </h3>
@@ -261,8 +256,8 @@
                         <select id="tokenType" name="token_type" class="input"
                                 style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px;">
                             <option value="">Select token</option>
-                            @foreach(Token::NAMES as $tok)
-                                <option value="{{ $tok }}">{{ $tok }}</option>
+                            @foreach(Token::NAMES as $token)
+                                <option value="{{ $token }}">{{ $token }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -286,24 +281,15 @@
                 <div id="addWordErrors" class="muted" aria-live="polite" hidden style="margin-top:6px;"></div>
             </div>
             <div class="card">
-                <h3 style="margin-top:0; display:flex; align-items:center; gap:10px;">Word Matches ({{$matchedWordsCount}})
+                <h3 style="margin-top:0; display:flex; align-items:center; gap:10px;">Word Matches
+                    ({{$dto->matchedWordsCount}})
                     <label
                         style="margin-left:auto; font-weight:normal; display:flex; align-items:center; gap:6px; font-size:14px;">
                         <input type="checkbox" id="onlyUsedToggle" checked> Only used
                     </label>
                 </h3>
                 <div id="tokenMatchesContainer">
-                    @php
-                        $groups = is_array($matchedWords) ? $matchedWords : [];
-                        if (!empty($groups)) {
-                            uksort($groups, function($a, $b){
-                                if ($a === 'surname' && $b !== 'surname') return -1;
-                                if ($b === 'surname' && $a !== 'surname') return 1;
-                                return strcasecmp((string)$a, (string)$b);
-                            });
-                        }
-                    @endphp
-                    @if(empty($groups))
+                    @if(empty($dto->matchedWords))
                         <div class="muted">No word matches found.</div>
                     @else
                         <table style="width:100%; border-collapse: collapse;">
@@ -316,8 +302,7 @@
                             </tr>
                             </thead>
                             <tbody>
-                            @foreach($groups as $token => $byList)
-                                @php ksort($byList, SORT_STRING); @endphp
+                            @foreach($dto->matchedWords as $token => $byList)
                                 @foreach($byList as $listType => $items)
                                     @php $count = count($items); $sample = array_slice($items, 0, 5); $rowId = md5($token.'|'.$listType); @endphp
                                     <tr id="row-{{ $rowId }}" data-rowid="{{ $rowId }}" data-token="{{ $token }}"
@@ -403,10 +388,10 @@
 
             <div class="card" id="unsearchedPatternsCard">
                 <h3 style="margin-top:0; display:flex; align-items:center; gap:10px;">
-                    Deferred Patterns ({{$deferredPatternsCount}})
+                    Deferred Patterns ({{$dto->deferredPatternsCount}})
                     <span style="margin-left:auto;"><button id="searchAllBtn" type="button">Search All</button></span>
                 </h3>
-                @if(count($deferredPatterns) === 0)
+                @if(count($dto->deferredPatterns) === 0)
                     <div class="muted">No deferred patterns.</div>
                 @else
                     <table id="deferredPatternsTable" style="width:100%; border-collapse: collapse;">
@@ -417,13 +402,13 @@
                         </tr>
                         </thead>
                         <tbody>
-                        @foreach($deferredPatterns as $p)
-                            <tr id="unp-row-{{ $p['id'] }}" data-id="{{ $p['id'] }}"
+                        @foreach($dto->deferredPatterns as $p)
+                            <tr id="unp-row-{{ $p->id }}" data-id="{{ $p->id }}"
                                 style="border-bottom:1px solid #e5e7eb;">
-                                <td style="padding:8px;">{{ $p['template'] ?? '' }}</td>
+                                <td style="padding:8px;">{{ $p->template }}</td>
                                 <td style="padding:8px;">
-                                    <button type="button" id="unp-btn-{{ $p['id'] }}" data-id="{{ $p['id'] }}"
-                                            aria-busy="false" onclick="searchPattern({{ $p['id'] }})">Search
+                                    <button type="button" id="unp-btn-{{ $p->id }}" data-id="{{ $p->id }}"
+                                            aria-busy="false" onclick="searchPattern({{ $p->id }})">Search
                                     </button>
                                 </td>
                             </tr>
@@ -434,50 +419,16 @@
                 <div id="toast" role="status" aria-live="polite"
                      style="display:none; margin-top:8px; font-size:14px; color:#b91c1c;"></div>
             </div>
-
         </div>
     </div>
-
-
 </div>
 
 <script>
-    // Build sets of known fun words and all matched words from server-provided matches (lowercased)
-    @php
-        $funSurname = [];
-        $funForename = [];
-        $allSurname = [];
-        $allForename = [];
-        $groupsForFun = is_array($matchedWords) ? $matchedWords : [];
-        // collect fun
-        if (isset($groupsForFun['surname']['fun'])) {
-            foreach ($groupsForFun['surname']['fun'] as $it) {
-                $w = strtolower((string)($it['word'] ?? ''));
-                if ($w !== '') { $funSurname[$w] = true; }
-            }
-        }
-        if (isset($groupsForFun['forename']['fun'])) {
-            foreach ($groupsForFun['forename']['fun'] as $it) {
-                $w = strtolower((string)($it['word'] ?? ''));
-                if ($w !== '') { $funForename[$w] = true; }
-            }
-        }
-        // collect all matched (both ok and fun)
-        if (isset($groupsForFun['surname'])) {
-            foreach ($groupsForFun['surname'] as $lt => $items) {
-                foreach ($items as $it) { $w = strtolower((string)($it['word'] ?? '')); if ($w !== '') { $allSurname[$w] = true; } }
-            }
-        }
-        if (isset($groupsForFun['forename'])) {
-            foreach ($groupsForFun['forename'] as $lt => $items) {
-                foreach ($items as $it) { $w = strtolower((string)($it['word'] ?? '')); if ($w !== '') { $allForename[$w] = true; } }
-            }
-        }
-    @endphp
-    const FUN_SURNAME = new Set(@json(array_keys($funSurname)));
-    const FUN_FORENAME = new Set(@json(array_keys($funForename)));
-    const ALL_SURNAME = new Set(@json(array_keys($allSurname)));
-    const ALL_FORENAME = new Set(@json(array_keys($allForename)));
+    // Precomputed word sets provided by DTO
+    const FUN_SURNAME = new Set(@json($dto->funSurnameWords));
+    const FUN_FORENAME = new Set(@json($dto->funForenameWords));
+    const ALL_SURNAME = new Set(@json($dto->allSurnameWords));
+    const ALL_FORENAME = new Set(@json($dto->allForenameWords));
 
     (function () {
         try {
@@ -505,9 +456,9 @@
             // no-op
         } catch (e) {
         }
-        const id = {{ $item->id }};
+        const id = {{ $dto->targetId }};
         let paused = false;
-        let completed = {{ $item->status === 'completed' ? 'true' : 'false' }};
+        let completed = {{ $dto->targetCompleted }};
         const statusEl = document.getElementById('status'); // may be null if status display is hidden
         const wordFilterStatus = document.getElementById('wordFilterStatus');
         const pattRow = document.getElementById('patternsRow');
@@ -1601,7 +1552,7 @@
                 applyOnlyUsedFilterToTable(used);
             } catch (e) { /* ignore */
             }
-            completed = String(status || '').toLowerCase() === 'completed';
+            completed = String(status || '').toLowerCase() === 'processed';
         }
 
         try {
@@ -1662,22 +1613,21 @@
 
         // Initial render using server-provided data (no progress endpoint)
         const initialProgress = {
-            item: @json($item),
-            patternsProcessedCount: {{ $patternsProcessedCount }},
-            patternsCount: {{ $patternsCount }},
-            patternsLive: @json($patternsLive),
-            patternsWaiting: @json($deferredPatterns),
-            signatureIndexedPatternsCount: {{ $signatureIndexedPatternsCount }},
-            alterEgosCount: {{ $alterEgosCount }},
-            starred: @json($starred),
-            matchedWords: @json($matchedWords),
+            item: @json($dto->item),
+            patternsProcessedCount: {{ $dto->patternsProcessedCount }},
+            patternsCount: {{ $dto->patternsCount }},
+            patternsLive: @json($dto->patternsLive),
+            patternsWaiting: @json($dto->deferredPatterns),
+            alterEgosCount: {{ $dto->alterEgosCount }},
+            starred: @json($dto->starred),
+            matchedWords: @json($dto->matchedWords),
         };
         render(initialProgress);
         // Live polling of progress endpoint (reload only on transition to a terminal state)
         (function () {
             const POLL_MS = 1500;
-            const targetId = {{ $item->id }};
-            const TERMINAL = ['processed', 'completed', 'error'];
+            const targetId = {{ $dto->targetId }};
+            const TERMINAL = ['processed'];
             let timer = null;
             // Track last known status to detect transitions
             let lastStatus = String((initialProgress?.item?.status) || '').toLowerCase();

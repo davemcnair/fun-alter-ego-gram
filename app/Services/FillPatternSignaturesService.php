@@ -30,7 +30,7 @@ class FillPatternSignaturesService
             return;
         }
 
-        if (!$targetPattern->status === TargetPatternStatus::pending) return;
+        if ($targetPattern->status !== TargetPatternStatus::pending) return;
 
         // Atomically claim the pattern if it's pending
         $targetPattern->status = TargetPatternStatus::processing;

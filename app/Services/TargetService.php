@@ -9,7 +9,7 @@ use App\Models\Pattern;
 use App\Models\Signature;
 use App\Models\Target;
 use App\Models\TargetPattern;
-use App\Models\TargetTokenSignatureWord;
+use App\Models\TargetTokenSignature;
 use App\Support\NameNormalizer;
 use App\Support\Metrics;
 use App\Traits\HelpsMatchWords;
@@ -65,13 +65,13 @@ class TargetService
         return $target;
     }
 
-    public function processTarget(Target $target, Collection $matchingWords): void
+    public function processTarget(Target $target, Collection $matchingSignatures): void
     {
         if (!$target->isProcessable()) {
             Log::warning('TargetCreationService.processTarget not processable', []);
             return;
         }
-        if ($matchingWords->isEmpty()) {
+        if ($matchingSignatures->isEmpty()) {
             $target->status = TargetStatus::processed;
             $target->save();
             return;
@@ -79,17 +79,17 @@ class TargetService
 
         $target->status = TargetStatus::filterable;
         $target->save();
-        $this->fillPatterns($target, $matchingWords);
+        $this->filterPatterns($target, $matchingSignatures);
         $this->processPendingPatterns($target);
     }
 
-    private function fillPatterns(Target $target, Collection $matchingWords): void
+    private function filterPatterns(Target $target, Collection $matchingSignatures): void
     {
-        if ($target->status!=TargetStatus::filterable) {
-            Log::warning('TargetService.process not in status fillable');
+        if ($target->status !== TargetStatus::filterable) {
+            Log::warning('TargetService.process not in status filterable');
             return;
         }
-        TargetTokenSignatureWord::bulkInsertOrIgnore($target, $matchingWords);
+        TargetTokenSignature::bulkInsertOrIgnore($target, $matchingSignatures);
 
         // Steps 2–5: compute mins, filter, insert, and enqueue fills for this target
         $this->filterMatchingPatternsForTarget($target);
@@ -97,11 +97,12 @@ class TargetService
 
     private function processPendingPatterns(Target $target): void
     {
+        //todo status check
         $target->status = TargetStatus::processing;
         $target->save();
         $pendingIds = $target
             ->patterns()
-            ->where('status', TargetPatternStatus::pending)
+            ->where('status', TargetPatternStatus::PENDING)
             ->pluck('id');
 
         Log::info('fill_jobs.dispatch', [
@@ -118,11 +119,11 @@ class TargetService
      */
     private function filterMatchingPatternsForTarget(Target $target): void
     {
-        $target->loadMissing(['tokenSignatureWords', 'signature']);
+        $target->loadMissing(['tokenSignatures', 'signature']);
 
-        // Compute minimum lengths from current matching words
+        // Compute minimum lengths from current matching signatures
         [$storedMinLengths, $matchedMinLengths] =
-            $this->wordMatchService->extractTargetTokenSignatureWordMinimumLengths($target->tokenSignatureWords);
+            $this->wordMatchService->extractTargetTokenSignatureMinimumLengths($target->tokenSignatures);
 
         // List patterns within the target signature length
         $standardShortEnoughPatterns = $this->patternsService->listWithinMinLength((int) $target->signature->length);
@@ -141,42 +142,43 @@ class TargetService
         );
 
         // Bulk insert TargetPattern rows
-        $now = now();
         $filteredCount = $filteredPatterns->count();
         Log::info('target_patterns.inserting', [
             'target_id' => $target->id,
             'count' => $filteredCount,
         ]);
+
         /** @var Pattern $pattern */
-        $bulk = $filteredPatterns->map(function ($pattern) use ($target, $now) {
+        $bulk = $filteredPatterns->map(function ($pattern) use ($target) {
             return [
                 'target_id' => $target->id,
                 'pattern_id' => $pattern->id,
                 'popularity_rank' => $pattern->popularity_rank,
-                'status' => $pattern->pattern_type == 'standard'
-                    ? TargetPatternStatus::pending
-                    : TargetPatternStatus::deferred,
+                'status' => $pattern->pattern_type === 'standard'
+                    ? TargetPatternStatus::PENDING
+                    : TargetPatternStatus::DEFERRED,
             ];
         });
-        if ($bulk->isNotEmpty()) {
-            // idempotent
-            foreach ($bulk as $data) {
-                $found = TargetPattern::where('target_id', $data['target_id'])
-                    ->where('pattern_id', $data['pattern_id'])
-                    ->first();
-                if ($found) {
-                    $found->status = $data['status'];
-                    $found->save();
-                } else {
-                    $new = new TargetPattern();
-                    $new->target_id = $data['target_id'];
-                    $new->pattern_id = $data['pattern_id'];
-                    $new->status = $data['status'];
-                    $new->save();
-                }
-            }
-            Metrics::counter('target_patterns_inserted', $filteredCount, [ 'target_id' => $target->id ]);
+        if ($bulk->isEmpty()) {
+            return;
         }
+        // idempotent
+        foreach ($bulk as $data) {
+            $found = TargetPattern::where('target_id', $data['target_id'])
+                ->where('pattern_id', $data['pattern_id'])
+                ->first();
+            if ($found) {
+                $found->status = $data['status'];
+                $found->save();
+            } else {
+                $new = new TargetPattern();
+                $new->target_id = $data['target_id'];
+                $new->pattern_id = $data['pattern_id'];
+                $new->status = $data['status'];
+                $new->save();
+            }
+        }
+        Metrics::counter('target_patterns_inserted', $filteredCount, [ 'target_id' => $target->id ]);
     }
 
 }

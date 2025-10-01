@@ -54,9 +54,14 @@ class SignatureDto extends Data
         $chars = str_split($norm);
         sort($chars);
         $signature = implode('', $chars);
-        // Compute per-letter counts and signature length for new TokenSignature rows
-        $letterCounts = self::letterCountsFromSignature($signature);
-        $defaults = ['length' => strlen($signature)];
+        // Compute per-letter letterCounts and signature length for new TokenSignature rows
+        $letterCounts = [];
+        $len = strlen($signature);
+        for ($i=0; $i<$len; $i++) {
+            $ch = $signature[$i];
+            $letterCounts[$ch] = ($letterCounts[$ch] ?? 0) + 1;
+        }
+        $defaults = ['length' => $len];
         foreach (range('a', 'z') as $ch) {
             $defaults[$ch . '_count'] = (int)($letterCounts[$ch] ?? 0);
         }

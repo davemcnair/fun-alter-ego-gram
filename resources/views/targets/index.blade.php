@@ -246,7 +246,7 @@
                 // reprocess, diff last run
                 var res = await fetch('/api/targets/' + targetId + '/process-new-matches', {method: 'POST'});
                 var json = await res.json();
-                // Refresh the page to update counts
+                // Refresh the page to update letterCounts
                 location.reload();
             } catch (e) {
                 if (btn) btn.textContent = oldLabel || '0';

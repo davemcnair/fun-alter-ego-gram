@@ -52,9 +52,9 @@ class TargetController extends Controller
         }
 
         $wordMatchService->addTokenWord($data['token_type'], $data['word'], $listType);
-        $matchingWords = $wordMatchService->findMatchingTokenSignatureWords($target->signature);
+        $matchingSignatures = $wordMatchService->findMatchingTokenSignatures($target->signature);
 
-        $targetService->processTarget($target, $matchingWords);
+        $targetService->processTarget($target, $matchingSignatures);
 
         return response()->json(['ok' => true] + $this->lookupProgressPayload($target->fresh()));
     }
@@ -100,14 +100,11 @@ class TargetController extends Controller
             'name' => ['required','string','min:1','max:100'],
             'allow_boring' => ['nullable','boolean'],
         ]);
-        $includeBoring = (bool)($data['allow_boring'] ?? false);
         $target = $targetService->create($data['name']);
 
-        $matchingWords = $wordMatchService->findMatchingTokenSignatureWords($target->signature, [
-            'includeBoring' => $includeBoring
-        ]);
+        $matchingSignatures = $wordMatchService->findMatchingTokenSignatures($target->signature);
 
-        $targetService->processTarget($target, $matchingWords);
+        $targetService->processTarget($target, $matchingSignatures);
         return redirect()->route('targets.show', $target);
     }
 
@@ -256,14 +253,18 @@ class TargetController extends Controller
      * Run fill/expand for a single TargetPattern.
      * Idempotent: if already processing/done, returns current stats.
      */
-    public function searchTargetPattern(TargetPattern $pattern, FillPatternSignaturesService $fillService, SignatureFillService $signatureFillService): JsonResponse
+    public function searchTargetPattern(
+        TargetPattern $pattern,
+        FillPatternSignaturesService $fillService,
+        SignatureFillService $signatureFillService
+    ): JsonResponse
     {
         $start = microtime(true);
         $prev = $pattern->status;
         try { \Log::info('ui.search.click', ['target_id' => $pattern->target_id, 'target_pattern_id' => $pattern->id, 'previous_status' => $prev]); } catch (\Throwable $e) { /* ignore */ }
 
         // If done or processing, return current stats
-        if (in_array($pattern->status, [TargetPatternStatus::filled, TargetPatternStatus::processing], true)) {
+        if (in_array($pattern->status, [TargetPatternStatus::FILLED, TargetPatternStatus::PROCESSING], true)) {
             $payload = [
                 'id' => $pattern->id,
                 'status' => $pattern->status,
@@ -403,12 +404,12 @@ class TargetController extends Controller
     private function lookupProgressPayload(Target $target): array
     {
         $deferredPatternsQuery =$target->patterns()
-            ->whereIn('status', [TargetPatternStatus::deferred]);
+            ->whereIn('status', [TargetPatternStatus::DEFERRED]);
         $data = [
             'item' => $target,
-            'patternsProcessedCount' => $target->patterns()->where('status', TargetPatternStatus::filled)->count(),
+            'patternsProcessedCount' => $target->patterns()->where('status', TargetPatternStatus::FILLED)->count(),
             'patternsCount' => $target->patterns()->count(),
-            'patternsLive' => $target->patterns()->whereIn('status', [TargetPatternStatus::filled, TargetPatternStatus::processing])->get()
+            'patternsLive' => $target->patterns()->whereIn('status', [TargetPatternStatus::FILLED, TargetPatternStatus::PROCESSING])->get()
                 ->map(fn($pattern) => $this->lookupPatternPayload($pattern)),
             'deferredPatternsCount' => $deferredPatternsQuery->count(),
             'deferredPatterns' => $deferredPatternsQuery

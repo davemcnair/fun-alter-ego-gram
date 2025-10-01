@@ -26,11 +26,11 @@ class TargetPatternShowDto extends Data
 
         return new self(
             id: $targetPattern->id,
-            status: $targetPattern->status->label(),
+            status: $targetPattern->status->value,
             template: $targetPattern->pattern->template,
             alterEgosCount: count($phrases),
             alterEgoPhrases: $phrases,
-            elapsedMs: $targetPattern->elapsed_ms,
+            elapsedMs: (int)$targetPattern->elapsed_ms,
         );
     }
 

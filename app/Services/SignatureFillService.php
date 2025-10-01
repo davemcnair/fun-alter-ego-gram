@@ -2,7 +2,8 @@
 
 namespace App\Services;
 
-use App\Models\TokenSignatureWord;
+use App\Models\TargetTokenSignature;
+use App\Models\TokenSignature;
 use App\Traits\HelpsMatchWords;
 use Generator;
 use Illuminate\Support\Collection;
@@ -24,66 +25,73 @@ class SignatureFillService
     /**
      * @param string $targetSignature
      * @param array $patternTokenPositions
-     * @param Collection<TokenSignatureWord> $matchingTokenSignatureWords
+     * @param Collection<TargetTokenSignature> $matchingTokenSignatures
      * @return Generator
      */
     public function generateSignaturePatterns(
-        string $targetSignature,
+        array $targetLetterCountsNeeded,
         array  $patternTokenPositions,
-        Collection $matchingTokenSignatureWords
+        Collection $matchingTokenSignatures
     ): Generator
     {
-        $targetLetterCountsNeeded = $this->letterCountsFromSignature($targetSignature);
-        $candidatesSignaturesByTokenId = $this->precomputeCandidateSignaturesByTokenId($matchingTokenSignatureWords);
+        $tokenSignaturesByTokenId = $this->buildPrecomputedCandidatesByTokenId($matchingTokenSignatures);
 
         $dfs = new DfsService();
-        yield from $dfs->dfs($patternTokenPositions, $targetLetterCountsNeeded, $candidatesSignaturesByTokenId, [], []);
+        yield from $dfs->dfs($patternTokenPositions, $targetLetterCountsNeeded, $tokenSignaturesByTokenId, [], []);
     }
 
     /**
-     * Build per-token_id candidates: signatures with precomputed histograms, per-letter maxima, and a letter index
-     * @param Collection<TokenSignatureWord> $matchingTokenSignatureWords
+     * Build precomputed candidate buckets per token_id for DFS.
+     *
+     * Returns an array keyed by token_id with:
+     * - 'signatures': list of candidates [signature, len, hist, signature_id]
+     * - 'maxLetterCounts': per-letter maxima across candidates
+     * - 'letterIndices': map letter => sorted list of candidate indices containing that letter
+     *
+     * @param Collection<TargetTokenSignature> $targetTokenSignatures
+     * @return array<int,array{
+     *   signatures: array<int,array{signature:string,len:int,hist:array<string,int>,signature_id:int|null}>,
+     *   maxLetterCounts: array<string,int>,
+     *   letterIndices: array<string,array<int,int>>
+     * }>
      */
-    private function precomputeCandidateSignaturesByTokenId(Collection $matchingTokenSignatureWords): array
+    private function buildPrecomputedCandidatesByTokenId(Collection $targetTokenSignatures): array
     {
-        $candidateSignaturesByTokenId = [];
-        foreach ($matchingTokenSignatureWords as $targetTokenSignatureWord) {
-            $tokenSignature = $targetTokenSignatureWord->tokenSignatureWord->tokenSignature;
-            $signature = $tokenSignature->signature;
-            // Step 1: build candidate list with per-candidate histograms
-            $candidateSignaturesByTokenId[$tokenSignature->token_id]['signatures'][] = [
-                'signature' => $signature->signature,
-                'len' => $signature->length,
-                'hist' => $this->letterCountsFromSignature($signature->signature),
-            ];
+        // todo build using token_signature_id
+        $grouped = [];
+        foreach ($targetTokenSignatures as $targetTokenSignature) {
+            $tokenSignature = $targetTokenSignature->tokenSignature;
+            $grouped[$tokenSignature->token_id][] = $tokenSignature;
         }
-        foreach ($candidateSignaturesByTokenId as $token_id => &$bucket) {
-            $list = (array)($bucket['signatures'] ?? []);
-            // Sort deterministically (shorter first, then signature)
-            usort($list, function($a, $b){
-                if (($a['len'] ?? 0) === ($b['len'] ?? 0)) {
-                    return ($a['signature'] ?? '') <=> ($b['signature'] ?? '');
+
+        $result = [];
+        foreach ($grouped as $token_id => $tokenSignatures) {
+            // Deterministic sort: first by length, then signature string
+            usort($tokenSignatures, function(TokenSignature $a, TokenSignature $b) {
+                if ($a->signature->length === $b->signature->length) {
+                    return $a->signature->signature <=> $b->signature->signature;
                 }
-                return ($a['len'] ?? 0) < ($b['len'] ?? 0) ? -1 : 1;
+                return $a->signature->length <=> $b->signature->length;
             });
-            // Step 2: rebuild letter indices and per-letter maxima on sorted candidates
+
+            // Build indices and per-letter maxima from sorted list
             $letterIndices = [];
             $maxLetterCounts = [];
-            foreach ($list as $i => $candidate) {
-                $hist = (array)($candidate['hist'] ?? []);
-                foreach ($hist as $ch => $n) {
-                    $maxLetterCounts[$ch] = max($maxLetterCounts[$ch] ?? 0, (int)$n);
+            foreach ($tokenSignatures as $i => $tokenSignature) {
+                foreach ($tokenSignature->letterCounts() as $ch => $n) {
+                    $maxLetterCounts[$ch] = max($maxLetterCounts[$ch] ?? 0, $n);
                     $letterIndices[$ch] = $letterIndices[$ch] ?? [];
                     $letterIndices[$ch][] = $i;
                 }
             }
-            $candidateSignaturesByTokenId[$token_id] = [
-                'signatures' => $list,
+
+            $result[$token_id] = [
+                'tokenSignatures' => $tokenSignatures,
                 'maxLetterCounts' => $maxLetterCounts,
                 'letterIndices' => $letterIndices,
             ];
         }
-        return $candidateSignaturesByTokenId;
-    }
 
+        return $result;
+    }
 }

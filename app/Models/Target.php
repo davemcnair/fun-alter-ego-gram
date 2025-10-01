@@ -53,9 +53,14 @@ class Target extends Model
         return $this->belongsTo(Signature::class);
     }
 
-    public function tokenSignatureWords(): HasMany
+    public function tokenSignatures(): HasMany
     {
-        return $this->hasMany(TargetTokenSignatureWord::class);
+        return $this->hasMany(TargetTokenSignature::class);
+    }
+
+    public function tokenSignatureWords(): HasManyThrough
+    {
+        return $this->hasManyThrough(TargetTokenSignatureWord::class, TargetTokenSignature::class);
     }
 
     public function isProcessable(): bool
@@ -74,7 +79,7 @@ class Target extends Model
             ->where('signature', $this->signature)
             ->where('id', '!=', $this->id)
             ->orderBy('id')
-            ->get(['id','name']);
+            ->get(['id', 'name']);
     }
 
     /**
@@ -90,21 +95,24 @@ class Target extends Model
      *      ...
      * ]
      */
-    public function matchingWordsByTokenAndType(): array
+    public function matchingWordsByUseTokenAndType(): array
     {
         $out = [];
-        /** @var TokenSignatureWord $tokenSignatureWord */
-        foreach ($this->tokenSignatureWords as $targetTokenSignatureWord) {
-            $tokenSignatureWord = $targetTokenSignatureWord->tokenSignatureWord;
-            $token = $tokenSignatureWord->tokenSignature->token->name;
-            $list = $tokenSignatureWord->list_type;
-            if (!isset($out[$token])) $out[$token] = [];
-            if (!isset($out[$token][$list])) $out[$token][$list] = [];
-            $out[$token][$list][] = [
-                'id' => $tokenSignatureWord->id,
-                'word' => $tokenSignatureWord->word,
-                'used' =>
-            ];
+        /** @var TargetTokenSignatureWord $tokenSignature */
+        foreach ($this->tokenSignatures as $targetTokenSignature) {
+            $tokenSignature = $targetTokenSignature->tokenSignature;
+            $token = $tokenSignature->token->name;
+
+            foreach ( $tokenSignature->words as $word) {
+                $list = $word->list_type;
+                if (!isset($out[$token])) $out[$token] = [];
+                if (!isset($out[$token][$list])) $out[$token][$list] = [];
+                $out[$token][$list][] = [
+                    'id' => $targetTokenSignature->id,
+                    'word' => $word->word,
+//                'used' =>
+                ];
+            }
         }
         // Sort words alphabetically within each group for stable UI
         foreach ($out as $token => &$lists) {

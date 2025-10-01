@@ -30,10 +30,10 @@ class FillPatternSignaturesService
             return;
         }
 
-        if ($targetPattern->status !== TargetPatternStatus::pending) return;
+        if ($targetPattern->status !== TargetPatternStatus::PENDING) return;
 
         // Atomically claim the pattern if it's pending
-        $targetPattern->status = TargetPatternStatus::processing;
+        $targetPattern->status = TargetPatternStatus::PROCESSING;
         $targetPattern->save();
 
         // Mark start time when first claimed (works for both inline and queued)
@@ -54,14 +54,20 @@ class FillPatternSignaturesService
 
         $patternTokenPositions = Pattern::parsePatternTokenSlotPositions((string)$targetPattern->pattern->template);
 
+        // Ensure required relations are loaded to avoid N+1 when building candidates
+        $targetPattern->loadMissing(
+            'target.signature',
+            'target.tokenSignatures.tokenSignature.signature'
+        );
+
         // Algorithmic ordering
         // Use the normalized signature string from the related Signature model
-        $targetSignature = $targetPattern->target->signature->signature;
+        $targetLetterCountsNeeded = $targetPattern->target->signature->letterCounts();
 
         // Rarity-first slot ordering: order by ascending candidate count per token
         $candidateCounts = [];
-        foreach ($targetPattern->target->tokenSignatureWords as $targetTokenSignatureWord) {
-            $token_id = (int)$targetTokenSignatureWord->tokenSignatureWord->tokenSignature->token_id;
+        foreach ($targetPattern->target->tokenSignatures as $targetTokenSignature) {
+            $token_id = (int)$targetTokenSignature->tokenSignature->token_id;
             $candidateCounts[$token_id] = ($candidateCounts[$token_id] ?? 0) + 1;
         }
         $orderedSlots = $patternTokenPositions; // copy
@@ -71,14 +77,13 @@ class FillPatternSignaturesService
             if ($ac === $bc) return 0;
             return $ac < $bc ? -1 : 1;
         });
-        try { \Log::info('FillPatternSignaturesService: rarity order token_ids=' . implode(',', array_values($orderedSlots))); } catch (\Throwable $e) {}
 
         $signaturePatterns = [];
         $count = 0;
         foreach ($this->signatureFillService->generateSignaturePatterns(
-            $targetSignature,
+            $targetLetterCountsNeeded,
             $orderedSlots,
-            $targetPattern->target->tokenSignatureWords
+            $targetPattern->target->tokenSignatures
         ) as $signaturePattern) {
             $signaturePatterns[] = [
                 'target_pattern_id' => $targetPattern->id,

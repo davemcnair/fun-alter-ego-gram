@@ -49,7 +49,12 @@ class HelpsMatchWordsTest extends TestCase
     public function test_letter_counts_and_subtract(): void
     {
         $sig = $this->helper->makeSignature('Vinci'); // ciinv
-        $counts = $this->helper->letterCountsFromSignature($sig);
+        // compute letterCounts locally (no trait helper)
+        $counts = [];
+        for ($i=0, $len=strlen($sig); $i<$len; $i++) {
+            $ch = $sig[$i];
+            $counts[$ch] = ($counts[$ch] ?? 0) + 1;
+        }
         $this->assertSame(['c'=>1,'i'=>2,'n'=>1,'v'=>1], $counts);
         $need = ['a'=>1,'c'=>1,'i'=>2,'n'=>1,'v'=>1];
         $remaining = $this->helper->subtract($need, $counts);

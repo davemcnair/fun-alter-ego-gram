@@ -40,7 +40,7 @@ class BackfillNewWordMatchesJob implements ShouldQueue
             ->whereHas('signature', function ($q) use ($sig) {
                 // Ensure targets are at least as long as the word's signature
                 $q->where('length', '>=', (int)($sig->length ?? 0));
-                // For each letter a-z, target counts must be >= the word's signature counts
+                // For each letter a-z, target letterCounts must be >= the word's signature letterCounts
                 foreach (range('a', 'z') as $ch) {
                     $n = (int)($sig->{$ch . '_count'} ?? 0);
                     if ($n > 0) {

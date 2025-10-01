@@ -43,7 +43,6 @@ class TargetCreationServiceTest extends TestCase
     {
         $this->bindEmptyPatternsServiceMock();
         $wm = Mockery::mock(WordMatchService::class);
-        $wm->shouldReceive('linkMatchesToTarget');
         $this->app->instance(WordMatchService::class, $wm);
         $svc = app(TargetService::class);
 
@@ -94,7 +93,6 @@ class TargetCreationServiceTest extends TestCase
         $forenameId = (int)Token::where('name', 'forename')->first()->id;
         $surnameId  = (int)Token::where('name', 'surname')->first()->id;
         $wm = Mockery::mock(WordMatchService::class);
-        $wm->shouldReceive('linkMatchesToTarget');
         // No matched words are actually needed to be returned for pivot insert
         $wm->shouldReceive('findMatchingTokenSignatureWords')
             ->andReturn(collect());

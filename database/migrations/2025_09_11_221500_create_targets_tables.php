@@ -42,18 +42,17 @@ return new class extends Migration
             $table->unique(['target_pattern_id', 'pattern'], 'sigp_unique');
         });
 
-        Schema::create('target_token_signature_words', function (Blueprint $table) {
-            // Simple 2-column pivot with composite unique; no id/timestamps
+        Schema::create('target_token_signatures', function (Blueprint $table) {
             $table->foreignId('target_id')->constrained('targets')->onDelete('cascade');
-            $table->foreignId('token_signature_word_id')->constrained('token_signature_words')->onDelete('cascade');
-            // Some older SQLite versions don't support adding multiple columns with default expressions; keep nullable and set values in code
+            $table->foreignId('token_signature_id')->constrained('token_signatures')->onDelete('cascade');
+            $table->boolean('used')->default(false);
             $table->timestamps();
 
-            $table->index('created_at', 'ttsw_created_at_idx');
-            $table->unique(['target_id', 'token_signature_word_id'], 'matched_words_unique');
-            $table->index('token_signature_word_id');
+            $table->index('created_at', 'tts_created_at_idx');
+            $table->unique(['target_id', 'token_signature_id'], 'matched_signatures_unique');
+            $table->index('token_signature_id');
             $table->index('target_id');
-            });
+        });
 
         Schema::create('alter_egos', function (Blueprint $table) {
             $table->id();
@@ -90,7 +89,7 @@ return new class extends Migration
     {
         Schema::dropIfExists('target_token_signature_words_alter_egos');
         Schema::dropIfExists('alter_egos');
-        Schema::dropIfExists('target_token_signature_words');
+        Schema::dropIfExists('target_token_signatures');
         Schema::dropIfExists('target_signature_indexed_patterns');
         Schema::dropIfExists('target_patterns');
         Schema::dropIfExists('targets');

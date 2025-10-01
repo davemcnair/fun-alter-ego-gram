@@ -30,10 +30,10 @@ final class ExpandSignatureIndexedPatternService
         $target = $targetPattern->target;
 
         // If already done, skip
-        if ($targetPattern->status === TargetPatternStatus::filled) return;
+        if ($targetPattern->status === TargetPatternStatus::FILLED) return;
 
         // Claim the pattern for expansion
-        $targetPattern->status = TargetPatternStatus::processing;
+        $targetPattern->status = TargetPatternStatus::PROCESSING;
         $targetPattern->save();
 
         // Build slot order from the pattern template for formatting
@@ -88,7 +88,7 @@ final class ExpandSignatureIndexedPatternService
         }
 
         // Mark as done after expansion and record timing
-        $targetPattern->status = TargetPatternStatus::filled;
+        $targetPattern->status = TargetPatternStatus::FILLED;
         // Set finished_at now; elapsed will be set using high-resolution timer below
         $finished = now();
         $targetPattern->finished_at = $finished;
@@ -99,8 +99,8 @@ final class ExpandSignatureIndexedPatternService
         try {
             $remaining = TargetPattern::where('target_id', $target->id)
                 ->whereIn('status', [
-                    TargetPatternStatus::processing,
-                    TargetPatternStatus::deferred,
+                    TargetPatternStatus::PROCESSING,
+                    TargetPatternStatus::DEFERRED,
                 ])
                 ->count();
             if ($remaining === 0) {

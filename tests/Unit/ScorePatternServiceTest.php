@@ -75,7 +75,7 @@ class ScorePatternServiceTest extends TestCase
     public function test_surname3plus_always_lower_than_surname2(): void
     {
         $svc = new ScorePatternService();
-        // Vary some representative factors (title present/absent, forename counts 0..2)
+        // Vary some representative factors (title present/absent, forename letterCounts 0..2)
         foreach ([0, 1] as $title) {
             foreach ([0, 1, 2] as $fn) {
                 // Keep other flags off to compare fairly

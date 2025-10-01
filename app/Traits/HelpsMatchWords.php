@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Traits;
 
 trait HelpsMatchWords
@@ -25,7 +24,9 @@ trait HelpsMatchWords
     public function isSubset(string $small, string $big): bool
     {
         $i = 0; $j = 0; $ls = strlen($small); $lb = strlen($big);
-        if ($ls === 0) return true;
+        if ($ls === 0) {
+            return true;
+        }
         while ($i < $ls && $j < $lb) {
             $cs = $small[$i];
             $cb = $big[$j];
@@ -36,25 +37,12 @@ trait HelpsMatchWords
         return $i === $ls;
     }
 
-    /**
-     * @param string $signature
-     * @return array
-     */
-    public static function letterCountsFromSignature(string $signature): array
-    {
-        $letterCounts = [];
-        $len = strlen($signature);
-        for ($i=0; $i<$len; $i++) {
-            $ch = $signature[$i];
-            $letterCounts[$ch] = ($letterCounts[$ch] ?? 0) + 1;
-        }
-        return $letterCounts;
-    }
-
     public function candidateLettersExceedNeededCounts(array $neededLetterCounts, array $candidateLetterCounts): bool
     {
         foreach ($candidateLetterCounts as $ch => $n) {
-            if (($neededLetterCounts[$ch] ?? 0) < $n) return true;
+            if (($neededLetterCounts[$ch] ?? 0) < $n) {
+                return true;
+            }
         }
         return false;
     }
@@ -63,9 +51,13 @@ trait HelpsMatchWords
     public function subtract(array $a, array $b): array
     {
         foreach ($b as $ch => $n) {
-            if (!isset($a[$ch])) continue; // should not happen after canCover
+            if (!isset($a[$ch])) {
+                continue;
+            } // should not happen after canCover
             $a[$ch] -= $n;
-            if ($a[$ch] <= 0) unset($a[$ch]);
+            if ($a[$ch] <= 0) {
+                unset($a[$ch]);
+            }
         }
         return $a;
     }
@@ -78,15 +70,19 @@ trait HelpsMatchWords
     public function unionCanFill(array $tokenPrecomputed, array $signatureLetterCounts): bool
     {
         $supply = [];
-        foreach ($tokenPrecomputed as $token => $precomputed) {
+        foreach ($tokenPrecomputed as $precomputed) {
             $maxes = $precomputed['maxLetterCounts'];
             foreach ($signatureLetterCounts as $ch => $n) {
-                if (!isset($maxes[$ch])) continue;
+                if (!isset($maxes[$ch])) {
+                    continue;
+                }
                 $supply[$ch] = ($supply[$ch] ?? 0) + (int)$maxes[$ch];
             }
         }
         foreach ($signatureLetterCounts as $ch => $n) {
-            if (($supply[$ch] ?? 0) < $n) return false;
+            if (($supply[$ch] ?? 0) < $n) {
+                return false;
+            }
         }
         return true;
     }

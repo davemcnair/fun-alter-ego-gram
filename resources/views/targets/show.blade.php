@@ -218,7 +218,7 @@
             </div>
             <div id="alterEgoGroups">
                 @php $hasAny = false; @endphp
-                @foreach($dto->patternsProcessed as $p)
+                @foreach($dto->patternsFilled as $p)
                     @if(count($p->alterEgoPhrases)) > 0)
                         @php $hasAny = true; @endphp
                         <div style="margin-bottom:10px;">
@@ -239,14 +239,6 @@
 
         <div>
             <div class="card" id="addWordCard">
-                <h3 style="margin-top:0; display:flex; align-items:center; gap:10px;">
-                    Add a word
-                    <span style="margin-left:auto;"></span>
-                    <button id="commitBtnTarget" class=""
-                            style="background:#2563eb; color:#fff; border:0; border-radius:6px; padding:6px 10px; cursor:pointer; {{ $dto->hasUncommitted ? '' : 'opacity:0.5; cursor:not-allowed;' }}" {{ $dto->hasUncommittedWords ? '' : 'disabled' }}>
-                        Commit Resources
-                    </button>
-                </h3>
                 <form id="addWordForm" method="POST" action="#" aria-describedby="addWordErrors"
                       style="display:grid; grid-template-columns: 1fr 1fr 1fr auto; gap:8px; align-items:end;">
                     @csrf
@@ -425,10 +417,10 @@
 
 <script>
     // Precomputed word sets provided by DTO
-    const FUN_SURNAME = new Set(@json($dto->funSurnameWords));
-    const FUN_FORENAME = new Set(@json($dto->funForenameWords));
-    const ALL_SURNAME = new Set(@json($dto->allSurnameWords));
-    const ALL_FORENAME = new Set(@json($dto->allForenameWords));
+    const FUN_SURNAME = new Set(@json($dto->matchedWords['surname']['fun']));
+    const FUN_FORENAME = new Set(@json($dto->matchedWords['forename']['fun']));
+    const ALL_SURNAME = new Set(@json(array_merge($dto->matchedWords['surname']['fun'],$dto->matchedWords['surname']['ok'])));
+    const ALL_FORENAME = new Set(@json(array_merge($dto->matchedWords['forename']['fun'],$dto->matchedWords['forename']['ok'])));
 
     (function () {
         try {
@@ -458,7 +450,7 @@
         }
         const id = {{ $dto->targetId }};
         let paused = false;
-        let completed = {{ $dto->targetCompleted }};
+        let completed = {{ $dto->completed }};
         const statusEl = document.getElementById('status'); // may be null if status display is hidden
         const wordFilterStatus = document.getElementById('wordFilterStatus');
         const pattRow = document.getElementById('patternsRow');
@@ -1502,9 +1494,9 @@
             } catch (e) {
                 if (pattE) pattE.textContent = '';
             }
-            // Alter egos counts
+            // Alter egos letterCounts
             aeFound.textContent = String((p && p.alterEgosCount) || 0);
-            // Full recompute of fun/AE counts each render
+            // Full recompute of fun/AE letterCounts each render
             if (patternsWithAE) patternsWithAE.textContent = String(groupsArr.length);
             try {
                 let funCount = 0;
@@ -1612,17 +1604,17 @@
         // (function(){ /* no-op */ })();
 
         // Initial render using server-provided data (no progress endpoint)
-        const initialProgress = {
-            item: @json($dto->item),
-            patternsProcessedCount: {{ $dto->patternsProcessedCount }},
-            patternsCount: {{ $dto->patternsCount }},
-            patternsLive: @json($dto->patternsLive),
-            patternsWaiting: @json($dto->deferredPatterns),
-            alterEgosCount: {{ $dto->alterEgosCount }},
-            starred: @json($dto->starred),
-            matchedWords: @json($dto->matchedWords),
-        };
-        render(initialProgress);
+        {{--const initialProgress = {--}}
+        {{--    item: @json($dto->item),--}}
+        {{--    patternsProcessedCount: {{ $dto->patternsProcessedCount }},--}}
+        {{--    patternsCount: {{ $dto->patternsCount }},--}}
+        {{--    patternsLive: @json($dto->patternsLive),--}}
+        {{--    patternsWaiting: @json($dto->deferredPatterns),--}}
+        {{--    alterEgosCount: {{ $dto->alterEgosCount }},--}}
+        {{--    starred: @json($dto->starred),--}}
+        {{--    matchedWords: @json($dto->matchedWords),--}}
+        {{--};--}}
+        {{--render(initialProgress);--}}
         // Live polling of progress endpoint (reload only on transition to a terminal state)
         (function () {
             const POLL_MS = 1500;

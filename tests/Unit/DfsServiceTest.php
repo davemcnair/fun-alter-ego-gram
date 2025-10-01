@@ -3,12 +3,20 @@
 namespace Tests\Unit;
 
 use App\Services\DfsService;
-use App\Traits\HelpsMatchWords;
 use PHPUnit\Framework\TestCase;
 
 class DfsServiceTest extends TestCase
 {
-    use HelpsMatchWords;
+    private function counts(string $sig): array
+    {
+        $hist = [];
+        $len = strlen($sig);
+        for ($i=0; $i<$len; $i++) {
+            $ch = $sig[$i];
+            $hist[$ch] = ($hist[$ch] ?? 0) + 1;
+        }
+        return $hist;
+    }
 
     private function buildCandidates(array $map): array
     {
@@ -56,7 +64,7 @@ class DfsServiceTest extends TestCase
         $surnameTokenId = 2;
         $slots = [0 => $forenameTokenId, 1 => $surnameTokenId];
         $srcSig = 'aadmciinv'; // Adam + Vinci
-        $need = $this->letterCountsFromSignature($srcSig);
+        $need = $this->counts($srcSig);
         $cands = $this->buildCandidates([
             1 => ['aadm', 'adn'],
             2  => ['ciinv', 'ary'],
@@ -72,7 +80,7 @@ class DfsServiceTest extends TestCase
         // Both slots are the same token (surname)
         $slots = [0 => $surnameTokenId, 1 => $surnameTokenId];
         $srcSig = 'ciinvciinv';
-        $need = $this->letterCountsFromSignature($srcSig);
+        $need = $this->counts($srcSig);
         $cands = $this->buildCandidates([
             2 => ['ciinv'],
         ]);
@@ -87,7 +95,7 @@ class DfsServiceTest extends TestCase
         $forenameTokenId = 1;
         $slots = [0 => $forenameTokenId];
         $srcSig = 'abc';
-        $need = $this->letterCountsFromSignature($srcSig);
+        $need = $this->counts($srcSig);
         $cands = $this->buildCandidates([
             1 => ['adn'],
         ]);
@@ -102,7 +110,7 @@ class DfsServiceTest extends TestCase
         $slots = [0=>1, 1=>2, 2=>3, 3=>4];
         // Build target need with some rare letters forcing pruning
         $srcSig = 'aaaaabbbbccddeeffgghhij';
-        $need = $this->letterCountsFromSignature($srcSig);
+        $need = $this->counts($srcSig);
         // Each token gets many candidates, but only a few contain rare letters 'j' or 'i'.
         $candsMap = [];
         foreach ([1,2,3,4] as $t) {

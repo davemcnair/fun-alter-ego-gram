@@ -22,5 +22,21 @@ class Signature extends Model
     {
         return $this->belongsToMany(Target::class);
     }
+
+    /**
+     * Return a compact histogram of non-zero letterCounts from persisted columns.
+     * @return array<string,int>
+     */
+    public function letterCounts(): array
+    {
+        $out = [];
+        foreach (range('a', 'z') as $ch) {
+            $n = (int) ($this->getAttribute($ch . '_count') ?? 0);
+            if ($n > 0) {
+                $out[$ch] = $n;
+            }
+        }
+        return $out;
+    }
 }
 

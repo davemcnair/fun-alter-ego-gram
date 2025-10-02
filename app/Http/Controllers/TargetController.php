@@ -64,26 +64,26 @@ class TargetController extends Controller
         $items = Target::query()
             ->select('targets.*')
             ->addSelect([
-                'filled_matches_count' => DB::table('target_token_signature_words as ttsw')
+                'filled_matches_count' => DB::table('target_token_signatures as tts')
                     ->selectRaw('count(*)')
-                    ->whereColumn('ttsw.target_id', 'targets.id')
+                    ->whereColumn('tts.target_id', 'targets.id')
                     // Only apply the cutoff when last_processed_matches_at is set
                     ->when(
                         DB::raw('1'),
                         function ($q) {
-                            $q->whereRaw('ttsw.created_at <= targets.last_processed_matches_at');
+                            $q->whereRaw('tts.created_at <= targets.last_processed_matches_at');
                         }
                     )
                     ->whereNotNull('targets.last_processed_matches_at'),
 
-                'new_matches_count' => DB::table('target_token_signature_words as ttsw')
+                'new_matches_count' => DB::table('target_token_signatures as tts')
                     ->selectRaw('count(*)')
-                    ->whereColumn('ttsw.target_id', 'targets.id')
+                    ->whereColumn('tts.target_id', 'targets.id')
                     // Only apply the cutoff when last_processed_matches_at is set
                     ->when(
                         DB::raw('1'),
                         function ($q) {
-                            $q->whereRaw('ttsw.created_at > targets.last_processed_matches_at');
+                            $q->whereRaw('tts.created_at > targets.last_processed_matches_at');
                         }
                     )
                     ->whereNotNull('targets.last_processed_matches_at'),
@@ -103,7 +103,7 @@ class TargetController extends Controller
         $target = $targetService->create($data['name']);
 
         $matchingSignatures = $wordMatchService->findMatchingTokenSignatures($target->signature);
-
+        Log::info('Target created: ' . $target->name . ', matching signatures: ' . count($matchingSignatures));
         $targetService->processTarget($target, $matchingSignatures);
         return redirect()->route('targets.show', $target);
     }

@@ -52,8 +52,8 @@ trait HelpsMatchWords
     {
         foreach ($b as $ch => $n) {
             if (!isset($a[$ch])) {
-                continue;
-            } // should not happen after canCover
+                continue; // should not happen after canCover
+            }
             $a[$ch] -= $n;
             if ($a[$ch] <= 0) {
                 unset($a[$ch]);
@@ -67,23 +67,27 @@ trait HelpsMatchWords
      *
      * Slot-aware upper bound union: sum per-letter maxima per remaining slot (handles repeated tokens)
      */
-    public function unionCanFill(array $tokenPrecomputed, array $signatureLetterCounts): bool
+    public function canAssembleFromTokens(array $tokensAvailableLetters, array $requiredLetters): bool
     {
-        $supply = [];
-        foreach ($tokenPrecomputed as $precomputed) {
-            $maxes = $precomputed['maxLetterCounts'];
-            foreach ($signatureLetterCounts as $ch => $n) {
-                if (!isset($maxes[$ch])) {
+        $availablePool = [];
+
+        // Aggregate the available letters from all tokens
+        foreach ($tokensAvailableLetters as $lettersForToken) {
+            foreach ($requiredLetters as $char => $neededCount) {
+                if (!isset($lettersForToken[$char])) {
                     continue;
                 }
-                $supply[$ch] = ($supply[$ch] ?? 0) + (int)$maxes[$ch];
+                $availablePool[$char] = ($availablePool[$char] ?? 0) + (int) $lettersForToken[$char];
             }
         }
-        foreach ($signatureLetterCounts as $ch => $n) {
-            if (($supply[$ch] ?? 0) < $n) {
+
+        // Check if the pool meets the requirements
+        foreach ($requiredLetters as $char => $neededCount) {
+            if (($availablePool[$char] ?? 0) < $neededCount) {
                 return false;
             }
         }
+
         return true;
     }
 }

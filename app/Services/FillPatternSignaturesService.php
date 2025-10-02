@@ -30,7 +30,9 @@ class FillPatternSignaturesService
             return;
         }
 
-        if ($targetPattern->status !== TargetPatternStatus::PENDING) return;
+        if ($targetPattern->status !== TargetPatternStatus::PENDING) {
+            return;
+        }
 
         // Atomically claim the pattern if it's pending
         $targetPattern->status = TargetPatternStatus::PROCESSING;
@@ -61,19 +63,18 @@ class FillPatternSignaturesService
         );
 
         // Algorithmic ordering
-        // Use the normalized signature string from the related Signature model
         $targetLetterCountsNeeded = $targetPattern->target->signature->letterCounts();
 
         // Rarity-first slot ordering: order by ascending candidate count per token
-        $candidateCounts = [];
+        $tokenSignatureCountsByTokenId = [];
         foreach ($targetPattern->target->tokenSignatures as $targetTokenSignature) {
             $token_id = (int)$targetTokenSignature->tokenSignature->token_id;
-            $candidateCounts[$token_id] = ($candidateCounts[$token_id] ?? 0) + 1;
+            $tokenSignatureCountsByTokenId[$token_id] = ($tokenSignatureCountsByTokenId[$token_id] ?? 0) + 1;
         }
-        $orderedSlots = $patternTokenPositions; // copy
-        uasort($orderedSlots, function($aTokenId, $bTokenId) use ($candidateCounts) {
-            $ac = $candidateCounts[$aTokenId] ?? PHP_INT_MAX;
-            $bc = $candidateCounts[$bTokenId] ?? PHP_INT_MAX;
+        $tokenPositionsOrderedBySignatureCount = $patternTokenPositions; // copy
+        uasort($tokenPositionsOrderedBySignatureCount, function($aTokenId, $bTokenId) use ($tokenSignatureCountsByTokenId) {
+            $ac = $tokenSignatureCountsByTokenId[$aTokenId] ?? PHP_INT_MAX;
+            $bc = $tokenSignatureCountsByTokenId[$bTokenId] ?? PHP_INT_MAX;
             if ($ac === $bc) return 0;
             return $ac < $bc ? -1 : 1;
         });
@@ -82,7 +83,7 @@ class FillPatternSignaturesService
         $count = 0;
         foreach ($this->signatureFillService->generateSignaturePatterns(
             $targetLetterCountsNeeded,
-            $orderedSlots,
+            $tokenPositionsOrderedBySignatureCount,
             $targetPattern->target->tokenSignatures
         ) as $signaturePattern) {
             $signaturePatterns[] = [
@@ -112,6 +113,7 @@ class FillPatternSignaturesService
             'target_pattern_id' => $targetPattern->id,
             'generated' => $count,
         ]);
+        // todo: save interim elapsed
         Log::info('fill.complete', [
             'target_id' => $targetPattern->target_id,
             'target_pattern_id' => $targetPattern->id,

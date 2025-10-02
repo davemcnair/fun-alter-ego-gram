@@ -105,9 +105,9 @@ class TargetService
             ->where('status', TargetPatternStatus::PENDING)
             ->pluck('id');
 
-        Log::info('fill_jobs.dispatch', [
-            'target_id' => $target->id,
-            'pending_count' => $pendingIds->count(),
+        Log::info('fill_patterns', [
+            'target' => $target->name,
+            'pending_patterns' => $pendingIds->count(),
         ]);
         foreach ($pendingIds as $pid) {
             $this->scaledDispatch(FillPatternSignaturesJob::class, (int)$pid);
@@ -144,7 +144,7 @@ class TargetService
         // Bulk insert TargetPattern rows
         $filteredCount = $filteredPatterns->count();
         Log::info('target_patterns.inserting', [
-            'target_id' => $target->id,
+            'target' => $target->name,
             'count' => $filteredCount,
         ]);
 

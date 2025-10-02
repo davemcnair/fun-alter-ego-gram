@@ -7,7 +7,7 @@ use App\Enums\TargetStatus;
 use App\Models\AlterEgo;
 use App\Models\Target;
 use App\Models\TargetPattern;
-use App\Models\TokenSignature;
+use App\Models\TargetTokenSignature;
 use App\Support\Metrics;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -25,7 +25,9 @@ final class ExpandSignatureIndexedPatternService
     {
         $targetPattern = TargetPattern::with(['signatureIndexedPatterns'])
             ->find($targetPatternId);
-        if (!$targetPattern) return;
+        if (!$targetPattern) {
+            return;
+        }
         /** @var Target $target */
         $target = $targetPattern->target;
 
@@ -51,24 +53,18 @@ final class ExpandSignatureIndexedPatternService
 
         $createdCount = 0;
         foreach ($targetPattern->signatureIndexedPatterns as $signatureIndexedPattern) {
-            $tokenIdSignaturePairs = $this->parseSignatureIndexedPattern($signatureIndexedPattern->pattern);
+            $tokenIdSignatureIds = $this->parseSignatureIndexedPattern($signatureIndexedPattern->pattern);
 
             $slotWords = [];
-            foreach ($tokenIdSignaturePairs as $pair) {
-                $ts = TokenSignature::query()
-                    ->where('token_id', $pair['token_id'])
-                    ->whereHas('signature', function ($q) use ($pair) {
-                        $q->where('signature', $pair['signature']);
-                    })
-                    ->first();
-                $nonDeferredWords = collect();
-                if ($ts) {
-                    // Prefer 'fun' list, then 'ok', then any other; only non-deferred words
-                    $nonDeferredWords = $ts->words()
-                        ->where('is_deferred', false)
-                        ->orderByRaw("CASE list_type WHEN 'fun' THEN 0 WHEN 'ok' THEN 1 ELSE 2 END")
-                        ->pluck('word');
-                }
+            foreach ($tokenIdSignatureIds as $target_token_signature_id) {
+                $tts = TargetTokenSignature::find($target_token_signature_id);
+
+                // Prefer 'fun' list, then 'ok', then any other; only non-deferred words
+                $nonDeferredWords = $tts->tokenSignature->words()
+                    ->where('is_deferred', false)
+                    ->orderByRaw("CASE list_type WHEN 'fun' THEN 0 WHEN 'ok' THEN 1 ELSE 2 END")
+                    ->pluck('word');
+
                 $slotWords[] = $nonDeferredWords;
             }
 
@@ -154,12 +150,10 @@ final class ExpandSignatureIndexedPatternService
     private function parseSignatureIndexedPattern(string $s): array
     {
         $out = [];
-        // Expect patterns like {1:aadm}{4:ciinv}
-        if (preg_match_all('/\{([0-9]+):([a-z]+)\}/i', $s, $m, PREG_SET_ORDER)) {
+        // Expect patterns like {1:2}{4:5}
+        if (preg_match_all('/\{([0-9]+):([0-9]+)\}/i', $s, $m, PREG_SET_ORDER)) {
             foreach ($m as $match) {
-                $tokenId = (int)$match[1];
-                $signature = strtolower($match[2]);
-                $out[] = [ 'token_id' => $tokenId, 'signature' => $signature ];
+                $out[ (int)$match[1]] = (int)$match[2];
             }
         }
         return $out;

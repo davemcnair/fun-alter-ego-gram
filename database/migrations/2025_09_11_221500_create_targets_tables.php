@@ -43,6 +43,7 @@ return new class extends Migration
         });
 
         Schema::create('target_token_signatures', function (Blueprint $table) {
+            $table->id();
             $table->foreignId('target_id')->constrained('targets')->onDelete('cascade');
             $table->foreignId('token_signature_id')->constrained('token_signatures')->onDelete('cascade');
             $table->boolean('used')->default(false);
@@ -64,30 +65,30 @@ return new class extends Migration
             $table->unique(['target_signature_indexed_pattern_id','phrase']);
         });
 
-        Schema::create('target_token_signature_words_alter_egos', function (Blueprint $table) {
-            // Composite pivot referencing the 2-column parent key
-            $table->unsignedBigInteger('target_id');
-            $table->unsignedBigInteger('token_signature_word_id');
-            $table->unsignedBigInteger('alter_ego_id');
-
-            $table->foreign(['target_id', 'token_signature_word_id'])
-                ->references(['target_id', 'token_signature_word_id'])
-                ->on('target_token_signature_words')
-                ->onDelete('cascade');
-
-            $table->foreign('alter_ego_id')
-                ->references('id')
-                ->on('alter_egos')
-                ->onDelete('cascade');
-
-            $table->primary(['target_id', 'token_signature_word_id', 'alter_ego_id'], 'ttsw_ae_pk');
-        });
+//        Schema::create('target_token_signature_words_alter_egos', function (Blueprint $table) {
+//            // Composite pivot referencing the 2-column parent key
+//            $table->unsignedBigInteger('target_id');
+//            $table->unsignedBigInteger('token_signature_word_id');
+//            $table->unsignedBigInteger('alter_ego_id');
+//
+//            $table->foreign(['target_id', 'token_signature_word_id'])
+//                ->references(['target_id', 'token_signature_word_id'])
+//                ->on('target_token_signature_words')
+//                ->onDelete('cascade');
+//
+//            $table->foreign('alter_ego_id')
+//                ->references('id')
+//                ->on('alter_egos')
+//                ->onDelete('cascade');
+//
+//            $table->primary(['target_id', 'token_signature_word_id', 'alter_ego_id'], 'ttsw_ae_pk');
+//        });
 
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('target_token_signature_words_alter_egos');
+//        Schema::dropIfExists('target_token_signature_words_alter_egos');
         Schema::dropIfExists('alter_egos');
         Schema::dropIfExists('target_token_signatures');
         Schema::dropIfExists('target_signature_indexed_patterns');

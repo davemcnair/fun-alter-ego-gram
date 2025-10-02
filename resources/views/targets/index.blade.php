@@ -167,7 +167,7 @@
                 <tr>
                     <td><input type="checkbox" name="ids[]" value="{{ $t->id }}" class="rowCheck"></td>
                     <td>{{ $t->name }}</td>
-                    @php $total = $t->patterns()->count(); $done = $t->patterns()->where('status','filled')->count(); $newCount = DB::table('target_token_signature_words as t')->where('t.target_id', $t->id)->when($t->matches_seen_at, function($q) use ($t){ $q->where('t.created_at','>', $t->matches_seen_at); })->count(); @endphp
+                    @php $total = $t->patterns()->count(); $done = $t->patterns()->where('status','filled')->count(); $newCount = DB::table('target_token_signatures as t')->where('t.target_id', $t->id)->when($t->matches_seen_at, function($q) use ($t){ $q->where('t.created_at','>', $t->matches_seen_at); })->count(); @endphp
                     <td>{{ $done }} / {{ $total }}</td>
                     <td>{{ $t->alterEgos()->count() }}</td>
                     <td>

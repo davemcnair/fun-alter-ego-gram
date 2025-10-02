@@ -78,8 +78,8 @@ class HelpsMatchWordsTest extends TestCase
             'surname'  => ['maxLetterCounts' => ['c'=>1,'i'=>2,'n'=>1,'v'=>1]],
         ];
         $need = ['a'=>1,'c'=>1,'i'=>2,'n'=>1,'v'=>1]; // Adam + Vinci
-        $this->assertTrue($this->helper->unionCanFill($tokenPrecomputed, $need));
+        $this->assertTrue($this->helper->canAssembleFromTokens($tokenPrecomputed, $need));
         $needTooMuch = ['a'=>3,'c'=>1,'i'=>2,'n'=>1,'v'=>1];
-        $this->assertFalse($this->helper->unionCanFill($tokenPrecomputed, $needTooMuch));
+        $this->assertFalse($this->helper->canAssembleFromTokens($tokenPrecomputed, $needTooMuch));
     }
 }

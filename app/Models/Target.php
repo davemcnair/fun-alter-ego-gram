@@ -108,7 +108,7 @@ class Target extends Model
                 if (!isset($out[$token])) $out[$token] = [];
                 if (!isset($out[$token][$list])) $out[$token][$list] = [];
                 $out[$token][$list][] = [
-                    'id' => $targetTokenSignature->id,
+                    'id' => $targetTokenSignature->token_signature_id,
                     'word' => $word->word,
 //                'used' =>
                 ];

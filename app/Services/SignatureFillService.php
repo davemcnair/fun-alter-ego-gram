@@ -34,51 +34,51 @@ class SignatureFillService
         Collection $matchingTokenSignatures
     ): Generator
     {
-        $tokenSignaturesByTokenId = $this->buildPrecomputedCandidatesByTokenId($matchingTokenSignatures);
+        $tokenSignaturesByTokenId = $this->buildGroupedTargetTokenSignaturesByTokenId($matchingTokenSignatures);
 
         $dfs = new DfsService();
         yield from $dfs->dfs($patternTokenPositions, $targetLetterCountsNeeded, $tokenSignaturesByTokenId, [], []);
     }
 
     /**
-     * Build precomputed candidate buckets per token_id for DFS.
+     * Build targetTokenSignature groups per token_id for DFS.
      *
      * Returns an array keyed by token_id with:
-     * - 'signatures': list of candidates [signature, len, hist, signature_id]
+     * - 'targetTokenSignatures': list
      * - 'maxLetterCounts': per-letter maxima across candidates
      * - 'letterIndices': map letter => sorted list of candidate indices containing that letter
      *
      * @param Collection<TargetTokenSignature> $targetTokenSignatures
      * @return array<int,array{
-     *   signatures: array<int,array{signature:string,len:int,hist:array<string,int>,signature_id:int|null}>,
+     *   tokenSignatures: array<int,TargetTokenSignature>,
      *   maxLetterCounts: array<string,int>,
      *   letterIndices: array<string,array<int,int>>
      * }>
      */
-    private function buildPrecomputedCandidatesByTokenId(Collection $targetTokenSignatures): array
+    private function buildGroupedTargetTokenSignaturesByTokenId(Collection $targetTokenSignatures): array
     {
         // todo build using token_signature_id
         $grouped = [];
         foreach ($targetTokenSignatures as $targetTokenSignature) {
             $tokenSignature = $targetTokenSignature->tokenSignature;
-            $grouped[$tokenSignature->token_id][] = $tokenSignature;
+            $grouped[$tokenSignature->token_id][] = $targetTokenSignature;
         }
 
         $result = [];
-        foreach ($grouped as $token_id => $tokenSignatures) {
+        foreach ($grouped as $token_id => $targetTokenSignaturesGroup) {
             // Deterministic sort: first by length, then signature string
-            usort($tokenSignatures, function(TokenSignature $a, TokenSignature $b) {
-                if ($a->signature->length === $b->signature->length) {
-                    return $a->signature->signature <=> $b->signature->signature;
+            usort($targetTokenSignaturesGroup, function(TargetTokenSignature $a, TargetTokenSignature $b) {
+                if ($a->tokenSignature->signature->length === $b->tokenSignature->signature->length) {
+                    return $a->tokenSignature->signature->signature <=> $b->tokenSignature->signature->signature;
                 }
-                return $a->signature->length <=> $b->signature->length;
+                return $a->tokenSignature->signature->length <=> $b->tokenSignature->signature->length;
             });
 
             // Build indices and per-letter maxima from sorted list
             $letterIndices = [];
             $maxLetterCounts = [];
-            foreach ($tokenSignatures as $i => $tokenSignature) {
-                foreach ($tokenSignature->letterCounts() as $ch => $n) {
+            foreach ($targetTokenSignaturesGroup as $i => $targetTokenSignature) {
+                foreach ($targetTokenSignature->tokenSignature->signature->letterCounts() as $ch => $n) {
                     $maxLetterCounts[$ch] = max($maxLetterCounts[$ch] ?? 0, $n);
                     $letterIndices[$ch] = $letterIndices[$ch] ?? [];
                     $letterIndices[$ch][] = $i;
@@ -86,7 +86,7 @@ class SignatureFillService
             }
 
             $result[$token_id] = [
-                'tokenSignatures' => $tokenSignatures,
+                'targetTokenSignatures' => $targetTokenSignaturesGroup,
                 'maxLetterCounts' => $maxLetterCounts,
                 'letterIndices' => $letterIndices,
             ];

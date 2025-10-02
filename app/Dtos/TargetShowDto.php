@@ -39,9 +39,9 @@ class TargetShowDto extends Data
 
         $patterns = $target->patterns
             ->map(fn(TargetPattern $p) => TargetPatternShowDto::fromTargetPattern($p));
-        $livePatterns = $patterns->filter(fn($p) => $p !== TargetPatternStatus::DEFERRED->value);
-        $filledPatterns = $livePatterns->filter(fn($p) => $p === TargetPatternStatus::FILLED->value);
-        $deferredPatterns = $patterns->filter(fn($p) => $p === TargetPatternStatus::DEFERRED->value);
+        $livePatterns = $patterns->filter(fn($p) => $p->status !== TargetPatternStatus::DEFERRED->value);
+        $filledPatterns = $livePatterns->filter(fn($p) => $p->status === TargetPatternStatus::FILLED->value);
+        $deferredPatterns = $patterns->filter(fn($p) => $p->status === TargetPatternStatus::DEFERRED->value);
 
         $alterEgosCount = $target->alterEgos()->count();
         $starred = $target->alterEgos()

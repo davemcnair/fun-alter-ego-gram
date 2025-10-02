@@ -24,12 +24,12 @@ final class DfsService
         array $remainingTargetLetterCountsNeeded,
         array $candidateTokenSignaturesByTokenId,
         array $chosenTargetTokenSignatureIds,
-        array $chosenTokenIds
+//        array $chosenTokenIds
     ): Generator
     {
         if (empty($patternTokenPositions)) {
             if (empty($remainingTargetLetterCountsNeeded)) {
-                yield $this->buildSignatureIndexedPattern($chosenTargetTokenSignatureIds, $chosenTokenIds);
+                yield $this->buildSignatureIndexedPattern($chosenTargetTokenSignatureIds);//, $chosenTokenIds);
             }
             return;
         }
@@ -89,29 +89,29 @@ final class DfsService
             }
             $nextChosenTargetTokenSignatureIds = $chosenTargetTokenSignatureIds;
             $nextChosenTargetTokenSignatureIds[$pos] = $candidate['id'];
-            $nextChosenTokenIds = $chosenTokenIds;
-            $nextChosenTokenIds[$pos] = $tokenId;
+//            $nextChosenTokenIds = $chosenTokenIds;
+//            $nextChosenTokenIds[$pos] = $tokenId;
             yield from $this->dfs(
                 $patternTokenPositions,
                 $nextNeededLetters,
                 $candidateTokenSignaturesByTokenId,
                 $nextChosenTargetTokenSignatureIds,
-                $nextChosenTokenIds
+//                $nextChosenTokenIds
             );
         }
     }
 
     private function buildSignatureIndexedPattern(
         array $chosenTargetTokenSignatureIds,
-        array $chosenPosTokenIds
+//        array $chosenPosTokenIds
     ): string
     {
         ksort($chosenTargetTokenSignatureIds);
-        ksort($chosenPosTokenIds);
+//        ksort($chosenPosTokenIds);
         $parts = [];
         foreach ($chosenTargetTokenSignatureIds as $pos => $targetTokenSignatureId) {
-            $tokenId = (string)($chosenPosTokenIds[$pos] ?? '');
-            $parts[] = '{' . $tokenId . ':' . $targetTokenSignatureId . '}';
+//            $tokenId = (string)($chosenPosTokenIds[$pos] ?? '');
+            $parts[] = '{' . $targetTokenSignatureId . '}';
         }
         return implode('', $parts);
     }

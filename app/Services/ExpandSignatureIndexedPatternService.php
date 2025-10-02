@@ -53,10 +53,10 @@ final class ExpandSignatureIndexedPatternService
 
         $createdCount = 0;
         foreach ($targetPattern->signatureIndexedPatterns as $signatureIndexedPattern) {
-            $tokenIdSignatureIds = $this->parseSignatureIndexedPattern($signatureIndexedPattern->pattern);
+            $targetTokenSignatureIds = $this->parseSignatureIndexedPattern($signatureIndexedPattern->pattern);
 
             $slotWords = [];
-            foreach ($tokenIdSignatureIds as $target_token_signature_id) {
+            foreach ($targetTokenSignatureIds as $target_token_signature_id) {
                 $tts = TargetTokenSignature::find($target_token_signature_id);
 
                 // Prefer 'fun' list, then 'ok', then any other; only non-deferred words
@@ -150,10 +150,10 @@ final class ExpandSignatureIndexedPatternService
     private function parseSignatureIndexedPattern(string $s): array
     {
         $out = [];
-        // Expect patterns like {1:2}{4:5}
-        if (preg_match_all('/\{([0-9]+):([0-9]+)\}/i', $s, $m, PREG_SET_ORDER)) {
+        // Expect patterns like {12}{45}
+        if (preg_match_all('/\{([0-9]+)\}/i', $s, $m, PREG_SET_ORDER)) {
             foreach ($m as $match) {
-                $out[ (int)$match[1]] = (int)$match[2];
+                $out[] = (int)$match[1];
             }
         }
         return $out;

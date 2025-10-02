@@ -53,7 +53,15 @@ class TargetService
 
         $signatureDto = NameNormalizer::anagramSignature($name);
         // if word has anagram, its signature will be found, otherwise created
-        $signature = Signature::firstOrCreate(['signature' => $signatureDto->signature], $signatureDto->defaults);
+        $signature = Signature::where('signature', $signatureDto->signature)->first();
+        if (!$signature) {
+            $signature = new Signature();
+            $signature->signature = $signatureDto->signature;
+            foreach($signatureDto->defaults as $attr => $value){
+                $signature->$attr = $value;
+            }
+            $signature->save();
+        }
         $found = Target::where('normalized_key', $normalizedKey)->first();
         if ($found) { return $found; }
         $target = new Target();

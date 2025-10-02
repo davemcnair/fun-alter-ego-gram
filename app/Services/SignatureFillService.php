@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\TargetTokenSignature;
-use App\Models\TokenSignature;
 use App\Traits\HelpsMatchWords;
 use Generator;
 use Illuminate\Support\Collection;
@@ -37,7 +36,7 @@ class SignatureFillService
         $tokenSignaturesByTokenId = $this->buildGroupedTargetTokenSignaturesByTokenId($matchingTokenSignatures);
 
         $dfs = new DfsService();
-        yield from $dfs->dfs($patternTokenPositions, $targetLetterCountsNeeded, $tokenSignaturesByTokenId, [], []);
+        yield from $dfs->dfs($patternTokenPositions, $targetLetterCountsNeeded, $tokenSignaturesByTokenId, []);
     }
 
     /**

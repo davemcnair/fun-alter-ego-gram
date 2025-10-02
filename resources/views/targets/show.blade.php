@@ -184,12 +184,9 @@
             <div>
 
                 <div id="patternsRow" style="margin-top:6px;">Patterns searched: <strong
-                        id="patternsSearched">0</strong> / <strong id="patternsTotal">0</strong><span
+                        id="patternsSearched">{{ $dto->patternsFilledCount }}</strong> / <strong id="patternsTotal">{{ $dto->patternsCount }}</strong><span
                         id="patternsElapsed" class="tag" style="margin-left:6px; display:none;"></span></div>
                 <div style="margin-top:6px;">Alter egos found: <strong id="alterEgosFound">{{ $dto->alterEgosCount }}</strong>
-                    <span class="muted">in <span id="patternsWithAE">0</span> patterns</span></div>
-                <div style="margin-top:6px;">Fun alter egos found: <strong id="funAlterEgosFound">0</strong> <span
-                        class="muted">in <span id="patternsWithFunAE">0</span> patterns</span></div>
             </div>
         </div>
     </div>

@@ -364,15 +364,6 @@ class TargetController extends Controller
 
     public function star(Target $target, Request $request)
     {
-        Log::info('TargetController.star: request received', [
-            'target_id' => $target->id,
-            'ajax' => $request->ajax(),
-            'headers' => [
-                'x-requested-with' => $request->header('X-Requested-With'),
-                'accept' => $request->header('Accept'),
-            ],
-            'payload_preview' => [ 'phrase_len' => strlen((string)$request->input('phrase','')) ],
-        ]);
         $data = $request->validate([
             'phrase' => ['required','string'],
         ]);

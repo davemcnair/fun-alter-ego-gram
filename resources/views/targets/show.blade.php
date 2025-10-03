@@ -167,28 +167,202 @@
             opacity: 0.6;
             user-select: none;
         }
+
+        nav {
+            background: #111827;
+            color: #fff;
+            padding: 8px 12px;
+        }
+
+        nav a {
+            color: #fff;
+            margin-right: 10px;
+            text-decoration: none;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .patterns-row {
+            margin-top: 6px;
+        }
+
+        .word-matches-header {
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .word-matches-toggle {
+            margin-left: auto;
+            font-weight: normal;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 14px;
+        }
+
+        .words-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .words-table th {
+            text-align: left;
+            padding: 8px;
+            background: #f3f4f6;
+        }
+
+        .words-table td {
+            padding: 8px;
+        }
+
+        .words-table tr {
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .word-samples {
+            display: block;
+            max-height: 160px;
+            overflow: auto;
+        }
+
+        .tok-word {
+            display: inline-block;
+            margin-right: 6px;
+        }
+
+        .tok-word-clickable {
+            cursor: pointer;
+            text-decoration: underline;
+        }
+
+        .tok-word-link {
+            cursor: pointer;
+            color: #2563eb;
+            text-decoration: underline;
+        }
+
+        .btn-link {
+            border: 0;
+            background: none;
+            color: #2563eb;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .alter-egos-controls {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: normal;
+            font-size: 14px;
+        }
+
+        .control-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .word-filter-status {
+            margin: 4px 0 8px 0;
+            font-size: 14px;
+        }
+
+        .starred-section {
+            margin-bottom: 10px;
+            display: none;
+        }
+
+        .starred-list {
+            margin-top: 6px;
+        }
+
+        .alter-ego-group {
+            margin-bottom: 10px;
+        }
+
+        .alter-ego-list {
+            margin-top: 6px;
+            max-height: 240px;
+            overflow: auto;
+            border: 1px solid #eee;
+            border-radius: 6px;
+            padding: 4px 8px;
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .add-word-form {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr auto;
+            gap: 8px;
+            align-items: end;
+        }
+
+        .form-field {
+        }
+
+        .form-label {
+            display: block;
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+        }
+
+        .form-errors {
+            margin-top: 6px;
+        }
+
+        .header-action {
+            margin-left: auto;
+        }
+
+        .toast {
+            display: none;
+            margin-top: 8px;
+            font-size: 14px;
+            color: #b91c1c;
+        }
+
+        .patterns-elapsed {
+            margin-left: 6px;
+            display: none;
+        }
     </style>
 </head>
 <body>
-<nav style="background:#111827; color:#fff; padding:8px 12px;">
-    <a href="{{ route('targets.index') }}"
-       style="color:#fff; margin-right:10px; text-decoration:none;"><strong>Targets</strong></a>
-    <a href="{{ route('patterns.index') }}" style="color:#fff; margin-right:10px; text-decoration:none;">Patterns</a>
-    <a href="{{ route('words.index') }}" style="color:#fff; margin-right:10px; text-decoration:none;">Words</a>
+<nav>
+    <a href="{{ route('targets.index') }}"><strong>Targets</strong></a>
+    <a href="{{ route('patterns.index') }}">Patterns</a>
+    <a href="{{ route('words.index') }}">Words</a>
 </nav>
 <div class="container">
     <h1>Alter Egos for: {{ $dto->name }}</h1>
 
     <div class="card">
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items:center;">
+        <div class="stats-grid">
             <div>
-
-                <div id="patternsRow" style="margin-top:6px;">Patterns searched: <strong
-                        id="patternsSearched">{{ $dto->patternsFilledCount }}</strong> / <strong id="patternsTotal">{{ $dto->patternsCount }}</strong><span
-                        id="patternsElapsed" class="tag" style="margin-left:6px; display:none;"></span></div>
-                <div style="margin-top:6px;">
+                <div id="patternsRow" class="patterns-row">
+                    Patterns searched: <strong id="patternsSearched">{{ $dto->patternsFilledCount }}</strong> / <strong id="patternsTotal">{{ $dto->patternsCount }}</strong>
+                    <span id="patternsElapsed" class="tag patterns-elapsed"></span>
+                </div>
+                <div class="patterns-row">
                     Alter egos found: <strong id="alterEgosFound">{{ $dto->alterEgosCount }}</strong>
-                    in <span class="tag">{{ $dto->elapsed }}</span>
+                    in <span class="tag">{{ $dto->elapsed }}s</span>
                 </div>
             </div>
         </div>
@@ -200,10 +374,9 @@
         <div>
             @include('targets.show._add_word_form')
             <div class="card">
-                <h3 style="margin-top:0; display:flex; align-items:center; gap:10px;">Word Matches
-                    ({{$dto->matchedWordsCount}})
-                    <label
-                        style="margin-left:auto; font-weight:normal; display:flex; align-items:center; gap:6px; font-size:14px;">
+                <h3 class="word-matches-header">
+                    Word Matches ({{$dto->matchedWordsCount}})
+                    <label class="word-matches-toggle">
                         <input type="checkbox" id="onlyUsedToggle" checked> Only used
                     </label>
                 </h3>
@@ -211,89 +384,38 @@
                     @if(empty($dto->matchedWords))
                         <div class="muted">No word matches found.</div>
                     @else
-                        <table style="width:100%; border-collapse: collapse;">
+                        <table class="words-table">
                             <thead>
                             <tr>
-                                <th style="text-align:left; padding:8px; background:#f3f4f6;">Token</th>
-                                <th style="text-align:left; padding:8px; background:#f3f4f6;">List</th>
-                                <th style="text-align:left; padding:8px; background:#f3f4f6;">Count</th>
-                                <th style="text-align:left; padding:8px; background:#f3f4f6;">Sample</th>
+                                <th>Token</th>
+                                <th>List</th>
+                                <th>Count</th>
+                                <th>Sample</th>
                             </tr>
                             </thead>
                             <tbody>
                             @foreach($dto->matchedWords as $token => $byList)
                                 @foreach($byList as $listType => $items)
-                                    @php $count = count($items); $sample = array_slice($items, 0, 5); $rowId = md5($token.'|'.$listType); @endphp
-                                    <tr id="row-{{ $rowId }}" data-rowid="{{ $rowId }}" data-token="{{ $token }}"
-                                        data-list="{{ $listType }}" data-total="{{ $count }}"
-                                        style="border-bottom:1px solid #e5e7eb;">
-                                        <td style="padding:8px;">{{ $token }}</td>
-                                        <td style="padding:8px;">
+                                    @php $count = count($items); $rowId = md5($token.'|'.$listType); @endphp
+                                    <tr id="row-{{ $rowId }}" data-rowid="{{ $rowId }}" data-token="{{ $token }}" data-list="{{ $listType }}" data-total="{{ $count }}">
+                                        <td>{{ $token }}</td>
+                                        <td>
                                             <span class="tag">{{ $listType }}</span>
                                         </td>
-                                        <td style="padding:8px;"><span id="count-{{ $rowId }}">{{ $count }}</span></td>
-                                        <td style="padding:8px;" class="muted">
-                                            <div id="sample-{{ $rowId }}" style="display:none;">
-                                                @foreach($sample as $it)
-                                                    @php $wid = (int)($it['id'] ?? 0); $w = (string)($it['word'] ?? ''); @endphp
-                                                    @if(in_array($token, ['forename','surname']) && $listType === 'ok')
-                                                        <span class="tok-word" data-token="{{ $token }}"
-                                                              data-word="{{ $w }}"
-                                                              style="display:inline-block; margin-right:6px; cursor:pointer; text-decoration:underline;"
-                                                              onclick="promoteOkWord({{ $wid }}, '{{ addslashes($w) }}')"
-                                                              title="Promote to fun">{{ $w }}</span>
-                                                        <button type="button" class="link"
-                                                                style="border:0;background:none;color:#2563eb;cursor:pointer;padding:0;"
-                                                                onclick="window.setWordFilter('{{ addslashes($w) }}','{{ $token }}')"></button>
-                                                    @elseif(in_array($token, ['forename','surname']))
-                                                        <span class="tok-word" data-token="{{ $token }}"
-                                                              data-word="{{ $w }}"
-                                                              style="display:inline-block; margin-right:6px; cursor:pointer; color:#2563eb; text-decoration:underline;"
-                                                              onclick="window.setWordFilter('{{ addslashes($w) }}','{{ $token }}')">{{ $w }}</span>
-                                                    @else
-                                                        <span class="tok-word" data-token="{{ $token }}"
-                                                              data-word="{{ $w }}"
-                                                              style="display:inline-block; margin-right:6px;">{{ $w }}</span>
-                                                    @endif
-                                                @endforeach
-                                                @if($count > count($sample))
-                                                    <button type="button" class="link"
-                                                            style="border:0;background:none;color:#2563eb;cursor:pointer;padding:0;"
-                                                            onclick="toggleWords('{{ $rowId }}', true)">show all
-                                                        ({{ $count }})
-                                                    </button>
-                                                @endif
-                                            </div>
-                                            <div id="all-{{ $rowId }}"
-                                                 style="display:block; max-height:160px; overflow:auto;">
+                                        <td><span id="count-{{ $rowId }}">{{ $count }}</span></td>
+                                        <td class="muted">
+                                            <div id="all-{{ $rowId }}" class="word-samples">
                                                 @foreach($items as $it)
                                                     @php $wid = (int)($it['id'] ?? 0); $w = (string)($it['word'] ?? ''); @endphp
                                                     @if(in_array($token, ['forename','surname']) && $listType === 'ok')
-                                                        <span class="tok-word" data-token="{{ $token }}"
-                                                              data-word="{{ $w }}"
-                                                              style="display:inline-block; margin-right:6px; cursor:pointer; text-decoration:underline;"
-                                                              onclick="promoteOkWord({{ $wid }}, '{{ addslashes($w) }}')"
-                                                              title="Promote to fun">{{ $w }}</span>
-                                                        <button type="button" class="link"
-                                                                style="border:0;background:none;color:#2563eb;cursor:pointer;padding:0;"
-                                                                onclick="window.setWordFilter('{{ addslashes($w) }}','{{ $token }}')"></button>
+                                                        <span class="tok-word tok-word-clickable" data-token="{{ $token }}" data-word="{{ $w }}" onclick="promoteOkWord({{ $wid }}, '{{ addslashes($w) }}')" title="Promote to fun">{{ $w }}</span>
+                                                        <button type="button" class="btn-link" onclick="window.setWordFilter('{{ addslashes($w) }}','{{ $token }}')"></button>
                                                     @elseif(in_array($token, ['forename','surname']))
-                                                        <span class="tok-word" data-token="{{ $token }}"
-                                                              data-word="{{ $w }}"
-                                                              style="display:inline-block; margin-right:6px; cursor:pointer; color:#2563eb; text-decoration:underline;"
-                                                              onclick="window.setWordFilter('{{ addslashes($w) }}','{{ $token }}')">{{ $w }}</span>
+                                                        <span class="tok-word tok-word-link" data-token="{{ $token }}" data-word="{{ $w }}" onclick="window.setWordFilter('{{ addslashes($w) }}','{{ $token }}')">{{ $w }}</span>
                                                     @else
-                                                        <span class="tok-word" data-token="{{ $token }}"
-                                                              data-word="{{ $w }}"
-                                                              style="display:inline-block; margin-right:6px;">{{ $w }}</span>
+                                                        <span class="tok-word" data-token="{{ $token }}" data-word="{{ $w }}">{{ $w }}</span>
                                                     @endif
                                                 @endforeach
-                                                <div>
-                                                    <button type="button" class="link"
-                                                            style="border:0;background:none;color:#2563eb;cursor:pointer;padding:0;"
-                                                            onclick="toggleWords('{{ $rowId }}', false)">show less
-                                                    </button>
-                                                </div>
                                             </div>
                                         </td>
                                     </tr>

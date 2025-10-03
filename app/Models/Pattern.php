@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Dtos\PhraseDto;
+use App\Dtos\WordDto;
 use App\Services\PhraseBuilderService;
 use Illuminate\Database\Eloquent\Model;
 use Throwable;
@@ -61,82 +63,33 @@ class Pattern extends Model
     }
 
     // Returns a human-friendly example string for this pattern's template using PhraseBuilderService
-    public function getExampleAttribute(): string
+    public function getExampleAttribute(): PhraseDto
     {
-        $tpl = (string)($this->template ?? '');
-        if ($tpl === '') return '';
+        // Prepare sample words by token according to requirement
+        $samples = [
+            'title' => ['ok:Dr'],
+            'forename' =>['fun:Hughie', 'ok:Louis'],
+            'initials' => ['ok:R.'],
+            'prefix' => ['ok:Mc'],
+            'surname' => ['fun:moist', 'fun:wipe', 'ok:with', 'ok:no', 'boring:additives'],
+            'suffix' =>['ok:-tastic'],
+            'honorific' =>['ok:OBE'],
+        ];
 
         // Build slot order from template tokens
-        $slotOrder = [];
-        if (preg_match_all('/\{([a-z]+)(?::(\d+))?\}/i', $tpl, $matches, PREG_SET_ORDER)) {
+        $slots = [];
+        $slotIx = 0;
+        if (preg_match_all('/\{([a-z]+)(?::(\d+))?\}/i', $this->template, $matches, PREG_SET_ORDER)) {
             foreach ($matches as $m) {
                 $name = strtolower($m[1]);
                 $count = isset($m[2]) && (int)$m[2] > 0 ? (int)$m[2] : 1;
                 for ($i = 0; $i < $count; $i++) {
-                    $slotOrder[] = ['name' => $name, 'pos' => count($slotOrder)];
+                    [$type, $word] = explode(":", $samples[$name][$i]);
+                    $slots[$slotIx++] = new WordDto($name,$word,$type);
                 }
             }
         }
-        if (empty($slotOrder)) return '';
 
-        // Prepare sample words by token according to requirement
-        $forenameSamples = ['Hughie', 'Louis'];
-        // Surname should be five distinct tokens, used in order for surname:n (up to 5)
-        $surnamePieces = ['moist', 'wipe', 'with', 'no', 'additives'];
-        $words = [];
-        $fnIdx = 0;
-        $prevName = '';
-        $surnameRunIdx = 0; // index within the current consecutive surname run
-        foreach ($slotOrder as $slot) {
-            $name = $slot['name'];
-            switch ($name) {
-                case 'title':
-                    $words[] = 'Dr';
-                    $surnameRunIdx = 0; // reset when leaving surname run
-                    break;
-                case 'forename':
-                    $words[] = $forenameSamples[$fnIdx % count($forenameSamples)];
-                    $fnIdx++;
-                    $surnameRunIdx = 0;
-                    break;
-                case 'initials':
-                    $words[] = 'R.';
-                    $surnameRunIdx = 0;
-                    break;
-                case 'prefix':
-                    $words[] = 'Mc';
-                    $surnameRunIdx = 0;
-                    break;
-                case 'surname':
-                    // If starting a new consecutive surname block, ensure index is at 0
-                    if ($prevName !== 'surname') {
-                        $surnameRunIdx = 0;
-                    }
-                    $words[] = $surnamePieces[$surnameRunIdx % count($surnamePieces)];
-                    $surnameRunIdx++;
-                    break;
-                case 'suffix':
-                    $words[] = '-tastic';
-                    $surnameRunIdx = 0;
-                    break;
-                case 'honorific':
-                    $words[] = 'OBE';
-                    $surnameRunIdx = 0;
-                    break;
-                default:
-                    $words[] = '';
-                    $surnameRunIdx = 0;
-                    break;
-            }
-            $prevName = $name;
-        }
-
-        try {
-            $builder = app(PhraseBuilderService::class);
-            return $builder->formatPhraseBySlots($words, $slotOrder, false);
-        } catch (Throwable $e) {
-            // Fallback: simple join
-            return trim(implode(' ', array_filter($words, fn($w) => $w !== '')));
-        }
+        return PhraseDto::fromWords($slots);
     }
 }

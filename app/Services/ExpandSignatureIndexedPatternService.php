@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Dtos\PhraseDto;
+use App\Dtos\WordDto;
 use App\Enums\TargetPatternStatus;
 use App\Enums\TargetStatus;
 use App\Models\AlterEgo;
@@ -32,25 +34,20 @@ final class ExpandSignatureIndexedPatternService
         $target = $targetPattern->target;
 
         // If already done, skip
-        if ($targetPattern->status === TargetPatternStatus::FILLED) return;
+        if ($targetPattern->status === TargetPatternStatus::FILLED) {
+            return;
+        }
 
         // Claim the pattern for expansion
         $targetPattern->status = TargetPatternStatus::PROCESSING;
         $targetPattern->save();
 
         // Build slot order from the pattern template for formatting
-        $slotOrder = $this->buildSlotOrderFromTemplate((string)$targetPattern->pattern->template);
-
+   //     $slotTokens = $this->buildSlotOrderFromTemplate((string)$targetPattern->pattern->template);
         $timer = Metrics::start('expand_duration_ms', [
             'target_id' => $target->id,
             'target_pattern_id' => $targetPattern->id,
         ]);
-        Log::info('expand.start', [
-            'target_id' => $target->id,
-            'target_pattern_id' => $targetPattern->id,
-            'template' => (string)($targetPattern->pattern->template ?? ''),
-        ]);
-
         $createdCount = 0;
         foreach ($targetPattern->signatureIndexedPatterns as $signatureIndexedPattern) {
             $targetTokenSignatureIds = $this->parseSignatureIndexedPattern($signatureIndexedPattern->pattern);
@@ -60,24 +57,26 @@ final class ExpandSignatureIndexedPatternService
                 $tts = TargetTokenSignature::find($target_token_signature_id);
 
                 // Prefer 'fun' list, then 'ok', then any other; only non-deferred words
-                $nonDeferredWords = $tts->tokenSignature->words()
+                $firstNonDeferredWord = $tts->tokenSignature->words()
                     ->where('is_deferred', false)
                     ->orderByRaw("CASE list_type WHEN 'fun' THEN 0 WHEN 'ok' THEN 1 ELSE 2 END")
-                    ->pluck('word');
-
-                $slotWords[] = $nonDeferredWords;
+                    ->first();
+                $slotWords[] = new WordDto(
+                    $tts->tokenSignature->token->name,
+                    $firstNonDeferredWord->word,
+                   $firstNonDeferredWord->list_type
+                );
             }
-
-            $phrase = $this->phraseBuilderService->formatPhraseBySlots($slotWords, $slotOrder, false);
+            $phrase = PhraseDto::fromWords($slotWords);
 
             // Persist as AlterEgo (idempotent)
             $alterEgo = AlterEgo::where('target_signature_indexed_pattern_id', $signatureIndexedPattern->id)
-                ->where('phrase',$phrase)
+                ->where('phrase',$phrase->phrase)
                 ->first();
             if (!$alterEgo) {
                 $alterEgo = new AlterEgo();
                 $alterEgo->target_signature_indexed_pattern_id = $signatureIndexedPattern->id;
-                $alterEgo->phrase = $phrase;
+                $alterEgo->phrase = $phrase->phrase;
                 $alterEgo->save();
             }
             $createdCount++;
@@ -174,7 +173,7 @@ final class ExpandSignatureIndexedPatternService
                 $name = strtolower($match[1]);
                 $count = isset($match[2]) && ctype_digit($match[2]) ? max(1, (int)$match[2]) : 1;
                 for ($i = 0; $i < $count; $i++) {
-                    $slotOrder[] = ['name' => $name, 'pos' => $pos++];
+                    $slotOrder[$pos++] = $name;
                 }
             }
         }

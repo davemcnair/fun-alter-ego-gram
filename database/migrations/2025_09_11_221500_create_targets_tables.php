@@ -60,6 +60,8 @@ return new class extends Migration
             $table->foreignId('target_signature_indexed_pattern_id')->constrained('target_signature_indexed_patterns')->onDelete('cascade');
             $table->string('phrase');
             $table->boolean('starred')->default(false);
+            $table->boolean('isFun')->default(false);
+            $table->boolean('hasBoring')->default(false);
             $table->timestamps();
             $table->index('starred');
             $table->unique(['target_signature_indexed_pattern_id','phrase']);

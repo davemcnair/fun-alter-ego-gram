@@ -2,81 +2,50 @@
 
 namespace App\Services;
 
+use App\Dtos\PhraseDto;
+
 final class PhraseBuilderService
 {
     /**
      * Format a phrase given the chosen words and their slot definitions.
-     * - Joins tokens with spaces.
-     * - If one or more consecutive slots are 'surname', capitalize each surname word
-     *   and join them with hyphens.
-     * - Non-surname tokens are included as-is.
-     *
      * When $displayDoubleSurnameVariants is true, and a consecutive surname run has length 2,
      * the surname token will list both hyphen variants comma-separated (e.g., "Dim-Vinci, Vinci-Dim").
      * For any other run length, the canonical single hyphen chain is produced.
      *
-     * @param array<int,string> $slotWords      Words in the original slot order (one per slot)
-     * @param array<int,array{name:string,pos:int}> $slotOrder Slot definitions in the original order
-     * @param bool $displayMultipleVariants If true, lists both variants for double-surname runs (display-only)
+     * @param array<int,array> $slots      List-typed words in the original slot order (one per slot) eg fun:wibble
      */
-    public function formatPhraseBySlots(array $slotWords, array $slotOrder, bool $displayMultipleVariants = false): string
+    public function formatPhraseBySlots(array $slots): PhraseDto
     {
         $parts = [];
         $wi = 0; // index into $slotWords
-        $n = count($slotOrder);
+        $n = count($slots);
         for ($i = 0; $i < $n; $i++) {
-            $slot = $slotOrder[$i];
+            $slot = $slots[$i];
             $name = strtolower((string)($slot['name'] ?? ''));
 
             if (in_array($name, ['forename','surname'])) {
                 $variants = [];
                 // Collect this and any subsequent consecutive slots of the same token type
                 $j = $i;
-                while ($j < $n && strtolower((string)($slotOrder[$j]['name'] ?? '')) === $name) {
-                    $word = $this->firstOf($slotWords[$wi] ?? '');
+                while ($j < $n && strtolower((string)($slots[$j]['name'] ?? '')) === $name) {
+                    $word = $slots[$wi]['word'];
                     // Capitalize: first letter uppercase, rest lowercase with in-word title casing
                     $word = $this->capitalizeWord($word);
-                    if ($word !== '') $variants[] = $word;
+                    $variants[] = $word;
                     $wi++; $j++;
                 }
                 // Move outer loop to the last consumed slot
                 $i = $j - 1;
                 if (!empty($variants)) {
-                    if ($displayMultipleVariants && count($variants) === 2) {
-                        // For display, list both hyphen variants for exactly two surnames
-                        $ab = $variants[0] . '-' . $variants[1];
-                        $ba = $variants[1] . '-' . $variants[0];
-                        $parts[] = $ab . ', ' . $ba;
-                    } else {
-                        $parts[] = implode('-', $variants);
-                    }
+                    $parts[] = implode('-', $variants);
                 }
             } else {
-                $word = $this->firstOf($slotWords[$wi] ?? '');
-                if ($word !== '') $parts[] = $word;
+                $word = $slots[$wi]['word'];
+                $parts[] = $word;
                 $wi++;
             }
         }
         return trim(implode(' ', $parts));
-    }
-
-    /**
-     * Normalize a slot value (string|array|Traversable) to its first string element.
-     */
-    private function firstOf(mixed $value): string
-    {
-        if (is_string($value)) return $value;
-        if (is_array($value)) return (string) (array_values($value)[0] ?? '');
-        if ($value instanceof \Traversable) {
-            foreach ($value as $v) { return (string)$v; }
-            return '';
-        }
-        // Collections from Laravel also implement Traversable, but keep a safe fallback
-        if (is_object($value) && method_exists($value, 'first')) {
-            $first = $value->first();
-            return $first !== null ? (string)$first : '';
-        }
-        return '';
     }
 
     private function capitalizeWord(string $w): string

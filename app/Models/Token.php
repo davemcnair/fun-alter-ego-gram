@@ -26,6 +26,16 @@ class Token extends Model
         self::TOKEN_NAME_HONORIFIC,
     ];
 
+    public const DROPDOWN = [
+        self::TOKEN_NAME_SURNAME,
+        self::TOKEN_NAME_FORENAME,
+        self::TOKEN_NAME_TITLE,
+        self::TOKEN_NAME_INITIALS,
+        self::TOKEN_NAME_PREFIX,
+        self::TOKEN_NAME_SUFFIX,
+        self::TOKEN_NAME_HONORIFIC,
+    ];
+
     protected $fillable = [
         'name',
         'prio',

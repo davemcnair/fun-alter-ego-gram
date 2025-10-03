@@ -7,11 +7,12 @@ vimto
 vagina - show remainder
 vag DK
 redo completed
+min target patterns = 30
 used targettsw
 - create target signature
 - is backfill necessary?
     - target scope has words newer than last run
-
+- target status queued for scaling
 - ai write docs
     - brief
     - spec

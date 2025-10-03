@@ -22,8 +22,10 @@ class TargetShowDto extends Data
         public int        $deferredPatternsCount,
         public Collection $deferredPatterns,
         public int        $alterEgosCount,
+        public int        $funAlterEgosCount,
+        public int        $boringAlterEgosCount,
         public string     $elapsed,
-        public array $starred,
+        public array      $starred,
         public int        $matchedWordsCount,
         public array      $matchedWords,
     )
@@ -54,7 +56,7 @@ class TargetShowDto extends Data
         }
         $deferredPatterns = $patterns->filter(fn($p) => $p->status === TargetPatternStatus::DEFERRED->value);
 
-        $alterEgosCount = $target->alterEgos()->count();
+        $alterEgos = $target->alterEgos;
         $starred = $target->alterEgos()
             ->where('starred', true)
             ->pluck('phrase')
@@ -72,7 +74,9 @@ class TargetShowDto extends Data
             patternsFilled: $filledPatterns,
             deferredPatternsCount: $deferredPatterns->count(),
             deferredPatterns: $deferredPatterns,
-            alterEgosCount: $alterEgosCount,
+            alterEgosCount: $alterEgos->count(),
+            funAlterEgosCount: $alterEgos->filter(fn($ae) => $ae->isFun)->count(),
+            boringAlterEgosCount: $alterEgos->filter(fn($ae) => $ae->hasBoring)->count(),
             elapsed: number_format($elapsed,1),
             starred: $starred,
             matchedWordsCount: $matchedWordsCount,

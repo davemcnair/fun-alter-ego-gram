@@ -3,18 +3,22 @@
 namespace App\Dtos;
 
 use App\Models\TargetPattern;
+use Illuminate\Support\Collection;
 use Spatie\LaravelData\Data;
 
 class TargetPatternShowDto extends Data
 {
     public function __construct(
-        public int $id,
-        public string $status,
-        public string $template,
-        public int $alterEgosCount,
-        public array $alterEgoPhrases,
-        public string $elapsed,
-    ) {
+        public int        $id,
+        public string     $status,
+        public string     $template,
+        public int        $alterEgosCount,
+        public int        $funAlterEgosCount,
+        public int        $boringAlterEgosCount,
+        public Collection $alterEgos,
+        public string     $elapsed,
+    )
+    {
     }
 
     /**
@@ -22,15 +26,22 @@ class TargetPatternShowDto extends Data
      */
     public static function fromTargetPattern(TargetPattern $targetPattern): self
     {
-        $phrases = $targetPattern->alterEgos()->pluck('phrase')->all();
+        $alterEgos = $targetPattern->alterEgos->map(fn($ae) => new PhraseDto(
+            $ae->phrase,
+            $ae->isFun,
+            $ae->hasBoring,
+            $ae->starred
+        ));
 
         return new self(
             id: $targetPattern->id,
             status: $targetPattern->status->value,
             template: $targetPattern->pattern->template,
-            alterEgosCount: count($phrases),
-            alterEgoPhrases: $phrases,
-            elapsed: number_format($targetPattern->elapsed_ms/1000, 1),
+            alterEgosCount: count($alterEgos),
+            funAlterEgosCount: count($alterEgos->filter(fn($ae) => $ae->isFun)),
+            boringAlterEgosCount: count($alterEgos->filter(fn($ae) => $ae->hasBoring)),
+            alterEgos: $alterEgos,
+            elapsed: number_format($targetPattern->elapsed_ms / 1000, 1),
         );
     }
 

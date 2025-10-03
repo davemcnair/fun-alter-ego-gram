@@ -25,7 +25,11 @@
             @if($p->alterEgosCount > 0)
                 @php $hasAny = true; @endphp
                 <div style="margin-bottom:10px;">
-                    <div><strong>{{ $p->template }}</strong> <span class="tag">{{ $p->alterEgosCount }}</span></div>
+                    <div>
+                        <strong>{{ $p->template }}</strong>
+                        <span class="tag">{{ $p->alterEgosCount }}</span>
+                        <span class="tag">{{ $p->elapsed }}</span>
+                    </div>
                     <ul style="margin-top:6px; max-height:240px; overflow:auto; border:1px solid #eee; border-radius:6px; padding:4px 8px; list-style:none; padding-left:0;">
                         @foreach($p->alterEgoPhrases as $phrase)
                             <li>{{ $phrase }}</li>

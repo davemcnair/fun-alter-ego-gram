@@ -96,15 +96,35 @@ class TargetController extends Controller
 
     public function store(Request $request, TargetService $targetService, WordMatchService $wordMatchService)
     {
+        $overallStart = microtime(true);
         $data = $request->validate([
             'name' => ['required','string','min:1','max:100'],
             'allow_boring' => ['nullable','boolean'],
         ]);
-        $target = $targetService->create($data['name']);
 
+        $t1 = microtime(true);
+        $target = $targetService->create($data['name']);
+        $createMs = round((microtime(true) - $t1) * 1000, 1);
+
+        $t2 = microtime(true);
         $matchingSignatures = $wordMatchService->findMatchingTokenSignatures($target->signature);
-        Log::info('Target created: ' . $target->name . ', matching signatures: ' . count($matchingSignatures));
+        $findMs = round((microtime(true) - $t2) * 1000, 1);
+
+        $t3 = microtime(true);
         $targetService->processTarget($target, $matchingSignatures);
+        $processMs = round((microtime(true) - $t3) * 1000, 1);
+
+        $totalMs = round((microtime(true) - $overallStart) * 1000, 1);
+
+        Log::info('Target.store timing', [
+            'name' => $target->name,
+            'matching_signatures' => count($matchingSignatures),
+            'create_ms' => $createMs,
+            'find_signatures_ms' => $findMs,
+            'process_ms' => $processMs,
+            'total_ms' => $totalMs,
+        ]);
+
         return redirect()->route('targets.show', $target);
     }
 
@@ -213,7 +233,16 @@ class TargetController extends Controller
 
     public function show(Target $target)
     {
+        $start = microtime(true);
         $dto = TargetShowDto::fromTarget($target);
+        $dtoMs = round((microtime(true) - $start) * 1000, 1);
+
+        Log::info('Target.show timing', [
+            'target_id' => $target->id,
+            'name' => $target->name,
+            'dto_build_ms' => $dtoMs,
+        ]);
+
         return view('targets.show', ['dto' => $dto]);
     }
 

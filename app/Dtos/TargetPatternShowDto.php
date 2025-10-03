@@ -13,7 +13,7 @@ class TargetPatternShowDto extends Data
         public string $template,
         public int $alterEgosCount,
         public array $alterEgoPhrases,
-        public int $elapsedMs,
+        public string $elapsed,
     ) {
     }
 
@@ -30,7 +30,7 @@ class TargetPatternShowDto extends Data
             template: $targetPattern->pattern->template,
             alterEgosCount: count($phrases),
             alterEgoPhrases: $phrases,
-            elapsedMs: (int)$targetPattern->elapsed_ms,
+            elapsed: number_format($targetPattern->elapsed_ms/1000, 1),
         );
     }
 

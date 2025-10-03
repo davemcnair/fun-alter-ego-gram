@@ -22,6 +22,7 @@ class TargetShowDto extends Data
         public int        $deferredPatternsCount,
         public Collection $deferredPatterns,
         public int        $alterEgosCount,
+        public string     $elapsed,
         public array $starred,
         public int        $matchedWordsCount,
         public array      $matchedWords,
@@ -35,12 +36,22 @@ class TargetShowDto extends Data
     public static function fromTarget(Target $target): self
     {
         // Eager load relations used for counting to avoid N+1 in view
-        $target->loadMissing(['patterns.pattern', 'signatureIndexedPatterns', 'alterEgos', 'tokenSignatures']);
+        $target->loadMissing([
+            'patterns.pattern',
+            'signatureIndexedPatterns',
+            'alterEgos',
+            'tokenSignatures.tokenSignature.token',
+            'tokenSignatures.tokenSignature.words'
+        ]);
 
         $patterns = $target->patterns
             ->map(fn(TargetPattern $p) => TargetPatternShowDto::fromTargetPattern($p));
         $livePatterns = $patterns->filter(fn($p) => $p->status !== TargetPatternStatus::DEFERRED->value);
         $filledPatterns = $livePatterns->filter(fn($p) => $p->status === TargetPatternStatus::FILLED->value);
+        $elapsed = 0;
+        foreach($filledPatterns as $pattern){
+            $elapsed += $pattern->elapsed;
+        }
         $deferredPatterns = $patterns->filter(fn($p) => $p->status === TargetPatternStatus::DEFERRED->value);
 
         $alterEgosCount = $target->alterEgos()->count();
@@ -62,6 +73,7 @@ class TargetShowDto extends Data
             deferredPatternsCount: $deferredPatterns->count(),
             deferredPatterns: $deferredPatterns,
             alterEgosCount: $alterEgosCount,
+            elapsed: number_format($elapsed,1),
             starred: $starred,
             matchedWordsCount: $matchedWordsCount,
             matchedWords: $matchedWords,

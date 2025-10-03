@@ -127,7 +127,11 @@ class TargetService
      */
     private function filterMatchingPatternsForTarget(Target $target): void
     {
-        $target->loadMissing(['tokenSignatures', 'signature']);
+        $target->loadMissing([
+            'tokenSignatures.tokenSignature.signature',
+            'tokenSignatures.tokenSignature.token',
+            'signature'
+        ]);
 
         // Compute minimum lengths from current matching signatures
         [$storedMinLengths, $matchedMinLengths] =
@@ -170,22 +174,10 @@ class TargetService
         if ($bulk->isEmpty()) {
             return;
         }
-        // idempotent
-        foreach ($bulk as $data) {
-            $found = TargetPattern::where('target_id', $data['target_id'])
-                ->where('pattern_id', $data['pattern_id'])
-                ->first();
-            if ($found) {
-                $found->status = $data['status'];
-                $found->save();
-            } else {
-                $new = new TargetPattern();
-                $new->target_id = $data['target_id'];
-                $new->pattern_id = $data['pattern_id'];
-                $new->status = $data['status'];
-                $new->save();
-            }
-        }
+        // Use insertOrIgnore to respect unique (target_id, pattern_id) and keep operation idempotent
+        $now = now();
+        $rows = $bulk->map(fn($data) => $data + ['created_at' => $now, 'updated_at' => $now]);
+        DB::table('target_patterns')->insertOrIgnore($rows->toArray());
         Metrics::counter('target_patterns_inserted', $filteredCount, [ 'target_id' => $target->id ]);
     }
 

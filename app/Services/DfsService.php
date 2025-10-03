@@ -44,10 +44,11 @@ final class DfsService
 
         // Build viable indices by scanning candidates: must contain at least one needed letter and be able to fit
         $viableIndices = [];
+        $precomputedLetterCounts = $nextTokenTargetTokenSignatures['precomputedLetterCounts'];
         $nextTokenTargetTokenSignatures = $nextTokenTargetTokenSignatures['targetTokenSignatures'];
         /** @var  TokenSignature $targetTokenSignature */
         foreach ($nextTokenTargetTokenSignatures as $i => $targetTokenSignature) {
-            $hist = $targetTokenSignature->tokenSignature->signature->letterCounts();
+            $hist = $precomputedLetterCounts[$i];
             // Must share at least one needed letter
             $shares = false;
             foreach ($remainingTargetLetterCountsNeeded as $ch => $n) {

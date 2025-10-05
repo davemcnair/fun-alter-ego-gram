@@ -67,12 +67,12 @@ trait HelpsMatchWords
      *
      * Slot-aware upper bound union: sum per-letter maxima per remaining slot (handles repeated tokens)
      */
-    public function canAssembleFromTokens(array $tokensAvailableLetters, array $requiredLetters): bool
+    public function canFillFromAvailableLetterPools(array $availableLetterPools, array $requiredLetters): bool
     {
         $availablePool = [];
 
         // Aggregate the available letters from all tokens
-        foreach ($tokensAvailableLetters as $lettersForToken) {
+        foreach ($availableLetterPools as $lettersForToken) {
             foreach ($requiredLetters as $char => $neededCount) {
                 if (!isset($lettersForToken[$char])) {
                     continue;

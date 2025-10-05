@@ -8,12 +8,24 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class AlterEgo extends Model
 {
     protected $fillable = [
-        'target_signature_indexed_pattern_id', 'phrase', 'starred'
+        'target_signatured_pattern_id',
+        'phrase',
+        'starred',
+        'isFun',
+        'hasBoring',
+        'hasDeferred',
     ];
 
-    public function targetSignatureIndexedPattern(): BelongsTo
+    protected $casts = [
+        'starred' => 'boolean',
+        'isFun' => 'boolean',
+        'hasBoring' => 'boolean',
+        'hasDeferred' => 'boolean',
+    ];
+
+    public function targetSignaturedPattern(): BelongsTo
     {
-        return $this->belongsTo(TargetSignatureIndexedPattern::class, 'target_signature_indexed_pattern_id');
+        return $this->belongsTo(TargetSignaturedPattern::class);
     }
 
 }

@@ -6,17 +6,17 @@ namespace Tests\Unit;
 use App\Models\AlterEgo;
 use App\Models\Pattern;
 use App\Models\Signature;
-use App\Models\TargetSignatureIndexedPattern;
+use App\Models\TargetSignaturedPattern;
 use App\Models\Target;
 use App\Models\TargetPattern;
 use App\Models\Token;
 use App\Services\PhraseBuilderService;
 use App\Services\WordMatchService;
-use App\Services\ExpandSignatureIndexedPatternService;
+use App\Services\ExpandSignaturedPatternService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-class ExpandSignatureIndexedPatternsServiceTest extends TestCase
+class ExpandSignaturedPatternsServiceTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -30,7 +30,7 @@ class ExpandSignatureIndexedPatternsServiceTest extends TestCase
         ]);
     }
 
-    public function test_expands_single_signatureIndexed_pattern_with_fun_preference(): void
+    public function test_expands_single_signatured_pattern_with_fun_preference(): void
     {
         // Arrange: a target with one pattern {forename}{surname}
         $sig = Signature::firstOrCreate(['signature' => 'dmmuy'], [
@@ -53,8 +53,8 @@ class ExpandSignatureIndexedPatternsServiceTest extends TestCase
             'popularity_rank' => 1,
             'status' => 'pending',
         ]);
-        // SignatureIndexed fill to expand: Adam + Vinci
-        TargetSignatureIndexedPattern::create([
+        // Signatured fill to expand: Adam + Vinci
+        TargetSignaturedPattern::create([
             'target_pattern_id' => $targetPattern->id,
             'pattern' => '{1:aadm}{2:ciinv}',
         ]);
@@ -67,8 +67,8 @@ class ExpandSignatureIndexedPatternsServiceTest extends TestCase
         $wordService->addTokenWord('surname','InVic', 'fun');
 
         // Act: run expansion via service
-        app(ExpandSignatureIndexedPatternService::class)
-            ->expandWithBuilder($targetPattern->id, app(PhraseBuilderService::class));
+        app(ExpandSignaturedPatternService::class)
+            ->expandSignaturedPatterns($targetPattern->id, app(PhraseBuilderService::class));
 
         // Assert: an AlterEgo was created with the fun-preferred surname and proper capitalization
         /** @var AlterEgo $ae */
@@ -104,7 +104,7 @@ class ExpandSignatureIndexedPatternsServiceTest extends TestCase
             'popularity_rank' => 1,
             'status' => 'pending',
         ]);
-        TargetSignatureIndexedPattern::create([
+        TargetSignaturedPattern::create([
             'target_pattern_id' => $snp->id,
             'pattern' => '{2:ary}{2:ciinv}',
         ]);
@@ -117,8 +117,8 @@ class ExpandSignatureIndexedPatternsServiceTest extends TestCase
         $wordService->addTokenWord('surname','vinci', 'ok');
 
         // Act via service
-        app(ExpandSignatureIndexedPatternService::class)
-            ->expandWithBuilder($snp->id, app(PhraseBuilderService::class));
+        app(ExpandSignaturedPatternService::class)
+            ->expandSignaturedPatterns($snp->id, app(PhraseBuilderService::class));
 
         // Assert: hyphenated and capitalized surnames
         $ae = $snp->alterEgos()->first();

@@ -13,8 +13,6 @@ use Illuminate\Support\Collection;
  * Purpose:
  *  Given a source signature, pattern token positions, and a list of matchingTokenSignatureWord ids,
  *  it fills the positions with candidates whose signatures collectively match the source letters.
- *  For each complete fill, it emits a compact "targetSignatureIndexedPattern" string
- *  such as "{1:a}{2:adn}{5:aciinv}" in token position order.
  *
  */
 class SignatureFillService
@@ -24,16 +22,16 @@ class SignatureFillService
     /**
      * @param string $targetSignature
      * @param array $patternTokenPositions
-     * @param Collection<TargetTokenSignature> $matchingTokenSignatures
+     * @param Collection<TargetTokenSignature> $targetTokenSignatures
      * @return Generator
      */
     public function generateSignaturePatterns(
         array $targetLetterCountsNeeded,
         array  $patternTokenPositions,
-        Collection $matchingTokenSignatures
+        Collection $targetTokenSignatures
     ): Generator
     {
-        $tokenSignaturesByTokenId = $this->buildGroupedTargetTokenSignaturesByTokenId($matchingTokenSignatures);
+        $tokenSignaturesByTokenId = $this->buildGroupedTargetTokenSignaturesByTokenId($targetTokenSignatures);
 
         $dfs = new DfsService();
         yield from $dfs->dfs($patternTokenPositions, $targetLetterCountsNeeded, $tokenSignaturesByTokenId, []);
@@ -75,7 +73,7 @@ class SignatureFillService
 
             // Build indices and per-letter maxima from sorted list
             // Precompute letterCounts for each signature to avoid repeated method calls in DFS
-            $letterIndices = [];
+//            $letterIndices = [];
             $maxLetterCounts = [];
             $precomputedLetterCounts = [];
             foreach ($targetTokenSignaturesGroup as $i => $targetTokenSignature) {
@@ -83,15 +81,15 @@ class SignatureFillService
                 $precomputedLetterCounts[$i] = $letterCounts;
                 foreach ($letterCounts as $ch => $n) {
                     $maxLetterCounts[$ch] = max($maxLetterCounts[$ch] ?? 0, $n);
-                    $letterIndices[$ch] = $letterIndices[$ch] ?? [];
-                    $letterIndices[$ch][] = $i;
+//                    $letterIndices[$ch] = $letterIndices[$ch] ?? [];
+//                    $letterIndices[$ch][] = $i;
                 }
             }
 
             $result[$token_id] = [
                 'targetTokenSignatures' => $targetTokenSignaturesGroup,
                 'maxLetterCounts' => $maxLetterCounts,
-                'letterIndices' => $letterIndices,
+//                'letterIndices' => $letterIndices,
                 'precomputedLetterCounts' => $precomputedLetterCounts,
             ];
         }

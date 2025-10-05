@@ -13,6 +13,11 @@ class TargetTokenSignature extends Model
     protected $fillable = [
         'target_id',
         'token_signature_id',
+        'usedInPattern',
+    ];
+
+    protected $casts = [
+        'usedInPattern' => 'boolean',
     ];
 
     public function target(): BelongsTo

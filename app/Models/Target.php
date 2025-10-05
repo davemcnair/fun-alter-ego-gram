@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Dtos\WordDto;
 use App\Enums\TargetStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -38,14 +39,14 @@ class Target extends Model
         return $this->hasMany(TargetPattern::class)->with(['pattern']);
     }
 
-    public function signatureIndexedPatterns(): HasManyThrough
+    public function signaturedPatterns(): HasManyThrough
     {
-        return $this->hasManyThrough(TargetSignatureIndexedPattern::class, TargetPattern::class);
+        return $this->hasManyThrough(TargetSignaturedPattern::class, TargetPattern::class);
     }
 
     public function alterEgos(): HasManyDeep
     {
-        return $this->hasManyDeep(AlterEgo::class, [TargetPattern::class, TargetSignatureIndexedPattern::class]);
+        return $this->hasManyDeep(AlterEgo::class, [TargetPattern::class, TargetSignaturedPattern::class]);
     }
 
     public function signature(): BelongsTo
@@ -58,9 +59,9 @@ class Target extends Model
         return $this->hasMany(TargetTokenSignature::class);
     }
 
-    public function tokenSignatureWords(): HasManyThrough
+    public function tokenSignatureWords(): HasMany
     {
-        return $this->hasManyThrough(TargetTokenSignatureWord::class, TargetTokenSignature::class);
+        return $this->hasMany(TargetTokenSignatureWord::class);
     }
 
     public function isProcessable(): bool
@@ -97,28 +98,33 @@ class Target extends Model
      */
     public function matchingWordsByUseTokenAndType(): array
     {
+        $usedWordIds = $this->tokenSignatureWords()->pluck('word_id');
         $out = [];
         /** @var TargetTokenSignatureWord $tokenSignature */
         foreach ($this->tokenSignatures as $targetTokenSignature) {
             $tokenSignature = $targetTokenSignature->tokenSignature;
             $token = $tokenSignature->token->name;
 
+            /** @var TokenSignatureWord $word */
             foreach ( $tokenSignature->words as $word) {
                 $list = $word->list_type;
                 if (!isset($out[$token])) $out[$token] = [];
                 if (!isset($out[$token][$list])) $out[$token][$list] = [];
-                $out[$token][$list][] = [
-                    'id' => $targetTokenSignature->token_signature_id,
-                    'word' => $word->word,
-//                'used' =>
-                ];
+                $out[$token][$list][] = new WordDto(
+                    $token,
+                    $word->word,
+                    $word->list_type,
+                    $word->id,
+                    $word->is_deferred,
+                    $usedWordIds->contains($word->id),
+                );
             }
         }
         // Sort words alphabetically within each group for stable UI
         foreach ($out as $token => &$lists) {
             foreach ($lists as $list => &$items) {
                 usort($items, function ($a, $b) {
-                    return strcasecmp($a['word'], $b['word']);
+                    return strcasecmp($a->word, $b->word);
                 });
             }
         }

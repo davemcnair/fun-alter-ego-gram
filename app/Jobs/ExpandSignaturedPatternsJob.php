@@ -3,7 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\TargetPattern;
-use App\Services\ExpandSignatureIndexedPatternService;
+use App\Services\ExpandSignaturedPatternService;
 use App\Support\Metrics;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Bus\Queueable;
@@ -13,7 +13,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Throwable;
 
-class ExpandSignatureIndexedPatternsJob implements ShouldQueue
+class ExpandSignaturedPatternsJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -47,7 +47,7 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
      */
     public function tags(): array
     {
-        return ['expand-signatureIndexed-patterns', 'target-pattern:' . $this->targetNamePatternId];
+        return ['expand-signatured-patterns', 'target-pattern:' . $this->targetNamePatternId];
     }
 
     /**
@@ -60,24 +60,24 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
             $target = $tp->target?->name ?? 'unknown-target';
             $template = (string)($tp->pattern->template ?? '');
             return sprintf(
-                'ExpandSignatureIndexed [TP:%d "%s" for "%s"]',
+                'ExpandSignatured [TP:%d "%s" for "%s"]',
                 $tp->id,
                 $template,
                 $target
             );
         }
-        return 'ExpandSignatureIndexed [TP:'.$this->targetNamePatternId.']';
+        return 'ExpandSignatured [TP:'.$this->targetNamePatternId.']';
     }
 
     /**
      * Handle filling pattern signatures for the associated TargetNamePattern.
      */
     public function handle(
-        ExpandSignatureIndexedPatternService $expandService
+        ExpandSignaturedPatternService $expandService
     ): void
     {
         Log::info('job.expand.start', [
-            'job' => 'ExpandSignatureIndexedPatternsJob',
+            'job' => 'ExpandSignaturedPatternsJob',
             'target_pattern_id' => $this->targetNamePatternId,
             'queue' => $this->queue ?? null,
             'attempt' => method_exists($this, 'attempts') ? $this->attempts() : null,
@@ -86,7 +86,7 @@ class ExpandSignatureIndexedPatternsJob implements ShouldQueue
             'target_pattern_id' => $this->targetNamePatternId,
         ]);
         try {
-            $expandService->expandWithBuilder($this->targetNamePatternId);
+            $expandService->expandSignaturedPatterns($this->targetNamePatternId);
             Metrics::counter('job_expand_succeeded', 1, [
                 'target_pattern_id' => $this->targetNamePatternId,
             ]);

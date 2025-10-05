@@ -26,7 +26,6 @@ class TokenSignature extends Model
 
     public function signature(): BelongsTo
     {
-        // Standard FK: token_signatures.signature_id -> signatures.id
         return $this->belongsTo(Signature::class);
     }
 }

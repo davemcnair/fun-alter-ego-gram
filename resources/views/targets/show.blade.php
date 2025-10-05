@@ -1,5 +1,3 @@
-@php use App\Enums\TargetStatus;use App\Models\Token; @endphp
-    <!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
@@ -357,7 +355,8 @@
         <div class="stats-grid">
             <div>
                 <div id="patternsRow" class="patterns-row">
-                    Patterns searched: <strong id="patternsSearched">{{ $dto->patternsFilledCount }}</strong> / <strong id="patternsTotal">{{ $dto->patternsCount }}</strong>
+                    Patterns searched: <strong id="patternsSearched">{{ $dto->patternsFilledCount }}</strong> / <strong
+                        id="patternsTotal">{{ $dto->patternsCount }}</strong>
                     <span id="patternsElapsed" class="tag patterns-elapsed"></span>
                 </div>
                 <div class="patterns-row">
@@ -395,25 +394,35 @@
                             </thead>
                             <tbody>
                             @foreach($dto->matchedWords as $token => $byList)
-                                @foreach($byList as $listType => $items)
-                                    @php $count = count($items); $rowId = md5($token.'|'.$listType); @endphp
-                                    <tr id="row-{{ $rowId }}" data-rowid="{{ $rowId }}" data-token="{{ $token }}" data-list="{{ $listType }}" data-total="{{ $count }}">
+                                @foreach($byList as $listType => $words)
+                                    @php $rowId = md5($token.'|'.$listType); @endphp
+                                    <tr id="row-{{ $rowId }}"
+                                        data-rowid="{{ $rowId }}"
+                                        data-token="{{ $token }}"
+                                        data-list="{{ $listType }}"
+                                        data-total="{{ count($words) }}"
+                                    >
                                         <td>{{ $token }}</td>
-                                        <td>
-                                            <span class="tag">{{ $listType }}</span>
-                                        </td>
-                                        <td><span id="count-{{ $rowId }}">{{ $count }}</span></td>
+                                        <td><span class="tag">{{ $listType }}</span></td>
+                                        <td><span id="count-{{ $rowId }}">{{ count($words) }}</span></td>
                                         <td class="muted">
                                             <div id="all-{{ $rowId }}" class="word-samples">
-                                                @foreach($items as $it)
-                                                    @php $wid = (int)($it['id'] ?? 0); $w = (string)($it['word'] ?? ''); @endphp
-                                                    @if(in_array($token, ['forename','surname']) && $listType === 'ok')
-                                                        <span class="tok-word tok-word-clickable" data-token="{{ $token }}" data-word="{{ $w }}" onclick="promoteOkWord({{ $wid }}, '{{ addslashes($w) }}')" title="Promote to fun">{{ $w }}</span>
-                                                        <button type="button" class="btn-link" onclick="window.setWordFilter('{{ addslashes($w) }}','{{ $token }}')"></button>
-                                                    @elseif(in_array($token, ['forename','surname']))
-                                                        <span class="tok-word tok-word-link" data-token="{{ $token }}" data-word="{{ $w }}" onclick="window.setWordFilter('{{ addslashes($w) }}','{{ $token }}')">{{ $w }}</span>
+                                                @foreach($words as $tswId => $word)
+                                                    @if($listType === 'ok' && in_array($token, ['forename','surname']) )
+                                                        <span class="tok-word tok-word-clickable"
+                                                              onclick="promoteOkWord({{ $tswId }})"
+                                                              title="Promote to fun">
+                                                            {{ $word->word }}
+                                                        </span>
+                                                        <button type="button" class="btn-link"
+                                                                onclick="window.setWordFilter($tswId)">
+                                                        </button>
                                                     @else
-                                                        <span class="tok-word" data-token="{{ $token }}" data-word="{{ $w }}">{{ $w }}</span>
+                                                        <span class="tok-word tok-word-link" data-token="{{ $token }}"
+                                                              data-word="{{ $word->word }}"
+                                                              onclick="window.setWordFilter($tswId)">
+                                                            {{ $word->word }}
+                                                        </span>
                                                     @endif
                                                 @endforeach
                                             </div>

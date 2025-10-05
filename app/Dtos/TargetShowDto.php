@@ -40,7 +40,7 @@ class TargetShowDto extends Data
         // Eager load relations used for counting to avoid N+1 in view
         $target->loadMissing([
             'patterns.pattern',
-            'signatureIndexedPatterns',
+            'signaturedPatterns',
             'alterEgos',
             'tokenSignatures.tokenSignature.token',
             'tokenSignatures.tokenSignature.words'

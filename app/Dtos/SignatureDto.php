@@ -12,38 +12,7 @@ class SignatureDto extends Data
     public function __construct(
         public string $signature,
         public array $defaults
-//        public string $signature_indexed,
-//        public string $normalized_key,
-//        public int    $sig_len,
-//        public int    $a_count,
-//        public int    $b_count,
-//        public int    $c_count,
-//        public int    $d_count,
-//        public int    $e_count,
-//        public int    $f_count,
-//        public int    $g_count,
-//        public int    $h_count,
-//        public int    $i_count,
-//        public int    $j_count,
-//        public int    $k_count,
-//        public int    $l_count,
-//        public int    $m_count,
-//        public int    $n_count,
-//        public int    $o_count,
-//        public int    $p_count,
-//        public int    $q_count,
-//        public int    $r_count,
-//        public int    $s_count,
-//        public int    $t_count,
-//        public int    $u_count,
-//        public int    $v_count,
-//        public int    $w_count,
-//        public int    $x_count,
-//        public int    $y_count,
-//        public int    $z_count
-    )
-    {
-    }
+    ){}
 
     public static function fromWord(string $word): self
     {

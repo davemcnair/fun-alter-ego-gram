@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 class TargetPattern extends Model
 {
+
     protected $with = ['target', 'pattern'];
 
     protected $fillable = [
@@ -36,13 +37,13 @@ class TargetPattern extends Model
         return $this->belongsTo(Pattern::class);
     }
 
-    public function signatureIndexedPatterns(): HasMany
+    public function signaturedPatterns(): HasMany
     {
-        return $this->hasMany(TargetSignatureIndexedPattern::class);
+        return $this->hasMany(TargetSignaturedPattern::class);
     }
 
     public function alterEgos(): HasManyThrough
     {
-        return $this->hasManyThrough(AlterEgo::class, TargetSignatureIndexedPattern::class);
+        return $this->hasManyThrough(AlterEgo::class, TargetSignaturedPattern::class);
     }
 }

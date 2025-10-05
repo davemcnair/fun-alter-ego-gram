@@ -1,6 +1,7 @@
 <?php
 namespace App\Services;
 
+use App\Models\TargetTokenSignature;
 use App\Models\TokenSignature;
 use App\Traits\HelpsMatchWords;
 use Generator;
@@ -12,31 +13,39 @@ final class DfsService
     /**
      * Depth-first search (DFS) over slots:
      *      collect chosen signatures per slot
-     *      emit pattern string when exact cover achieved
+     *      emit chosen target_token_signature_ids when exact cover achieved
      *
-     * @param array<int, string> $patternTokenPositions
+     * @param array<int, string> $remainingPatternTokenPositions
      * @param array<string,int> $remainingTargetLetterCountsNeeded
-     * @param array<int,string> $chosenTargetTokenSignatureIds map: pos => sig
-     * @param array<int,string> $chosenTokenIds map: pos => token id
+     * @param array<int, array{
+     *     targetTokenSignatures: array<int, TargetTokenSignature>,
+     *     precomputedLetterCounts: array<int, array<string, int>>,
+     *     maxLetterCounts: array<string, int>
+     * }> $candidateTokenSignaturesByTokenId
+ * @param array<int,int> $chosenTargetTokenSignatureIds map: pos => sig
      */
     public function dfs(
-        array $patternTokenPositions,
+        array $remainingPatternTokenPositions,
         array $remainingTargetLetterCountsNeeded,
         array $candidateTokenSignaturesByTokenId,
         array $chosenTargetTokenSignatureIds,
-//        array $chosenTokenIds
     ): Generator
     {
-        if (empty($patternTokenPositions)) {
+        if (empty($remainingPatternTokenPositions)) {
             if (empty($remainingTargetLetterCountsNeeded)) {
-                yield $this->buildSignatureIndexedPattern($chosenTargetTokenSignatureIds);//, $chosenTokenIds);
+                // Exact cover achieved - a viable signature-filled pattern
+                // todo: should ksort happen elsewhere?
+                // sort by position for consistent ordering
+                ksort($chosenTargetTokenSignatureIds);
+                yield $chosenTargetTokenSignatureIds;
             }
             return;
         }
+        // select next position to fill
+        $pos = array_key_first($remainingPatternTokenPositions);
+        $tokenId = $remainingPatternTokenPositions[$pos];
+        unset($remainingPatternTokenPositions[$pos]);
 
-        $pos = array_key_first($patternTokenPositions);
-        $tokenId = $patternTokenPositions[$pos];
-        unset($patternTokenPositions[$pos]);
         $nextTokenTargetTokenSignatures = $candidateTokenSignaturesByTokenId[$tokenId] ?? [];
         if (empty($nextTokenTargetTokenSignatures)) {
             return; // dead end
@@ -46,75 +55,50 @@ final class DfsService
         $viableIndices = [];
         $precomputedLetterCounts = $nextTokenTargetTokenSignatures['precomputedLetterCounts'];
         $nextTokenTargetTokenSignatures = $nextTokenTargetTokenSignatures['targetTokenSignatures'];
+
         /** @var  TokenSignature $targetTokenSignature */
         foreach ($nextTokenTargetTokenSignatures as $i => $targetTokenSignature) {
             $hist = $precomputedLetterCounts[$i];
+
             // Must share at least one needed letter
-            $shares = false;
-            foreach ($remainingTargetLetterCountsNeeded as $ch => $n) {
-                if (isset($hist[$ch])) {
-                    $shares = true;
-                    break;
-                }
-            }
-            if (!$shares) {
+            if (!array_intersect_key($remainingTargetLetterCountsNeeded, $hist)) {
                 continue;
             }
+
             // Must not exceed needed letterCounts
             if ($this->candidateLettersExceedNeededCounts($remainingTargetLetterCountsNeeded, $hist)) {
                 continue;
             }
-            $viableIndices[$i] = ['hist' => $hist, 'id'=> $targetTokenSignature->id];
+            $viableIndices[$targetTokenSignature->id] = $hist;
         }
         // no candidate contains any needed letter
         if (empty($viableIndices)) {
             return;
         }
 
-        foreach ($viableIndices as $i => $candidate) {
-//            $targetTokenSignature = $nextTokenTargetTokenSignatures['targetTokenSignatures'][$i];
-//            if ($this->candidateLettersExceedNeededCounts($remainingTargetLetterCountsNeeded, $hist)) {
-//                \Log::info('cant');
-//                continue;
-//            }
-            $nextNeededLetters = $this->subtract($remainingTargetLetterCountsNeeded, $candidate['hist']);
-            // Additional pruning after choosing this candidate using slot-aware union (accounts for repeated tokens)
-            $tokensAvailableLetters = [];
-            foreach ($patternTokenPositions as $remainingToken) {
-                if (isset($candidateTokenSignaturesByTokenId[$remainingToken])) {
-                    $tokensAvailableLetters[] = $candidateTokenSignaturesByTokenId[$remainingToken]['maxLetterCounts'];
-                }
+        // Pre-compute available letters from remaining tokens (optimization)
+        $tokensAvailableLetters = [];
+        foreach ($remainingPatternTokenPositions as $remainingToken) {
+            if (isset($candidateTokenSignaturesByTokenId[$remainingToken]['maxLetterCounts'])) {
+                $tokensAvailableLetters[] = $candidateTokenSignaturesByTokenId[$remainingToken]['maxLetterCounts'];
             }
-            if (!$this->canAssembleFromTokens($tokensAvailableLetters, $nextNeededLetters)) {
+        }
+
+        foreach ($viableIndices as $targetTokenSignatureId => $hist) {
+            $nextNeededLetters = $this->subtract($remainingTargetLetterCountsNeeded, $hist);
+            // Additional pruning after choosing this candidate using slot-aware union (accounts for repeated tokens)
+            if (!$this->canFillFromAvailableLetterPools($tokensAvailableLetters, $nextNeededLetters)) {
                 continue;
             }
             $nextChosenTargetTokenSignatureIds = $chosenTargetTokenSignatureIds;
-            $nextChosenTargetTokenSignatureIds[$pos] = $candidate['id'];
-//            $nextChosenTokenIds = $chosenTokenIds;
-//            $nextChosenTokenIds[$pos] = $tokenId;
+            $nextChosenTargetTokenSignatureIds[$pos] = $targetTokenSignatureId;
             yield from $this->dfs(
-                $patternTokenPositions,
+                $remainingPatternTokenPositions,
                 $nextNeededLetters,
                 $candidateTokenSignaturesByTokenId,
                 $nextChosenTargetTokenSignatureIds,
-//                $nextChosenTokenIds
             );
         }
-    }
-
-    private function buildSignatureIndexedPattern(
-        array $chosenTargetTokenSignatureIds,
-//        array $chosenPosTokenIds
-    ): string
-    {
-        ksort($chosenTargetTokenSignatureIds);
-//        ksort($chosenPosTokenIds);
-        $parts = [];
-        foreach ($chosenTargetTokenSignatureIds as $pos => $targetTokenSignatureId) {
-//            $tokenId = (string)($chosenPosTokenIds[$pos] ?? '');
-            $parts[] = '{' . $targetTokenSignatureId . '}';
-        }
-        return implode('', $parts);
     }
 
 }

@@ -272,7 +272,7 @@ class TargetController extends Controller
 //                'running' => $target->patterns()->where('status', TargetPatternStatus::processing)->count(),
 //                'pending' => $target->patterns()->whereIn('status', [TargetPatternStatus::pending, TargetPatternStatus::deferred])->count(),
 //            ],
-//            'signatureIndexedPatternsCount' => $data['signatureIndexedPatternsCount'],
+//            'signaturedPatternsCount' => $data['signaturedPatternsCount'],
 //            'alterEgosCount' => $data['alterEgosCount'],
 //        ]);
 //    }
@@ -297,7 +297,7 @@ class TargetController extends Controller
             $payload = [
                 'id' => $pattern->id,
                 'status' => $pattern->status,
-                'signatureIndexedPatternsCount' => $pattern->signatureIndexedPatterns()->count(),
+                'signaturedPatternsCount' => $pattern->signaturedPatterns()->count(),
                 'alterEgosCount' => $pattern->alterEgos()->count(),
                 'elapsed_ms' => $pattern->elapsed_ms,
                 'started_at' => optional($pattern->started_at)?->toIso8601String(),
@@ -318,7 +318,7 @@ class TargetController extends Controller
         $payload = [
             'id' => $pattern->id,
             'status' => $pattern->status,
-            'signatureIndexedPatternsCount' => $pattern->signatureIndexedPatterns()->count(),
+            'signaturedPatternsCount' => $pattern->signaturedPatterns()->count(),
             'alterEgosCount' => $pattern->alterEgos()->count(),
             'elapsed_ms' => $pattern->elapsed_ms,
             'started_at' => optional($pattern->started_at)?->toIso8601String(),
@@ -367,7 +367,7 @@ class TargetController extends Controller
         $data = $request->validate([
             'phrase' => ['required','string'],
         ]);
-        AlterEgo::whereHas('targetSignatureIndexedPattern.targetPattern', function($q) use ($target){
+        AlterEgo::whereHas('targetSignaturedPattern.targetPattern', function($q) use ($target){
             $q->where('target_id', $target->id);
         })
             ->where('phrase', $data['phrase'])
@@ -380,7 +380,7 @@ class TargetController extends Controller
         $data = $request->validate([
             'phrase' => ['required','string'],
         ]);
-        AlterEgo::whereHas('targetSignatureIndexedPattern.targetPattern', function($q) use ($target){
+        AlterEgo::whereHas('targetSignaturedPattern.targetPattern', function($q) use ($target){
             $q->where('target_id', $target->id);
         })
             ->where('phrase', $data['phrase'])
@@ -435,7 +435,7 @@ class TargetController extends Controller
             'deferredPatterns' => $deferredPatternsQuery
                 ->get()
                 ->map(fn($pattern) => $this->lookupPatternPayload($pattern)),
-            'signatureIndexedPatternsCount' => $target->signatureIndexedPatterns()->count(),
+            'signaturedPatternsCount' => $target->signaturedPatterns()->count(),
             'alterEgosCount' => $target->alterEgos()->count(),
             'starred' => $target->alterEgos()->where('starred', true)->pluck('phrase')->all(),
             'matchedWordsCount' => $target->tokenSignatureWords()->count(),
@@ -449,18 +449,18 @@ class TargetController extends Controller
 
     private function lookupPatternPayload(TargetPattern $targetPattern): array
     {
-        $signatureIndexedPatterns = $targetPattern->signatureIndexedPatterns;
+        $signaturedPatterns = $targetPattern->signaturedPatterns;
         $alterEgos = $targetPattern->alterEgos;
         return [
             'id' => $targetPattern->id,
             'status' => $targetPattern->status,
             'template' => optional($targetPattern->pattern)->template,
-            'signatureIndexedPatternsCount' => $signatureIndexedPatterns->count(),
+            'signaturedPatternsCount' => $signaturedPatterns->count(),
             'alterEgosCount' => $alterEgos->count(),
             'elapsed_ms' => $targetPattern->elapsed_ms,
             'started_at' => $targetPattern->started_at,
             'finished_at' => $targetPattern->finished_at,
-            'signatureIndexedPatterns' => $signatureIndexedPatterns,
+            'signaturedPatterns' => $signaturedPatterns,
             'alterEgos' => $alterEgos,
         ];
     }

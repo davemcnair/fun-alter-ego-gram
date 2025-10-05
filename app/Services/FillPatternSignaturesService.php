@@ -3,13 +3,13 @@
 namespace App\Services;
 
 use App\Enums\TargetPatternStatus;
-use App\Jobs\ExpandSignatureIndexedPatternsJob;
+use App\Jobs\ExpandSignaturedPatternsJob;
 use App\Models\Pattern;
-use App\Models\TargetSignatureIndexedPattern;
 use App\Models\TargetPattern;
 use App\Traits\HelpsMatchWords;
 use App\Traits\ScalesJobs;
 use App\Support\Metrics;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -85,26 +85,26 @@ class FillPatternSignaturesService
             $targetLetterCountsNeeded,
             $tokenPositionsOrderedBySignatureCount,
             $targetPattern->target->tokenSignatures
-        ) as $signaturePattern) {
+        ) as $orderedChosenTargetTokenSignatureIds) {
             $signaturePatterns[] = [
                 'target_pattern_id' => $targetPattern->id,
-                'pattern' => $signaturePattern,
+                'target_token_signature_ids' => $orderedChosenTargetTokenSignatureIds,
             ];
             $count++;
             if ($count % 1000 === 0) {
                 try {
                     Log::info($targetPattern->target->name . '/' . ((string)$targetPattern->pattern->template) . ' :' . $count . ' filled');
                 } catch (Throwable $e) {}
-                TargetSignatureIndexedPattern::insert($signaturePatterns);
+                $this->bulkInsert($signaturePatterns);
                 $signaturePatterns = [];
             }
         }
 
         // Flush any remaining batched rows
         if (!empty($signaturePatterns)) {
-            TargetSignatureIndexedPattern::insert($signaturePatterns);
+            $this->bulkInsert($signaturePatterns);
         }
-        Metrics::counter('signature_indexed_patterns_generated', $count, [
+        Metrics::counter('signatured_patterns_generated', $count, [
             'target_id' => $targetPattern->target_id,
             'target_pattern_id' => $targetPattern->id,
         ]);
@@ -121,9 +121,65 @@ class FillPatternSignaturesService
             'duration_ms' => $durationMs,
         ]);
         // Dispatch expansion; scale based on queue configuration
-        $this->scaledDispatch(ExpandSignatureIndexedPatternsJob::class, $targetPattern->id);
+        $this->scaledDispatch(ExpandSignaturedPatternsJob::class, $targetPattern->id);
         // Note: finished_at and elapsed_ms are now computed centrally in
-        // ExpandSignatureIndexedPatternService after expansion completes so
+        // ExpandSignaturedPatternService after expansion completes so
         // that both queued and inline execution paths record timing.
+    }
+
+    public function bulkInsert($signaturePatterns)
+    {
+
+        DB::transaction(function () use ($signaturePatterns) {
+            $overallStart = microtime(true);
+            $createdCount = 0;
+
+            $parentInsertTime = 0;
+            $pivotInsertTime = 0;
+
+            foreach ($signaturePatterns as $pattern) {
+                // Time parent insert
+                $parentStart = microtime(true);
+                $parentId = DB::table('target_signatured_patterns')->insertGetId([
+                    'target_pattern_id' => $pattern['target_pattern_id'],
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+                $parentInsertTime += (microtime(true) - $parentStart);
+
+                // Prepare pivot records for this parent
+                $pivotRecords = [];
+                foreach ($pattern['target_token_signature_ids'] as $position => $tokenSignatureId) {
+                    $pivotRecords[] = [
+                        'target_signatured_pattern_id' => $parentId,
+                        'target_token_signature_id' => $tokenSignatureId,
+                        'position' => $position,
+                    ];
+                }
+
+                // Time pivot insert
+                if (!empty($pivotRecords)) {
+                    $pivotStart = microtime(true);
+                    DB::table('target_signatured_pattern_target_token_signature')
+                        ->insert($pivotRecords);
+                    $pivotInsertTime += (microtime(true) - $pivotStart);
+                }
+
+                $createdCount++;
+            }
+
+            $overallTime = microtime(true) - $overallStart;
+
+            Log::info('Bulk insert completed', [
+                'total_patterns' => $createdCount,
+                'overall_time_ms' => round($overallTime * 1000, 2),
+                'parent_insert_time_ms' => round($parentInsertTime * 1000, 2),
+                'pivot_insert_time_ms' => round($pivotInsertTime * 1000, 2),
+                'avg_parent_ms' => round(($parentInsertTime / $createdCount) * 1000, 2),
+                'avg_pivot_ms' => round(($pivotInsertTime / $createdCount) * 1000, 2),
+            ]);
+
+            return $createdCount;
+        });
     }
 }

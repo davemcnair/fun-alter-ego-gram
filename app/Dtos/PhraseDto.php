@@ -3,7 +3,6 @@
 namespace App\Dtos;
 
 use Spatie\LaravelData\Data;
-use function PHPUnit\Framework\isNull;
 
 class PhraseDto extends Data
 {

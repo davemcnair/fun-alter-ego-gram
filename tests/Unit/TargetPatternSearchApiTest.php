@@ -61,7 +61,7 @@ class TargetPatternSearchApiTest extends TestCase
         $this->assertTrue($json['ok'] ?? false);
         $this->assertSame($tp->id, $json['pattern']['id'] ?? null);
         $this->assertSame('filled', $json['pattern']['status'] ?? null);
-        $this->assertArrayHasKey('signatureIndexedPatternsCount', $json['pattern']);
+        $this->assertArrayHasKey('signaturedPatternsCount', $json['pattern']);
         $this->assertArrayHasKey('alterEgosCount', $json['pattern']);
         $this->assertArrayHasKey('elapsed_ms', $json['pattern']);
     }

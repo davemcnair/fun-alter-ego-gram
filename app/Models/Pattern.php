@@ -85,7 +85,7 @@ class Pattern extends Model
                 $count = isset($m[2]) && (int)$m[2] > 0 ? (int)$m[2] : 1;
                 for ($i = 0; $i < $count; $i++) {
                     [$type, $word] = explode(":", $samples[$name][$i]);
-                    $slots[$slotIx++] = new WordDto($name,$word,$type);
+                    $slots[$slotIx++] = new WordDto( $name, $word, $type);
                 }
             }
         }

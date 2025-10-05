@@ -85,49 +85,48 @@ class Target extends Model
 
     /**
      * Build grouped token word matches for the Target Results page.
-     * Returns an array like
-     * [
-     *      tokenName => [
-     *          listType => [
-     *              [id, word, used],
-     *              ...
-     *          ]
-     *      ]
-     *      ...
-     * ]
      */
     public function matchingWordsByUseTokenAndType(): array
     {
-        $usedWordIds = $this->tokenSignatureWords()->pluck('word_id');
-        $out = [];
-        /** @var TargetTokenSignatureWord $tokenSignature */
-        foreach ($this->tokenSignatures as $targetTokenSignature) {
-            $tokenSignature = $targetTokenSignature->tokenSignature;
-            $token = $tokenSignature->token->name;
+        // Single query with all necessary relationships
+        $targetTokenSignatureWords = $this->tokenSignatureWords()
+            ->with([
+                'tokenSignatureWord.tokenSignature.token'
+            ])
+            ->get();
 
-            /** @var TokenSignatureWord $word */
-            foreach ( $tokenSignature->words as $word) {
-                $list = $word->list_type;
-                if (!isset($out[$token])) $out[$token] = [];
-                if (!isset($out[$token][$list])) $out[$token][$list] = [];
-                $out[$token][$list][] = new WordDto(
-                    $token,
-                    $word->word,
-                    $word->list_type,
-                    $word->id,
-                    $word->is_deferred,
-                    $usedWordIds->contains($word->id),
-                );
+        $out = [];
+
+        foreach ($targetTokenSignatureWords as $targetTokenSignatureWord) {
+            $word = $targetTokenSignatureWord->tokenSignatureWord;
+            $token = $word->tokenSignature->token->name;
+            $list = $word->list_type;
+
+            if (!isset($out[$token])) {
+                $out[$token] = [];
             }
+            if (!isset($out[$token][$list])) {
+                $out[$token][$list] = [];
+            }
+
+            $out[$token][$list][] = new WordDto(
+                $token,
+                $word->word,
+                $word->list_type,
+                $word->is_promotable,
+                $word->id,
+                $word->is_deferred,
+                $targetTokenSignatureWord->usedInPhrase,
+            );
         }
-        // Sort words alphabetically within each group for stable UI
+
+        // Sort words alphabetically within each group
         foreach ($out as $token => &$lists) {
             foreach ($lists as $list => &$items) {
-                usort($items, function ($a, $b) {
-                    return strcasecmp($a->word, $b->word);
-                });
+                usort($items, fn($a, $b) => strcasecmp($a->word, $b->word));
             }
         }
+
         return $out;
     }
 }

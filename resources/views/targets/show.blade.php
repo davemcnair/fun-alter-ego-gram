@@ -375,8 +375,9 @@
             <div class="card">
                 <h3 class="word-matches-header">
                     Word Matches ({{$dto->matchedWordsCount}})
+                    Signature Matches ({{$dto->matchedSignaturesCount}})
                     <label class="word-matches-toggle">
-                        <input type="checkbox" id="onlyUsedToggle" checked> Only used
+                        <input type="checkbox" id="onlyUsedToggle" checked> Only used ({{$dto->usedWordsCount}})
                     </label>
                 </h3>
                 <div id="tokenMatchesContainer">

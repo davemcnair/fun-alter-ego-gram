@@ -8,7 +8,6 @@ use App\Jobs\FillPatternSignaturesJob;
 use App\Models\Pattern;
 use App\Models\Signature;
 use App\Models\Target;
-use App\Models\TargetPattern;
 use App\Models\TargetTokenSignature;
 use App\Support\NameNormalizer;
 use App\Support\Metrics;

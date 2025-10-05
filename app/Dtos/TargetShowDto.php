@@ -26,7 +26,10 @@ class TargetShowDto extends Data
         public int        $boringAlterEgosCount,
         public string     $elapsed,
         public array      $starred,
+        public int        $matchedSignaturesCount,
+        public int        $usedSignaturesCount,
         public int        $matchedWordsCount,
+        public int        $usedWordsCount,
         public array      $matchedWords,
     )
     {
@@ -37,7 +40,7 @@ class TargetShowDto extends Data
      */
     public static function fromTarget(Target $target): self
     {
-        // Eager load relations used for counting to avoid N+1 in view
+        // Eager load relations for counting to avoid N+1 in view
         $target->loadMissing([
             'patterns.pattern',
             'signaturedPatterns',
@@ -62,7 +65,10 @@ class TargetShowDto extends Data
             ->pluck('phrase')
             ->all();
 
-        $matchedWordsCount = $target->tokenSignatures()->count();
+        $matchedSignaturesCount = $target->tokenSignatures()->count();
+        $matchedWordsCount = $target->tokenSignatureWords()->count();
+        $usedSignaturesCount = $target->tokenSignatures()->where('usedInPattern', true)->count();
+        $usedWordsCount = $target->tokenSignatureWords()->where('usedInPhrase', true)->count();
         $matchedWords = $target->matchingWordsByUseTokenAndType();
 
         return new self(
@@ -79,7 +85,10 @@ class TargetShowDto extends Data
             boringAlterEgosCount: $alterEgos->filter(fn($ae) => $ae->hasBoring)->count(),
             elapsed: number_format($elapsed,1),
             starred: $starred,
+            matchedSignaturesCount: $matchedSignaturesCount,
+            usedSignaturesCount: $usedSignaturesCount,
             matchedWordsCount: $matchedWordsCount,
+            usedWordsCount: $usedWordsCount,
             matchedWords: $matchedWords,
         );
     }

@@ -81,7 +81,7 @@ class FillPatternSignaturesService
 
         $signaturePatterns = [];
         $count = 0;
-        foreach ($this->signatureFillService->generateSignaturePatterns(
+        foreach ($this->signatureFillService->generateSignaturedPatterns(
             $targetLetterCountsNeeded,
             $tokenPositionsOrderedBySignatureCount,
             $targetPattern->target->tokenSignatures

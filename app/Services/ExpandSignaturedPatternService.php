@@ -10,6 +10,7 @@ use App\Models\AlterEgo;
 use App\Models\Target;
 use App\Models\TargetPattern;
 use App\Models\TargetSignaturedPattern;
+use App\Models\TargetTokenSignatureWord;
 use App\Support\Metrics;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -55,15 +56,22 @@ final class ExpandSignaturedPatternService
 
                 $wordsByPosition[$position] = [];
 
-                foreach ($targetTokenSignature->tokenSignature->words as $signatureWord) {
+                foreach ($targetTokenSignature->tokenSignature->words as $tokenSignatureWord) {
                     $wordsByPosition[$position][] = new WordDto(
                         $tokenName,
-                        $signatureWord->word,
-                        $signatureWord->list_type,
-                        $signatureWord->id,
-                        $signatureWord->is_deferred,
+                        $tokenSignatureWord->word,
+                        $tokenSignatureWord->list_type,
+                        $tokenSignatureWord->is_promotable,
+                        $tokenSignatureWord->id,
+                        $tokenSignatureWord->is_deferred,
                         true,
                     );
+                    if ($unusedTargetTokenSignatureWord = TargetTokenSignatureWord::where('target_id',$target->id)
+                        ->where('token_signature_word_id',$tokenSignatureWord->id)
+                        ->where('usedInPhrase', false)->first()) {
+                        $unusedTargetTokenSignatureWord->usedInPhrase = true;
+                        $unusedTargetTokenSignatureWord->save();
+                    }
                 }
             }
 

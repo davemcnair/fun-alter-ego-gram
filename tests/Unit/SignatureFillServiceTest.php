@@ -51,7 +51,7 @@ class SignatureFillServiceTest extends TestCase
         $slots = [0 => $forenameId, 1 => $surnameId];
 
         $rows = collect([$tswF->fresh('tokenSignature'), $tswS->fresh('tokenSignature')]);
-        $out = iterator_to_array($svc->generateSignaturePatterns($targetSig, $slots, $rows), false);
+        $out = iterator_to_array($svc->generateSignaturedPatterns($targetSig, $slots, $rows), false);
 
         $this->assertSame(['{' . $forenameId . ':aejn}{' . $surnameId . ':ary}'], $out);
     }
@@ -68,7 +68,7 @@ class SignatureFillServiceTest extends TestCase
         $slots = [0 => $surnameId, 1 => $surnameId];
 
         $rows = collect([$tsw->fresh('tokenSignature')]);
-        $out = iterator_to_array($svc->generateSignaturePatterns($targetSig, $slots, $rows), false);
+        $out = iterator_to_array($svc->generateSignaturedPatterns($targetSig, $slots, $rows), false);
 
         $this->assertSame(['{' . $surnameId . ':ciinv}{' . $surnameId . ':ciinv}'], $out);
     }
@@ -83,7 +83,7 @@ class SignatureFillServiceTest extends TestCase
         $slots = [0 => $forenameId];
 
         $rows = TokenSignatureWord::with('tokenSignature')->get();
-        $out = iterator_to_array($svc->generateSignaturePatterns($targetSig, $slots, $rows), false);
+        $out = iterator_to_array($svc->generateSignaturedPatterns($targetSig, $slots, $rows), false);
 
         $this->assertSame([], $out);
     }

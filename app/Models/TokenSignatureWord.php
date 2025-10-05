@@ -1,6 +1,7 @@
 <?php
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -35,6 +36,17 @@ class TokenSignatureWord extends Model
     public function tokenSignature(): BelongsTo
     {
         return $this->belongsTo(TokenSignature::class);
+    }
+
+    protected function isPromotable(): Attribute
+    {
+        return Attribute::make(
+            get: fn () => $this->list_type === 'ok'
+                && in_array($this->tokenSignature->token->name, [
+                        Token::TOKEN_NAME_FORENAME,
+                        Token::TOKEN_NAME_SURNAME
+                    ], true)
+        );
     }
 }
 

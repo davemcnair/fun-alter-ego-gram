@@ -25,7 +25,7 @@ class SignatureFillService
      * @param Collection<TargetTokenSignature> $targetTokenSignatures
      * @return Generator
      */
-    public function generateSignaturePatterns(
+    public function generateSignaturedPatterns(
         array $targetLetterCountsNeeded,
         array  $patternTokenPositions,
         Collection $targetTokenSignatures

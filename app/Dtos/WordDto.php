@@ -11,7 +11,8 @@ class WordDto extends Data
         public string $tokenType,
         public string $word,
         public string $listType,
-        public ?string $id = null,
+        public bool $isPromotable = false,
+        public ?string $id = null, // target_token_signature_word
         public bool $deferred = false,
         public bool $used = false,
     ){}

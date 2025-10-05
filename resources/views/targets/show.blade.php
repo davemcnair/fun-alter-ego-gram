@@ -375,11 +375,11 @@
             <div class="card">
                 <h3 class="word-matches-header">
                     Word Matches ({{$dto->matchedWordsCount}})
-                    Signature Matches ({{$dto->matchedSignaturesCount}})
                     <label class="word-matches-toggle">
                         <input type="checkbox" id="onlyUsedToggle" checked> Only used ({{$dto->usedWordsCount}})
                     </label>
                 </h3>
+                Signature Matches ({{$dto->matchedSignaturesCount}})
                 <div id="tokenMatchesContainer">
                     @if(empty($dto->matchedWords))
                         <div class="muted">No word matches found.</div>
@@ -409,22 +409,19 @@
                                         <td class="muted">
                                             <div id="all-{{ $rowId }}" class="word-samples">
                                                 @foreach($words as $tswId => $word)
-                                                    @if($listType === 'ok' && in_array($token, ['forename','surname']) )
-                                                        <span class="tok-word tok-word-clickable"
-                                                              onclick="promoteOkWord({{ $tswId }})"
-                                                              title="Promote to fun">
-                                                            {{ $word->word }}
-                                                        </span>
-                                                        <button type="button" class="btn-link"
-                                                                onclick="window.setWordFilter($tswId)">
-                                                        </button>
-                                                    @else
-                                                        <span class="tok-word tok-word-link" data-token="{{ $token }}"
-                                                              data-word="{{ $word->word }}"
-                                                              onclick="window.setWordFilter($tswId)">
-                                                            {{ $word->word }}
-                                                        </span>
-                                                    @endif
+                                                    <span class="tok-word
+                                                    {{ $word->deferred ? 'deferred' : '' }}
+                                                    {{ $word->used ? 'used' : '' }}
+                                                    "
+                                                          onclick="window.setWordFilter($tswId)">
+                                                        {{ $word->word }}
+                                                        @if($word->isPromotable)
+                                                            <button type="button" class="btn-link"
+                                                                    onclick="promoteOkWord({{ $tswId }})"
+                                                                    title="Promote to fun">^
+                                                            </button>
+                                                        @endif
+                                                    </span>
                                                 @endforeach
                                             </div>
                                         </td>

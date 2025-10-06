@@ -4,6 +4,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Search: {{ $dto->name }}</title>
+    <!-- Add Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <style>
         body {
             font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
@@ -342,7 +344,25 @@
         }
     </style>
 </head>
-<body>
+<body x-data="{
+    showOnlyUsed: true,
+    selectedWordId: null,
+    wordToPhraseMap: @js($dto->wordToPhraseMap),
+
+    toggleWordFilter(wordId) {
+        this.selectedWordId = this.selectedWordId === wordId ? null : wordId;
+    },
+
+    isWordFiltered(wordId) {
+        return this.selectedWordId === wordId;
+    },
+
+    isPhraseVisible(phraseId) {
+        if (!this.selectedWordId) return true;
+        return (this.wordToPhraseMap[this.selectedWordId] || []).includes(phraseId);
+    }
+}
+">
 <nav>
     <a href="{{ route('targets.index') }}"><strong>Targets</strong></a>
     <a href="{{ route('patterns.index') }}">Patterns</a>
@@ -410,10 +430,12 @@
                                             <div id="all-{{ $rowId }}" class="word-samples">
                                                 @foreach($words as $tswId => $word)
                                                     <span class="tok-word
-                                                    {{ $word->deferred ? 'deferred' : '' }}
-                                                    {{ $word->used ? 'used' : '' }}
-                                                    "
-                                                          onclick="window.setWordFilter($tswId)">
+                                                        {{ $word->deferred ? 'deferred' : '' }}
+                                                        {{ $word->used ? 'used' : '' }}
+                                                        "
+                                                          :class="{ 'highlight-active': isWordFiltered({{ $word->id }}) }"
+                                                          x-show="showOnlyUsed ? {{ $word->used ? 'true' : 'false' }} : true"
+                                                          @click="toggleWordFilter({{ $word->id }})">
                                                         {{ $word->word }}
                                                         @if($word->isPromotable)
                                                             <button type="button" class="btn-link"

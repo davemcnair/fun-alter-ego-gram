@@ -21,16 +21,14 @@ class TargetPatternShowDto extends Data
     {
     }
 
-    /**
-     * Build the DTO from a Target model, performing all calculations needed by the view.
-     */
     public static function fromTargetPattern(TargetPattern $targetPattern): self
     {
         $alterEgos = $targetPattern->alterEgos->map(fn($ae) => new PhraseDto(
             $ae->phrase,
             $ae->isFun,
             $ae->hasBoring,
-            $ae->starred
+            $ae->starred,
+            $ae->id
         ));
 
         return new self(
@@ -44,5 +42,4 @@ class TargetPatternShowDto extends Data
             elapsed: number_format($targetPattern->elapsed_ms / 1000, 1),
         );
     }
-
 }

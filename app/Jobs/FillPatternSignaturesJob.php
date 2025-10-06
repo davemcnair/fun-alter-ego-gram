@@ -4,8 +4,6 @@ namespace App\Jobs;
 
 use App\Models\TargetPattern;
 use App\Services\FillPatternSignaturesService;
-use App\Services\SignatureFillService;
-use App\Support\Metrics;
 use Illuminate\Support\Facades\Log;
 use App\Traits\HelpsMatchWords;
 use Illuminate\Bus\Queueable;

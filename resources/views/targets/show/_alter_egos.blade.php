@@ -28,7 +28,9 @@
                     </div>
                     <ul class="alter-ego-list">
                         @foreach($p->alterEgos as $phrase)
-                            <li>{{ $phrase->phrase }}</li>
+                            <li x-show="isPhraseVisible({{ $phrase->id }})">
+                                {{ $phrase->phrase }}
+                            </li>
                         @endforeach
                     </ul>
                 </div>

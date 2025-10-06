@@ -1,0 +1,163 @@
+Schema
+1. alterego phrase
+    isGenderInconsistent
+    isDissonant
+    isMaleCompatible
+    isFemaleCompatible
+    isUnisex
+    hasNearly
+    starredOrder
+    funniness
+2. token signature word
+    language
+    nearly
+    has anagrams / anagramsCount = 1+
+    forms
+            - nouns
+            - adjectives
+            - adverbs
+            - verbs
+    forename
+        eligibleForMultiple (ask AI)
+3. token
+    curatable/isPromotable
+4. themes
+    - pets (ai gets list, user curates - add/remove)
+    - hilarious
+    - risque
+5 bios
+6 friends
+7 target
+    permutations actual
+8 pattern
+   {surname}{suffix}{prefix}{surname}{suffix}
+        - pre-filter face(and other suffixes) from {surnames} when {surname}{suffix} is present
+9 langs
+    pluggable expansions
+      - complete foreign langs
+DFS
+1. eliminate order dupes for multiples
+2. boring has sneaked in
+3 pre-filter pattern words by longest possible for slot! even quicker but already really fast
+
+Target show
+1. target_pattern processing...
+    status fillQueued, expandQueued
+    if pendingCount processPending
+        webhook or long polling
+        search until all pending done
+            more workers
+    setDeferredToPending, setAllDeferredToPending,
+        move to livePatterns panel
+        processPending
+2. AlterEgos
+    Switch pattern/funniness panels
+        starred
+            toggle
+            drag'n'drop order
+        2 cols
+3. Matching Word UI
+    curate
+        traffic light f/o/b = g/o/r
+    filter
+        words used
+        tokens list-type only include exclude
+        word only include exclude
+            save/remember preferences
+        languages
+    tag selected word(s)
+        and/or toggle
+4. colour deferred words, used words
+5. click unused word(s) -> show remainder respect and/or
+6. Display original word, hide normalized
+7. Adjacency tests
+8. Tag gendered words Gender filter checkboxes
+9. Tag nearly words, filter checkbox
+Services
+    FunninessService
+        gpt identifies stars/flops ie learns sense of humour
+            - Identify plausible-but-funny fake names
+            - maybe a scoring algorithm for funny names/words
+            - {noun}{verb}.
+              {noun}{adverb}.
+              {verb}{noun}.
+              {verb}{adverb}.
+              {noun}{verb-er}.
+              {adj}{verb-er}
+              {verb-s}
+    NearlyService
+        pluggable expansion rules
+                   apostrophes kin'g, h'orace
+                   doublable consonants on names vfunny
+                   yoof speak :
+                   er-> a
+                   th->f,
+                   scots
+                   n't -> ae
+   DissonanceService
+   GenderInconsistencyService
+   BioService
+        chained agentic?
+        (configd gen-RIFF->pic gen-prompt->ILLUSTRATE)->interactive(riff*->pic prompt->illustrate)*
+Targets index
+1. columns
+    starred
+    new words
+        regenerate
+            set completed patterns pending
+2. form
+    view preferences
+        - fun only
+        - starred/hilarious only
+        - pending patterns
+        - word matches
+            - only used
+        - target pattern
+            - toggle
+            - fun only
+            - excluded used words
+    - permutations count/estimate actual, elapsed
+Resources
+1. insert-multi-anagram-words from text file
+2. add rude words
+3. interactive merge in extra sources
+4 everyday funny foreign words
+          Scottish, GERMAN, FRENCH, ITALIAN, SPANISH
+      - franglais
+5 add commited column to tokenSignatureWord for resources\token_words
+      - seeded words are marked as committed
+      - added words are marked as !committed
+      - words whose list-type is updated are marked as !committed
+  - words/commit-resources
+      - provide a button for this action on words index, and in target page words panel
+          - button only active if uncommited words are present
+      - action should
+          - zip a backup of previous resources\token_words and store in token_words_backup folder
+          - update a changelog.txt file with word changes !committed referencing created backup
+          - !committed word changes should be
+              - merged in to resources\token_words
+              - then set to committed
+6 - users own wordlists export/import
+Quality
+1 Architecture
+    DDD
+    use packages
+          own?
+          3rd party?
+    API
+    FE
+        tailwind
+        nuxt
+        vue
+    expose as MCP
+        resources
+        altegos?
+2 tests
+    Unit
+    Integration
+3 Docs
+    - brief
+    - spec
+    - user guide
+    - what else?
+4 - rewrite git history atomic commits

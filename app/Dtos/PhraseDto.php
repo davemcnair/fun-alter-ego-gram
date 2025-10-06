@@ -11,6 +11,7 @@ class PhraseDto extends Data
         public bool $isFun = false,
         public bool $hasBoring = false,
         public bool $starred = false,
+        public ?int $id = null,
     ){}
 
     /**

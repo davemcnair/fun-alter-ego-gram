@@ -30,7 +30,7 @@ class FillPatternSignaturesService
             return;
         }
 
-        if ($targetPattern->status !== TargetPatternStatus::PENDING) {
+        if ($targetPattern->status !== TargetPatternStatus::DEFERRED) {
             return;
         }
 

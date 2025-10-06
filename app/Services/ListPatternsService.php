@@ -67,14 +67,12 @@ class ListPatternsService
      * Filter patterns for a given source by effective word match minimums.
      */
     public function filterPatternsForTarget(
-        string $targetSignature,
+        int $targetLength,
         Collection $patterns,
         array $storedWordBasedMins,
         array $matchingWordBasedMins
     ): Collection
     {
-        $targetLength = strlen($targetSignature);
-
         $tokenIdsByName = Token::all()->pluck('id', 'name')->toArray();
 
         return $patterns->filter(function ($row) use (

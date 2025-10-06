@@ -87,7 +87,9 @@ class TargetService
         $target->status = TargetStatus::filterable;
         $target->save();
         $this->filterPatterns($target, $matchingSignatures);
-        $this->processPendingPatterns($target);
+        $target->status = TargetStatus::processing;
+        $target->save();
+        $this->processDeferredPatterns($target);
     }
 
     private function filterPatterns(Target $target, Collection $matchingSignatures): void
@@ -102,11 +104,9 @@ class TargetService
         $this->filterMatchingPatternsForTarget($target);
     }
 
-    private function processPendingPatterns(Target $target): void
+    private function processDeferredPatterns(Target $target): void
     {
         //todo status check
-        $target->status = TargetStatus::processing;
-        $target->save();
         $pendingIds = $target
             ->patterns()
             ->where('status', TargetPatternStatus::PENDING)
@@ -146,7 +146,7 @@ class TargetService
 
         // Filter patterns according to stored and matched mins
         $filteredPatterns = $this->patternsService->filterPatternsForTarget(
-            $target->signature,
+            strlen($target->signature),
             $standardShortEnoughPatterns,
             $storedMinLengths,
             $matchedMinLengths

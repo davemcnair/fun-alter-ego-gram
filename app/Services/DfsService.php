@@ -21,32 +21,34 @@ final class DfsService
      *     targetTokenSignatures: array<int, TargetTokenSignature>,
      *     precomputedLetterCounts: array<int, array<string, int>>,
      *     maxLetterCounts: array<string, int>
-     * }> $candidateTokenSignaturesByTokenId
- * @param array<int,int> $chosenTargetTokenSignatureIds map: pos => sig
+     * }> $availableTokenSignaturesByTokenId
+ * @param array<int,int> $selectedTargetTokenSignatureIds map: pos => sig
      */
     public function dfs(
-        array $remainingPatternTokenPositions,
-        array $remainingTargetLetterCountsNeeded,
-        array $candidateTokenSignaturesByTokenId,
-        array $chosenTargetTokenSignatureIds,
+        array $remainingPatternTokenPositions, // slots remaining
+        array $remainingTargetLetterCountsNeeded, // letters left to use
+        array $availableTokenSignaturesByTokenId, // available "words"
+        array $selectedTargetTokenSignatureIds, // selected "words"
     ): Generator
     {
+        // Base case: all slots filled
         if (empty($remainingPatternTokenPositions)) {
+            // Exact cover achieved?
             if (empty($remainingTargetLetterCountsNeeded)) {
-                // Exact cover achieved - a viable signature-filled pattern
+                // Yes! - a viable signature-filled pattern
                 // todo: should ksort happen elsewhere?
                 // sort by position for consistent ordering
-                ksort($chosenTargetTokenSignatureIds);
-                yield $chosenTargetTokenSignatureIds;
+           //     ksort($selectedTargetTokenSignatureIds);
+                yield $selectedTargetTokenSignatureIds;
             }
             return;
         }
-        // select next position to fill
+        // select next slot position to fill
         $pos = array_key_first($remainingPatternTokenPositions);
         $tokenId = $remainingPatternTokenPositions[$pos];
         unset($remainingPatternTokenPositions[$pos]);
 
-        $nextTokenTargetTokenSignatures = $candidateTokenSignaturesByTokenId[$tokenId] ?? [];
+        $nextTokenTargetTokenSignatures = $availableTokenSignaturesByTokenId[$tokenId] ?? [];
         if (empty($nextTokenTargetTokenSignatures)) {
             return; // dead end
         }
@@ -79,8 +81,8 @@ final class DfsService
         // Pre-compute available letters from remaining tokens (optimization)
         $tokensAvailableLetters = [];
         foreach ($remainingPatternTokenPositions as $remainingToken) {
-            if (isset($candidateTokenSignaturesByTokenId[$remainingToken]['maxLetterCounts'])) {
-                $tokensAvailableLetters[] = $candidateTokenSignaturesByTokenId[$remainingToken]['maxLetterCounts'];
+            if (isset($availableTokenSignaturesByTokenId[$remainingToken]['maxLetterCounts'])) {
+                $tokensAvailableLetters[] = $availableTokenSignaturesByTokenId[$remainingToken]['maxLetterCounts'];
             }
         }
 
@@ -90,12 +92,12 @@ final class DfsService
             if (!$this->canFillFromAvailableLetterPools($tokensAvailableLetters, $nextNeededLetters)) {
                 continue;
             }
-            $nextChosenTargetTokenSignatureIds = $chosenTargetTokenSignatureIds;
+            $nextChosenTargetTokenSignatureIds = $selectedTargetTokenSignatureIds;
             $nextChosenTargetTokenSignatureIds[$pos] = $targetTokenSignatureId;
             yield from $this->dfs(
                 $remainingPatternTokenPositions,
                 $nextNeededLetters,
-                $candidateTokenSignaturesByTokenId,
+                $availableTokenSignaturesByTokenId,
                 $nextChosenTargetTokenSignatureIds,
             );
         }

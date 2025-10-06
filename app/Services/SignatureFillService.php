@@ -73,7 +73,6 @@ class SignatureFillService
 
             // Build indices and per-letter maxima from sorted list
             // Precompute letterCounts for each signature to avoid repeated method calls in DFS
-//            $letterIndices = [];
             $maxLetterCounts = [];
             $precomputedLetterCounts = [];
             foreach ($targetTokenSignaturesGroup as $i => $targetTokenSignature) {
@@ -81,15 +80,12 @@ class SignatureFillService
                 $precomputedLetterCounts[$i] = $letterCounts;
                 foreach ($letterCounts as $ch => $n) {
                     $maxLetterCounts[$ch] = max($maxLetterCounts[$ch] ?? 0, $n);
-//                    $letterIndices[$ch] = $letterIndices[$ch] ?? [];
-//                    $letterIndices[$ch][] = $i;
                 }
             }
 
             $result[$token_id] = [
                 'targetTokenSignatures' => $targetTokenSignaturesGroup,
                 'maxLetterCounts' => $maxLetterCounts,
-//                'letterIndices' => $letterIndices,
                 'precomputedLetterCounts' => $precomputedLetterCounts,
             ];
         }

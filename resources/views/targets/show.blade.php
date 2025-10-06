@@ -1,10 +1,10 @@
+{{-- resources/views/targets/show.blade.php --}}
 <html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Search: {{ $dto->name }}</title>
-    <!-- Add Alpine.js -->
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <style>
         body {
@@ -342,46 +342,104 @@
             margin-left: 6px;
             display: none;
         }
+
+        .word-filter-controls {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .filter-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #6b7280;
+        }
+
+        .filter-select {
+            padding: 6px 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .word-used {
+            background: #d1fae5;
+        }
+
+        .word-deferred {
+            background: #fef3c7;
+        }
+
+        .word-fun {
+            color: #065f46;
+            font-weight: 600;
+        }
+
+        .word-boring {
+            color: #991b1b;
+        }
+
+        .word-clickable {
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .word-clickable:hover {
+            background: #e0e7ff;
+        }
+
+        .word-selected {
+            background: #818cf8;
+            color: white;
+        }
+
+        .clear-filters-btn {
+            background: #ef4444;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            border: none;
+            cursor: pointer;
+        }
+
+        .filter-status {
+            font-size: 14px;
+            padding: 8px;
+            background: #eff6ff;
+            border-radius: 6px;
+            margin-bottom: 12px;
+        }
     </style>
 </head>
-<body x-data="{
-    showOnlyUsed: true,
-    selectedWordId: null,
-    wordToPhraseMap: @js($dto->wordToPhraseMap),
-
-    toggleWordFilter(wordId) {
-        this.selectedWordId = this.selectedWordId === wordId ? null : wordId;
-    },
-
-    isWordFiltered(wordId) {
-        return this.selectedWordId === wordId;
-    },
-
-    isPhraseVisible(phraseId) {
-        if (!this.selectedWordId) return true;
-        return (this.wordToPhraseMap[this.selectedWordId] || []).includes(phraseId);
-    }
-}
-">
+<body x-data="targetApp()" x-init="init()">
 <nav>
     <a href="{{ route('targets.index') }}"><strong>Targets</strong></a>
     <a href="{{ route('patterns.index') }}">Patterns</a>
     <a href="{{ route('words.index') }}">Words</a>
 </nav>
+
 <div class="container">
     <h1>Alter Egos for: {{ $dto->name }}</h1>
 
     <div class="card">
         <div class="stats-grid">
             <div>
-                <div id="patternsRow" class="patterns-row">
-                    Patterns searched: <strong id="patternsSearched">{{ $dto->patternsFilledCount }}</strong> / <strong
-                        id="patternsTotal">{{ $dto->patternsCount }}</strong>
-                    <span id="patternsElapsed" class="tag patterns-elapsed"></span>
+                <div class="patterns-row">
+                    Patterns searched: <strong>{{ $dto->patternsFilledCount }}</strong> / <strong>{{ $dto->patternsCount }}</strong>
+                    <span class="tag">{{ $dto->elapsed }}s</span>
                 </div>
                 <div class="patterns-row">
-                    Alter egos found: <strong id="alterEgosFound">{{ $dto->alterEgosCount }}</strong>
-                    in <span class="tag">{{ $dto->elapsed }}s</span>
+                    Alter egos found: <strong>{{ $dto->alterEgosCount }}</strong>
                 </div>
             </div>
         </div>
@@ -392,67 +450,103 @@
 
         <div>
             @include('targets.show._add_word_form')
+
             <div class="card">
                 <h3 class="word-matches-header">
-                    Word Matches ({{$dto->matchedWordsCount}})
-                    <label class="word-matches-toggle">
-                        <input type="checkbox" id="onlyUsedToggle" checked> Only used ({{$dto->usedWordsCount}})
-                    </label>
+                    Word Matches (<span x-text="filteredWordsCount"></span>)
                 </h3>
-                Signature Matches ({{$dto->matchedSignaturesCount}})
+
+                {{-- Filter Controls --}}
+                <div class="word-filter-controls">
+                    <div class="filter-group">
+                        <label class="filter-label">Show</label>
+                        <label style="display: flex; align-items: center; gap: 6px;">
+                            <input type="checkbox" x-model="showOnlyUsed">
+                            Only used (<span x-text="usedWordsCount"></span>)
+                        </label>
+                    </div>
+
+                    <div class="filter-group">
+                        <label class="filter-label">Token</label>
+                        <select x-model="filterToken" class="filter-select">
+                            <option value="">All tokens</option>
+                            <template x-for="token in availableTokens" :key="token">
+                                <option :value="token" x-text="token"></option>
+                            </template>
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <label class="filter-label">List Type</label>
+                        <select x-model="filterListType" class="filter-select">
+                            <option value="">All types</option>
+                            <option value="fun">Fun</option>
+                            <option value="ok">OK</option>
+                            <option value="boring">Boring</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group" style="justify-content: flex-end;">
+                        <button @click="clearFilters()" class="clear-filters-btn">
+                            Clear Filters
+                        </button>
+                    </div>
+                </div>
+
+                {{-- Filter Status --}}
+                <div x-show="selectedWords.length > 0" class="filter-status">
+                    <strong>Filtering phrases by:</strong>
+                    <template x-for="wordId in selectedWords" :key="wordId">
+                        <span class="filter-pill">
+                            <span x-text="getWordText(wordId)"></span>
+                            <button @click="deselectWord(wordId)">×</button>
+                        </span>
+                    </template>
+                    <span x-text="'(' + filteredPhrasesCount + ' phrases)'"></span>
+                </div>
+
+                {{-- Words Table --}}
                 <div id="tokenMatchesContainer">
-                    @if(empty($dto->matchedWords))
-                        <div class="muted">No word matches found.</div>
-                    @else
-                        <table class="words-table">
-                            <thead>
-                            <tr>
-                                <th>Token</th>
-                                <th>List</th>
-                                <th>Count</th>
-                                <th>Sample</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            @foreach($dto->matchedWords as $token => $byList)
-                                @foreach($byList as $listType => $words)
-                                    @php $rowId = md5($token.'|'.$listType); @endphp
-                                    <tr id="row-{{ $rowId }}"
-                                        data-rowid="{{ $rowId }}"
-                                        data-token="{{ $token }}"
-                                        data-list="{{ $listType }}"
-                                        data-total="{{ count($words) }}"
-                                    >
-                                        <td>{{ $token }}</td>
-                                        <td><span class="tag">{{ $listType }}</span></td>
-                                        <td><span id="count-{{ $rowId }}">{{ count($words) }}</span></td>
-                                        <td class="muted">
-                                            <div id="all-{{ $rowId }}" class="word-samples">
-                                                @foreach($words as $tswId => $word)
-                                                    <span class="tok-word
-                                                        {{ $word->deferred ? 'deferred' : '' }}
-                                                        {{ $word->used ? 'used' : '' }}
-                                                        "
-                                                          :class="{ 'highlight-active': isWordFiltered({{ $word->id }}) }"
-                                                          x-show="showOnlyUsed ? {{ $word->used ? 'true' : 'false' }} : true"
-                                                          @click="toggleWordFilter({{ $word->id }})">
-                                                        {{ $word->word }}
-                                                        @if($word->isPromotable)
-                                                            <button type="button" class="btn-link"
-                                                                    onclick="promoteOkWord({{ $tswId }})"
-                                                                    title="Promote to fun">^
-                                                            </button>
-                                                        @endif
-                                                    </span>
-                                                @endforeach
-                                            </div>
-                                        </td>
-                                    </tr>
-                                @endforeach
-                            @endforeach
-                            </tbody>
-                        </table>
-                    @endif
+                    <table class="words-table">
+                        <thead>
+                        <tr>
+                            <th>Token</th>
+                            <th>List</th>
+                            <th>Count</th>
+                            <th>Sample</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <template x-for="(byList, token) in matchedWords" :key="token">
+                            <template x-for="(words, listType) in byList" :key="token + '-' + listType">
+                                <tr x-show="shouldShowRow(token, listType, words)">
+                                    <td x-text="token"></td>
+                                    <td><span class="tag" x-text="listType"></span></td>
+                                    <td x-text="getVisibleWordsCount(words)"></td>
+                                    <td class="muted">
+                                        <div class="word-samples">
+                                            <template x-for="word in words" :key="word.id">
+                                                <span
+                                                    x-show="shouldShowWord(word)"
+                                                    class="word-clickable"
+                                                    :class="{
+                                                        'word-used': word.used,
+                                                        'word-deferred': word.deferred,
+                                                        'word-fun': word.listType === 'fun',
+                                                        'word-boring': word.listType === 'boring',
+                                                        'word-selected': isWordSelected(word.id)
+                                                    }"
+                                                    @click="toggleWordSelection(word.id)"
+                                                    x-text="word.word + (word.usageCount > 0 ? ' (' + word.usageCount + ')' : '')">
+                                                </span>
+                                            </template>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </template>
+                        </template>
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
@@ -460,6 +554,161 @@
         </div>
     </div>
 </div>
+
+<script>
+    function targetApp() {
+        return {
+            // Data
+            matchedWords: @js($dto->matchedWords),
+            wordToPhraseMap: @js($dto->wordToPhraseMap),
+            wordUsageCounts: @js($dto->wordUsageCounts),
+            patternsFilled: @js($dto->patternsFilled->toArray()),
+
+            // Filters
+            showOnlyUsed: true,
+            filterToken: '',
+            filterListType: '',
+            selectedWords: [],
+
+            // Computed
+            availableTokens: [],
+            usedWordsCount: {{ $dto->usedWordsCount }},
+            totalWordsCount: {{ $dto->matchedWordsCount }},
+
+            init() {
+                // Extract unique tokens
+                this.availableTokens = Object.keys(this.matchedWords);
+
+                // Load saved preferences
+                const saved = localStorage.getItem('wordFilters');
+                if (saved) {
+                    const prefs = JSON.parse(saved);
+                    this.showOnlyUsed = prefs.showOnlyUsed ?? true;
+                    this.filterToken = prefs.filterToken ?? '';
+                    this.filterListType = prefs.filterListType ?? '';
+                }
+            },
+
+            // Word filtering
+            shouldShowWord(word) {
+                if (this.showOnlyUsed && !word.used) {
+                    return false;
+                }
+                return true;
+            },
+
+            shouldShowRow(token, listType, words) {
+                if (this.filterToken && token !== this.filterToken) {
+                    return false;
+                }
+                if (this.filterListType && listType !== this.filterListType) {
+                    return false;
+                }
+                // Check if any words in this row would be visible
+                return words.some(w => this.shouldShowWord(w));
+            },
+
+            getVisibleWordsCount(words) {
+                return words.filter(w => this.shouldShowWord(w)).length;
+            },
+
+            // Word selection for phrase filtering
+            toggleWordSelection(wordId) {
+                const idx = this.selectedWords.indexOf(wordId);
+                if (idx > -1) {
+                    this.selectedWords.splice(idx, 1);
+                } else {
+                    this.selectedWords.push(wordId);
+                }
+            },
+
+            isWordSelected(wordId) {
+                return this.selectedWords.includes(wordId);
+            },
+
+            deselectWord(wordId) {
+                const idx = this.selectedWords.indexOf(wordId);
+                if (idx > -1) {
+                    this.selectedWords.splice(idx, 1);
+                }
+            },
+
+            getWordText(wordId) {
+                // Find word text from matchedWords
+                for (const token in this.matchedWords) {
+                    for (const listType in this.matchedWords[token]) {
+                        const word = this.matchedWords[token][listType].find(w => w.id === wordId);
+                        if (word) return word.word;
+                    }
+                }
+                return '';
+            },
+
+            // Phrase filtering
+            isPhraseVisible(phraseId) {
+                if (this.selectedWords.length === 0) return true;
+
+                // Show phrase if it contains ANY selected word
+                return this.selectedWords.some(wordId => {
+                    return (this.wordToPhraseMap[wordId] || []).includes(phraseId);
+                });
+            },
+
+            clearFilters() {
+                this.showOnlyUsed = false;
+                this.filterToken = '';
+                this.filterListType = '';
+                this.selectedWords = [];
+                this.savePreferences();
+            },
+
+            savePreferences() {
+                localStorage.setItem('wordFilters', JSON.stringify({
+                    showOnlyUsed: this.showOnlyUsed,
+                    filterToken: this.filterToken,
+                    filterListType: this.filterListType
+                }));
+            },
+
+            // Computed properties
+            get filteredWordsCount() {
+                let count = 0;
+                for (const token in this.matchedWords) {
+                    for (const listType in this.matchedWords[token]) {
+                        count += this.getVisibleWordsCount(this.matchedWords[token][listType]);
+                    }
+                }
+                return count;
+            },
+
+            get filteredPhrasesCount() {
+                if (this.selectedWords.length === 0) return 0;
+
+                let count = 0;
+                this.patternsFilled.forEach(pattern => {
+                    pattern.alterEgos.forEach(phrase => {
+                        if (this.isPhraseVisible(phrase.id)) {
+                            count++;
+                        }
+                    });
+                });
+                return count;
+            }
+        }
+    }
+
+    // Watch for changes and save preferences
+    document.addEventListener('alpine:init', () => {
+        Alpine.effect(() => {
+            const app = Alpine.$data(document.body);
+            if (app) {
+                app.$watch('showOnlyUsed', () => app.savePreferences());
+                app.$watch('filterToken', () => app.savePreferences());
+                app.$watch('filterListType', () => app.savePreferences());
+            }
+        });
+    });
+</script>
 
 </body>
 </html>

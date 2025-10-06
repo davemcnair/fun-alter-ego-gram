@@ -86,14 +86,17 @@ class Target extends Model
     /**
      * Build grouped token word matches for the Target Results page.
      */
+    // In App\Models\Target.php - update matchingWordsByUseTokenAndType method
+
     public function matchingWordsByUseTokenAndType(): array
     {
-        // Single query with all necessary relationships
         $targetTokenSignatureWords = $this->tokenSignatureWords()
-            ->with([
-                'tokenSignatureWord.tokenSignature.token'
-            ])
+            ->with(['tokenSignatureWord.tokenSignature.token'])
             ->get();
+
+        // Get usage counts from DTO (we'll pass this in from controller)
+        // For now, calculate here
+        $usageCounts = $this->calculateWordUsageCounts();
 
         $out = [];
 
@@ -102,9 +105,6 @@ class Target extends Model
             $token = $word->tokenSignature->token->name;
             $list = $word->list_type;
 
-            if (!isset($out[$token])) {
-                $out[$token] = [];
-            }
             if (!isset($out[$token][$list])) {
                 $out[$token][$list] = [];
             }
@@ -113,20 +113,42 @@ class Target extends Model
                 $token,
                 $word->word,
                 $word->list_type,
-                $word->is_promotable,
                 $word->id,
                 $word->is_deferred,
                 $targetTokenSignatureWord->usedInPhrase,
+                $usageCounts[$word->id] ?? 0,
             );
         }
 
-        // Sort words alphabetically within each group
-        foreach ($out as $token => &$lists) {
-            foreach ($lists as $list => &$items) {
+        // Sort
+        foreach ($out as &$lists) {
+            foreach ($lists as &$items) {
                 usort($items, fn($a, $b) => strcasecmp($a->word, $b->word));
             }
         }
 
         return $out;
+    }
+
+    private function calculateWordUsageCounts(): array
+    {
+        $alterEgos = $this->alterEgos()
+            ->with(['targetSignaturedPattern.targetTokenSignatures.tokenSignature.words'])
+            ->get();
+
+        $counts = [];
+
+        foreach ($alterEgos as $alterEgo) {
+            foreach ($alterEgo->targetSignaturedPattern->targetTokenSignatures as $tts) {
+                foreach ($tts->tokenSignature->words as $word) {
+                    if (!isset($counts[$word->id])) {
+                        $counts[$word->id] = 0;
+                    }
+                    $counts[$word->id]++;
+                }
+            }
+        }
+
+        return $counts;
     }
 }

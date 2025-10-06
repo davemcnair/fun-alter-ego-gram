@@ -15,6 +15,7 @@ class WordDto extends Data
         public ?string $id = null, // target_token_signature_word
         public bool $deferred = false,
         public bool $used = false,
+        public int  $usageCount = 0,
     ){}
 
     public function joinTo(WordDto $prevWord): string

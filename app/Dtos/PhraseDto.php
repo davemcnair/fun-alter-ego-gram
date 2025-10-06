@@ -14,26 +14,12 @@ class PhraseDto extends Data
         public ?int $id = null,
     ){}
 
-    /**
-     * @param array<WordDto> $words
-     * @return PhraseDto
-     */
-    public static function fromWords(array $words): PhraseDto
+    public static function fromWords(array $words): self
     {
-        $isFun = false;
-        $hasBoring = false;
-        $prevWord = null;
-        $phrase = '';
-        foreach ($words as $word) {
-            if (is_null($prevWord)){
-                $phrase = $word->word;
-                $prevWord = $word;
-                continue;
-            }
-            $phrase.= $word->joinTo($prevWord);
-            $isFun = $isFun || $word->listType === 'fun';
-            $hasBoring = $hasBoring || $word->listType === 'boring';
-        }
-        return new PhraseDto($phrase, $isFun, $hasBoring);
+        $phrase = implode(' ', array_map(fn($w) => $w->word, $words));
+        $isFun = collect($words)->every(fn($w) => $w->listType === 'fun');
+        $hasBoring = collect($words)->contains(fn($w) => $w->listType === 'boring');
+
+        return new self($phrase, $isFun, $hasBoring);
     }
 }

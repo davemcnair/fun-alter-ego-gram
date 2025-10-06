@@ -14,6 +14,10 @@ class TargetShowDto extends Data
     public function __construct(
         public int        $targetId,
         public string     $name,
+        public bool       $includeBoring,
+        public bool       $includeNearly,
+        public bool       $includeDeferred,
+        public bool       $includeUsed,
         public bool       $completed,
         public string     $elapsed,
         public int        $patternsCount,
@@ -30,7 +34,8 @@ class TargetShowDto extends Data
         public int        $matchedWordsCount,
         public int        $usedWordsCount,
         public array      $matchedWords,
-        public array      $wordToPhraseMap, // ids
+        public array      $wordToPhraseMap,
+        public array      $wordUsageCounts, // NEW: word_id => phrase count
     )
     {
     }
@@ -41,7 +46,7 @@ class TargetShowDto extends Data
             'patterns.pattern',
             'signaturedPatterns',
             'alterEgos',
-            'tokenSignatures.tokenSignature.token', //todo: need this?
+            'tokenSignatures.tokenSignature.token',
             'tokenSignatures.tokenSignature.words',
             'tokenSignatureWords.tokenSignatureWord'
         ]);
@@ -69,16 +74,18 @@ class TargetShowDto extends Data
         $usedWordsCount = $target->tokenSignatureWords()->where('usedInPhrase', true)->count();
         $matchedWords = $target->matchingWordsByUseTokenAndType();
 
-        $wordToPhraseMap = self::buildWordToPhraseMap($target);
+        // Build word-to-phrase mapping
+        [$wordToPhraseMap, $wordUsageCounts] = self::buildWordMappings($target);
 
         return new self(
             targetId: $target->id,
             name: $target->name,
-            // todo: search params
-            //  includeBoring
-            //  includeNearly
+            includeBoring: true,
+            includeNearly: false,
+            includeDeferred: true,
+            includeUsed: true,
             completed: $target->status === TargetStatus::processed->name,
-            elapsed: number_format($elapsed, 1),
+            elapsed: number_format($elapsed,1),
             patternsCount: $patterns->count(),
             patternsFilledCount: $filledPatterns->count(),
             starred: $starred,
@@ -94,43 +101,43 @@ class TargetShowDto extends Data
             usedWordsCount: $usedWordsCount,
             matchedWords: $matchedWords,
             wordToPhraseMap: $wordToPhraseMap,
+            wordUsageCounts: $wordUsageCounts,
         );
     }
 
     /**
-     * Build a map of token_signature_word_id => [alter_ego_ids]
-     * This allows filtering phrases by clicked word
+     * Build mappings: word_id => [phrase_ids] and word_id => count
      */
-    private static function buildWordToPhraseMap(Target $target): array
+    private static function buildWordMappings(Target $target): array
     {
-        // Get all alter egos with their signature pattern relationships
         $alterEgos = $target->alterEgos()
             ->with([
                 'targetSignaturedPattern.targetTokenSignatures.tokenSignature.words'
             ])
             ->get();
 
-        $map = [];
+        $wordToPhraseMap = [];
+        $wordUsageCounts = [];
 
         foreach ($alterEgos as $alterEgo) {
             $wordIds = [];
 
-            // Collect all word IDs that could be in this phrase
             foreach ($alterEgo->targetSignaturedPattern->targetTokenSignatures as $tts) {
                 foreach ($tts->tokenSignature->words as $word) {
                     $wordIds[] = $word->id;
                 }
             }
 
-            // Map each word to this alter ego
             foreach (array_unique($wordIds) as $wordId) {
-                if (!isset($map[$wordId])) {
-                    $map[$wordId] = [];
+                if (!isset($wordToPhraseMap[$wordId])) {
+                    $wordToPhraseMap[$wordId] = [];
+                    $wordUsageCounts[$wordId] = 0;
                 }
-                $map[$wordId][] = $alterEgo->id;
+                $wordToPhraseMap[$wordId][] = $alterEgo->id;
+                $wordUsageCounts[$wordId]++;
             }
         }
 
-        return $map;
+        return [$wordToPhraseMap, $wordUsageCounts];
     }
 }

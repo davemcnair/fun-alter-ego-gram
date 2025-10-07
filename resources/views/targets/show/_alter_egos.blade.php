@@ -34,36 +34,3 @@
     </div>
 </div>
 
-<script>
-    // Add to targetApp() data
-    Object.assign(window.targetApp.prototype, {
-        showOnlyFun: false,
-        excludeBoring: false,
-
-        shouldShowPhrase(phrase) {
-            // Word filter
-            if (!this.isPhraseVisible(phrase.id)) {
-                return false;
-            }
-
-            // Fun filter
-            if (this.showOnlyFun && !phrase.isFun) {
-                return false;
-            }
-
-            // Boring filter
-            if (this.excludeBoring && phrase.hasBoring) {
-                return false;
-            }
-
-            return true;
-        },
-
-        getVisiblePhrasesForPattern(patternId) {
-            const pattern = this.patternsFilled.find(p => p.id === patternId);
-            if (!pattern) return 0;
-
-            return pattern.alterEgos.filter(p => this.shouldShowPhrase(p)).length;
-        }
-    });
-</script>

@@ -517,15 +517,15 @@
                         </tr>
                         </thead>
                         <tbody>
-                        <template x-for="(byList, token) in matchedWords" :key="token">
-                            <template x-for="(words, listType) in byList" :key="token + '-' + listType">
+                        <template x-for="(byList, token) in (matchedWords || {})" :key="token">
+                            <template x-for="(words, listType) in (byList || {})" :key="token + '-' + listType">
                                 <tr x-show="shouldShowRow(token, listType, words)">
                                     <td x-text="token"></td>
                                     <td><span class="tag" x-text="listType"></span></td>
                                     <td x-text="getVisibleWordsCount(words)"></td>
                                     <td class="muted">
                                         <div class="word-samples">
-                                            <template x-for="word in words" :key="word.id">
+                                            <template x-for="(word, idx) in (words || [])" :key="token + '-' + listType + '-idx-' + idx + '-id-' + ((word && word.id) ? word.id : 'nil')">
                                                 <span
                                                     x-show="shouldShowWord(word)"
                                                     class="word-clickable"
@@ -565,10 +565,13 @@
             patternsFilled: @js($dto->patternsFilled->toArray()),
 
             // Filters
-            showOnlyUsed: true,
+            showOnlyUsed: false,
             filterToken: '',
             filterListType: '',
             selectedWords: [],
+            // Phrase visibility controls
+            showOnlyFun: false,
+            excludeBoring: false,
 
             // Computed
             availableTokens: [],
@@ -577,16 +580,23 @@
 
             init() {
                 // Extract unique tokens
-                this.availableTokens = Object.keys(this.matchedWords);
+                this.availableTokens = Object.keys(this.matchedWords || {});
 
-                // Load saved preferences
+                // Load saved preferences without overriding defaults
                 const saved = localStorage.getItem('wordFilters');
                 if (saved) {
                     const prefs = JSON.parse(saved);
-                    this.showOnlyUsed = prefs.showOnlyUsed ?? true;
-                    this.filterToken = prefs.filterToken ?? '';
-                    this.filterListType = prefs.filterListType ?? '';
+                    if (prefs && typeof prefs === 'object') {
+                        if ('showOnlyUsed' in prefs) this.showOnlyUsed = prefs.showOnlyUsed;
+                        if ('filterToken' in prefs) this.filterToken = prefs.filterToken;
+                        if ('filterListType' in prefs) this.filterListType = prefs.filterListType;
+                    }
                 }
+
+                // Persist preference changes (Alpine v3: use instance $watch inside component)
+                this.$watch('showOnlyUsed', () => this.savePreferences());
+                this.$watch('filterToken', () => this.savePreferences());
+                this.$watch('filterListType', () => this.savePreferences());
             },
 
             // Word filtering
@@ -604,12 +614,14 @@
                 if (this.filterListType && listType !== this.filterListType) {
                     return false;
                 }
+                const list = Array.isArray(words) ? words : [];
                 // Check if any words in this row would be visible
-                return words.some(w => this.shouldShowWord(w));
+                return list.some(w => this.shouldShowWord(w));
             },
 
             getVisibleWordsCount(words) {
-                return words.filter(w => this.shouldShowWord(w)).length;
+                const list = Array.isArray(words) ? words : [];
+                return list.filter(w => this.shouldShowWord(w)).length;
             },
 
             // Word selection for phrase filtering
@@ -635,10 +647,14 @@
 
             getWordText(wordId) {
                 // Find word text from matchedWords
-                for (const token in this.matchedWords) {
-                    for (const listType in this.matchedWords[token]) {
-                        const word = this.matchedWords[token][listType].find(w => w.id === wordId);
-                        if (word) return word.word;
+                for (const token in (this.matchedWords || {})) {
+                    const byList = this.matchedWords[token] || {};
+                    for (const listType in byList) {
+                        const list = byList[listType] || [];
+                        const word = list.find(w => w.id === wordId);
+                        if (word) {
+                            return word.word;
+                        }
                     }
                 }
                 return '';
@@ -646,12 +662,44 @@
 
             // Phrase filtering
             isPhraseVisible(phraseId) {
+                if (this.selectedWords.length === 0 && !this.showOnlyFun && !this.excludeBoring) {
+                    // Fast path when no filters are active
+                    return true;
+                }
                 if (this.selectedWords.length === 0) return true;
 
                 // Show phrase if it contains ANY selected word
                 return this.selectedWords.some(wordId => {
                     return (this.wordToPhraseMap[wordId] || []).includes(phraseId);
                 });
+            },
+
+            // Phrase visibility checks (fun/boring)
+            shouldShowPhrase(phrase) {
+                // Word filter
+                if (!this.isPhraseVisible(phrase.id)) {
+                    return false;
+                }
+
+                // Fun filter
+                if (this.showOnlyFun && !phrase.isFun) {
+                    return false;
+                }
+
+                // Boring filter
+                if (this.excludeBoring && phrase.hasBoring) {
+                    return false;
+                }
+
+                return true;
+            },
+
+            getVisiblePhrasesForPattern(patternId) {
+                const pattern = this.patternsFilled.find(p => p.id === patternId);
+                if (!pattern) {
+                    return 0;
+                }
+                return pattern.alterEgos.filter(p => this.shouldShowPhrase(p)).length;
             },
 
             clearFilters() {
@@ -697,17 +745,6 @@
         }
     }
 
-    // Watch for changes and save preferences
-    document.addEventListener('alpine:init', () => {
-        Alpine.effect(() => {
-            const app = Alpine.$data(document.body);
-            if (app) {
-                app.$watch('showOnlyUsed', () => app.savePreferences());
-                app.$watch('filterToken', () => app.savePreferences());
-                app.$watch('filterListType', () => app.savePreferences());
-            }
-        });
-    });
 </script>
 
 </body>

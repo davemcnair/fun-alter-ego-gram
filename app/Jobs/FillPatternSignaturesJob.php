@@ -81,7 +81,7 @@ class FillPatternSignaturesJob implements ShouldQueue
     ): void
     {
         try {
-            $fillPatternSignaturesService->fillWithServices($this->targetPatternId);
+            $fillPatternSignaturesService->fillWithSignatures($this->targetPatternId);
         } catch (Throwable $e) {
             Log::error('job.fill.error', [
                 'target_pattern_id' => $this->targetPatternId,

@@ -21,16 +21,18 @@ class FillPatternSignaturesService
     /**
      * Execute the fill step for a TargetNamePattern using the provided collaborator services.
      */
-    public function fillWithServices(
+    public function fillWithSignatures(
         int $targetPatternId,
     ): void {
+        Log::info("Filling signatures for target pattern: $targetPatternId");
         /** @var TargetPattern $targetPattern */
         $targetPattern = TargetPattern::find($targetPatternId);
         if (!$targetPattern) {
             return;
         }
 
-        if ($targetPattern->status !== TargetPatternStatus::DEFERRED) {
+        // Only process patterns that are pending
+        if ($targetPattern->status !== TargetPatternStatus::PENDING) {
             return;
         }
 

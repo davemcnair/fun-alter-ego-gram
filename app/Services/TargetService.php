@@ -116,6 +116,9 @@ class TargetService
             'target' => $target->name,
             'pending_patterns' => $pendingIds->count(),
         ]);
+        if (config('search.queue')){
+            Log::info('Async search.');
+        }
         foreach ($pendingIds as $pid) {
             $this->scaledDispatch(FillPatternSignaturesJob::class, (int)$pid);
         }

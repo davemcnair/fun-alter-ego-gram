@@ -110,13 +110,14 @@ class Target extends Model
             }
 
             $out[$token][$list][] = new WordDto(
-                $token,
-                $word->word,
-                $word->list_type,
-                $word->id,
-                $word->is_deferred,
-                $targetTokenSignatureWord->usedInPhrase,
-                $usageCounts[$word->id] ?? 0,
+                tokenType: $token,
+                word: $word->word,
+                listType: $word->list_type,
+                isPromotable: (bool)($word->is_promotable ?? false),
+                id: (string)$word->id,
+                deferred: (bool)$word->is_deferred,
+                used: (bool)$targetTokenSignatureWord->usedInPhrase,
+                usageCount: (int)($usageCounts[$word->id] ?? 0),
             );
         }
 

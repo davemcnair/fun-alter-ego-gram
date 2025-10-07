@@ -534,9 +534,10 @@
                                                         'word-deferred': word.deferred,
                                                         'word-fun': word.listType === 'fun',
                                                         'word-boring': word.listType === 'boring',
-                                                        'word-selected': isWordSelected(word.id)
+                                                        'word-selected': (word && word.id) ? isWordSelected(word.id) : false,
+                                                        'word-disabled': !(word && word.id)
                                                     }"
-                                                    @click="toggleWordSelection(word.id)"
+                                                    @click="(word && word.id) && toggleWordSelection(word.id)"
                                                     x-text="word.word + (word.usageCount > 0 ? ' (' + word.usageCount + ')' : '')">
                                                 </span>
                                             </template>

@@ -466,26 +466,6 @@
                         </label>
                     </div>
 
-                    <div class="filter-group">
-                        <label class="filter-label">Token</label>
-                        <select x-model="filterToken" class="filter-select">
-                            <option value="">All tokens</option>
-                            <template x-for="token in availableTokens" :key="token">
-                                <option :value="token" x-text="token"></option>
-                            </template>
-                        </select>
-                    </div>
-
-                    <div class="filter-group">
-                        <label class="filter-label">List Type</label>
-                        <select x-model="filterListType" class="filter-select">
-                            <option value="">All types</option>
-                            <option value="fun">Fun</option>
-                            <option value="ok">OK</option>
-                            <option value="boring">Boring</option>
-                        </select>
-                    </div>
-
                     <div class="filter-group" style="justify-content: flex-end;">
                         <button @click="clearFilters()" class="clear-filters-btn">
                             Clear Filters
@@ -567,37 +547,29 @@
 
             // Filters
             showOnlyUsed: false,
-            filterToken: '',
-            filterListType: '',
             selectedWords: [],
             // Phrase visibility controls
             showOnlyFun: false,
             excludeBoring: false,
-
-            // Computed
-            availableTokens: [],
             usedWordsCount: {{ $dto->usedWordsCount }},
             totalWordsCount: {{ $dto->matchedWordsCount }},
 
             init() {
-                // Extract unique tokens
-                this.availableTokens = Object.keys(this.matchedWords || {});
-
                 // Load saved preferences without overriding defaults
                 const saved = localStorage.getItem('wordFilters');
                 if (saved) {
                     const prefs = JSON.parse(saved);
                     if (prefs && typeof prefs === 'object') {
                         if ('showOnlyUsed' in prefs) this.showOnlyUsed = prefs.showOnlyUsed;
-                        if ('filterToken' in prefs) this.filterToken = prefs.filterToken;
-                        if ('filterListType' in prefs) this.filterListType = prefs.filterListType;
+                        if ('showOnlyFun' in prefs) this.showOnlyFun = prefs.showOnlyFun;
+                        if ('excludeBoring' in prefs) this.excludeBoring = prefs.excludeBoring;
                     }
                 }
 
                 // Persist preference changes (Alpine v3: use instance $watch inside component)
                 this.$watch('showOnlyUsed', () => this.savePreferences());
-                this.$watch('filterToken', () => this.savePreferences());
-                this.$watch('filterListType', () => this.savePreferences());
+                this.$watch('showOnlyFun', () => this.savePreferences());
+                this.$watch('excludeBoring', () => this.savePreferences());
             },
 
             // Word filtering
@@ -609,12 +581,6 @@
             },
 
             shouldShowRow(token, listType, words) {
-                if (this.filterToken && token !== this.filterToken) {
-                    return false;
-                }
-                if (this.filterListType && listType !== this.filterListType) {
-                    return false;
-                }
                 const list = Array.isArray(words) ? words : [];
                 // Check if any words in this row would be visible
                 return list.some(w => this.shouldShowWord(w));
@@ -663,11 +629,10 @@
 
             // Phrase filtering
             isPhraseVisible(phraseId) {
-                if (this.selectedWords.length === 0 && !this.showOnlyFun && !this.excludeBoring) {
-                    // Fast path when no filters are active
+                if (this.selectedWords.length === 0) {
+                    // No word filters active, phrase is visible for word filtering purposes
                     return true;
                 }
-                if (this.selectedWords.length === 0) return true;
 
                 // Show phrase if it contains ANY selected word
                 return this.selectedWords.some(wordId => {
@@ -705,8 +670,6 @@
 
             clearFilters() {
                 this.showOnlyUsed = false;
-                this.filterToken = '';
-                this.filterListType = '';
                 this.selectedWords = [];
                 this.savePreferences();
             },
@@ -714,8 +677,8 @@
             savePreferences() {
                 localStorage.setItem('wordFilters', JSON.stringify({
                     showOnlyUsed: this.showOnlyUsed,
-                    filterToken: this.filterToken,
-                    filterListType: this.filterListType
+                    showOnlyFun: this.showOnlyFun,
+                    excludeBoring: this.excludeBoring
                 }));
             },
 

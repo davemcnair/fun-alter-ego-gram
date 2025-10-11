@@ -1,0 +1,11 @@
+
+{
+  "context": {
+    "include": ["app/", "routes/", "database/", "resources/views/", "tests/", "docs/", "config/"],
+    "exclude": ["vendor/", "storage/", "public/", "node_modules/"]
+  },
+  "style": {
+    "explanations": "concise",
+    "code": "PSR-12"
+  }
+}

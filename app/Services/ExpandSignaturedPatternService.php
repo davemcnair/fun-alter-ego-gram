@@ -93,6 +93,7 @@ final class ExpandSignaturedPatternService
                     [
                         'isFun' => $phrase->isFun,
                         'hasBoring' => $phrase->hasBoring,
+                        'hasDeferred' => $phrase->hasDeferred,
                         'starred' => $phrase->starred,
                     ]
                 );

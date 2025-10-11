@@ -60,6 +60,21 @@
             font-size: 12px;
         }
 
+        .tag-fun {
+            background: #dcfce7;
+            color: #065f46;
+        }
+
+        .tag-boring {
+            background: #fef2f2;
+            color: #991b1b;
+        }
+
+        .tag-ok {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
         ul {
             margin: 0;
             padding-left: 18px;
@@ -370,21 +385,18 @@
         }
 
         .word-used {
-            background: #d1fae5;
+            /* Removed background color */
         }
 
         .word-deferred {
-            background: #fef3c7;
+            /* Removed background color */
+            font-style: italic;
         }
 
         .word-fun {
-            color: #065f46;
-            font-weight: 600;
+            font-weight: bold;
         }
 
-        .word-boring {
-            color: #991b1b;
-        }
 
         .word-clickable {
             cursor: pointer;
@@ -418,6 +430,18 @@
             background: #eff6ff;
             border-radius: 6px;
             margin-bottom: 12px;
+        }
+
+        .phrase-fun {
+            background: #dcfce7;
+            color: #065f46;
+            border-left: 4px solid #10b981;
+        }
+
+        .phrase-boring {
+            background: #fef2f2;
+            color: #991b1b;
+            border-left: 4px solid #ef4444;
         }
     </style>
 </head>
@@ -464,6 +488,10 @@
                             <input type="checkbox" x-model="showOnlyUsed">
                             Only used (<span x-text="usedWordsCount"></span>)
                         </label>
+                        <label style="display: flex; align-items: center; gap: 6px;">
+                            <input type="checkbox" x-model="showOnlyNonDeferred">
+                            Only non-deferred (<span x-text="nonDeferredWordsCount"></span>)
+                        </label>
                     </div>
 
                     <div class="filter-group" style="justify-content: flex-end;">
@@ -501,7 +529,15 @@
                             <template x-for="(words, listType) in (byList || {})" :key="token + '-' + listType">
                                 <tr x-show="shouldShowRow(token, listType, words)">
                                     <td x-text="token"></td>
-                                    <td><span class="tag" x-text="listType"></span></td>
+                                    <td>
+                                        <span class="tag" 
+                                              :class="{
+                                                  'tag-fun': listType === 'fun',
+                                                  'tag-boring': listType === 'boring',
+                                                  'tag-ok': listType === 'ok'
+                                              }"
+                                              x-text="listType"></span>
+                                    </td>
                                     <td x-text="getVisibleWordsCount(words)"></td>
                                     <td class="muted">
                                         <div class="word-samples">
@@ -513,7 +549,6 @@
                                                         'word-used': word.used,
                                                         'word-deferred': word.deferred,
                                                         'word-fun': word.listType === 'fun',
-                                                        'word-boring': word.listType === 'boring',
                                                         'word-selected': (word && word.id) ? isWordSelected(word.id) : false,
                                                         'word-disabled': !(word && word.id)
                                                     }"
@@ -547,10 +582,12 @@
 
             // Filters
             showOnlyUsed: false,
+            showOnlyNonDeferred: false,
             selectedWords: [],
             // Phrase visibility controls
             showOnlyFun: false,
             excludeBoring: false,
+            excludeDeferred: false,
             usedWordsCount: {{ $dto->usedWordsCount }},
             totalWordsCount: {{ $dto->matchedWordsCount }},
 
@@ -561,20 +598,27 @@
                     const prefs = JSON.parse(saved);
                     if (prefs && typeof prefs === 'object') {
                         if ('showOnlyUsed' in prefs) this.showOnlyUsed = prefs.showOnlyUsed;
+                        if ('showOnlyNonDeferred' in prefs) this.showOnlyNonDeferred = prefs.showOnlyNonDeferred;
                         if ('showOnlyFun' in prefs) this.showOnlyFun = prefs.showOnlyFun;
                         if ('excludeBoring' in prefs) this.excludeBoring = prefs.excludeBoring;
+                        if ('excludeDeferred' in prefs) this.excludeDeferred = prefs.excludeDeferred;
                     }
                 }
 
                 // Persist preference changes (Alpine v3: use instance $watch inside component)
                 this.$watch('showOnlyUsed', () => this.savePreferences());
+                this.$watch('showOnlyNonDeferred', () => this.savePreferences());
                 this.$watch('showOnlyFun', () => this.savePreferences());
                 this.$watch('excludeBoring', () => this.savePreferences());
+                this.$watch('excludeDeferred', () => this.savePreferences());
             },
 
             // Word filtering
             shouldShowWord(word) {
                 if (this.showOnlyUsed && !word.used) {
+                    return false;
+                }
+                if (this.showOnlyNonDeferred && word.deferred) {
                     return false;
                 }
                 return true;
@@ -657,6 +701,11 @@
                     return false;
                 }
 
+                // Deferred filter
+                if (this.excludeDeferred && phrase.hasDeferred) {
+                    return false;
+                }
+
                 return true;
             },
 
@@ -670,6 +719,7 @@
 
             clearFilters() {
                 this.showOnlyUsed = false;
+                this.showOnlyNonDeferred = false;
                 this.selectedWords = [];
                 this.savePreferences();
             },
@@ -677,8 +727,10 @@
             savePreferences() {
                 localStorage.setItem('wordFilters', JSON.stringify({
                     showOnlyUsed: this.showOnlyUsed,
+                    showOnlyNonDeferred: this.showOnlyNonDeferred,
                     showOnlyFun: this.showOnlyFun,
-                    excludeBoring: this.excludeBoring
+                    excludeBoring: this.excludeBoring,
+                    excludeDeferred: this.excludeDeferred
                 }));
             },
 
@@ -704,6 +756,17 @@
                         }
                     });
                 });
+                return count;
+            },
+
+            get nonDeferredWordsCount() {
+                let count = 0;
+                for (const token in this.matchedWords) {
+                    for (const listType in this.matchedWords[token]) {
+                        const list = Array.isArray(this.matchedWords[token][listType]) ? this.matchedWords[token][listType] : [];
+                        count += list.filter(w => !w.deferred).length;
+                    }
+                }
                 return count;
             }
         }

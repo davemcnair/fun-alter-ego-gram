@@ -15,6 +15,7 @@ class TargetPatternShowDto extends Data
         public int        $alterEgosCount,
         public int        $funAlterEgosCount,
         public int        $boringAlterEgosCount,
+        public int        $deferredAlterEgosCount,
         public Collection $alterEgos,
         public string     $elapsed,
     )
@@ -27,6 +28,7 @@ class TargetPatternShowDto extends Data
             $ae->phrase,
             $ae->isFun,
             $ae->hasBoring,
+            $ae->hasDeferred,
             $ae->starred,
             $ae->id
         ));
@@ -38,6 +40,7 @@ class TargetPatternShowDto extends Data
             alterEgosCount: count($alterEgos),
             funAlterEgosCount: count($alterEgos->filter(fn($ae) => $ae->isFun)),
             boringAlterEgosCount: count($alterEgos->filter(fn($ae) => $ae->hasBoring)),
+            deferredAlterEgosCount: count($alterEgos->filter(fn($ae) => $ae->hasDeferred)),
             alterEgos: $alterEgos,
             elapsed: number_format($targetPattern->elapsed_ms / 1000, 1),
         );

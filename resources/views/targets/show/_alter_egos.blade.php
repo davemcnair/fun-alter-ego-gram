@@ -9,6 +9,9 @@
             <label class="control-label">
                 <input type="checkbox" x-model="excludeBoring"> Exclude boring ({{ $dto->boringAlterEgosCount }})
             </label>
+            <label class="control-label">
+                <input type="checkbox" x-model="excludeDeferred"> Exclude deferred ({{ $dto->deferredAlterEgosCount }})
+            </label>
         </span>
     </h3>
 
@@ -26,7 +29,12 @@
                 </div>
                 <ul class="alter-ego-list">
                     <template x-for="phrase in pattern.alterEgos" :key="phrase.id">
-                        <li x-show="shouldShowPhrase(phrase)" x-text="phrase.phrase"></li>
+                        <li x-show="shouldShowPhrase(phrase)" 
+                            :class="{
+                                'phrase-fun': phrase.isFun,
+                                'phrase-boring': phrase.hasBoring
+                            }"
+                            x-text="phrase.phrase"></li>
                     </template>
                 </ul>
             </div>

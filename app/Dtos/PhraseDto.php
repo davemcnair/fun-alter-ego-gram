@@ -10,6 +10,7 @@ class PhraseDto extends Data
         public string $phrase,
         public bool $isFun = false,
         public bool $hasBoring = false,
+        public bool $hasDeferred = false,
         public bool $starred = false,
         public ?int $id = null,
     ){}
@@ -19,7 +20,8 @@ class PhraseDto extends Data
         $phrase = implode(' ', array_map(fn($w) => $w->word, $words));
         $isFun = collect($words)->contains(fn($w) => $w->listType === 'fun');
         $hasBoring = collect($words)->contains(fn($w) => $w->listType === 'boring');
+        $hasDeferred = collect($words)->contains(fn($w) => $w->deferred);
 
-        return new self($phrase, $isFun, $hasBoring);
+        return new self($phrase, $isFun, $hasBoring, $hasDeferred);
     }
 }

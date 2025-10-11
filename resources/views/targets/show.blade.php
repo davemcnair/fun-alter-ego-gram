@@ -405,6 +405,33 @@
             transition: all 0.2s;
         }
 
+        .word-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin: 1px;
+        }
+
+        .promote-btn {
+            background: #10b981;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .promote-btn:hover:not(:disabled) {
+            background: #059669;
+        }
+
+        .promote-btn:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+
         .word-clickable:hover {
             background: #e0e7ff;
         }
@@ -460,10 +487,7 @@
             <div>
                 <div class="patterns-row">
                     Patterns searched: <strong>{{ $dto->patternsFilledCount }}</strong> / <strong>{{ $dto->patternsCount }}</strong>
-                    <span class="tag">{{ $dto->elapsed }}s</span>
-                </div>
-                <div class="patterns-row">
-                    Alter egos found: <strong>{{ $dto->alterEgosCount }}</strong>
+                    in <span class="tag">{{ $dto->elapsed }}s</span>
                 </div>
             </div>
         </div>
@@ -477,7 +501,7 @@
 
             <div class="card">
                 <h3 class="word-matches-header">
-                    Word Matches (<span x-text="filteredWordsCount"></span>)
+                    Word Matches - showing <span x-text="filteredWordsCount"></span>of {{ $dto->matchedWordsCount }}
                 </h3>
 
                 {{-- Filter Controls --}}
@@ -530,7 +554,7 @@
                                 <tr x-show="shouldShowRow(token, listType, words)">
                                     <td x-text="token"></td>
                                     <td>
-                                        <span class="tag" 
+                                        <span class="tag"
                                               :class="{
                                                   'tag-fun': listType === 'fun',
                                                   'tag-boring': listType === 'boring',
@@ -542,19 +566,27 @@
                                     <td class="muted">
                                         <div class="word-samples">
                                             <template x-for="(word, idx) in (words || [])" :key="token + '-' + listType + '-idx-' + idx + '-id-' + ((word && word.id) ? word.id : 'nil')">
-                                                <span
-                                                    x-show="shouldShowWord(word)"
-                                                    class="word-clickable"
-                                                    :class="{
-                                                        'word-used': word.used,
-                                                        'word-deferred': word.deferred,
-                                                        'word-fun': word.listType === 'fun',
-                                                        'word-selected': (word && word.id) ? isWordSelected(word.id) : false,
-                                                        'word-disabled': !(word && word.id)
-                                                    }"
-                                                    @click="(word && word.id) && toggleWordSelection(word.id)"
-                                                    x-text="word.word + (word.usageCount > 0 ? ' (' + word.usageCount + ')' : '')">
-                                                </span>
+                                                <div x-show="shouldShowWord(word)" class="word-item">
+                                                    <span
+                                                        class="word-clickable"
+                                                        :class="{
+                                                            'word-used': word.used,
+                                                            'word-deferred': word.deferred,
+                                                            'word-fun': word.listType === 'fun',
+                                                            'word-selected': (word && word.id) ? isWordSelected(word.id) : false,
+                                                            'word-disabled': !(word && word.id)
+                                                        }"
+                                                        @click="(word && word.id) && toggleWordSelection(word.id)"
+                                                        x-text="word.word + (word.usageCount > 0 ? ' (' + word.usageCount + ')' : '')">
+                                                    </span>
+                                                    <button
+                                                        x-show="word.isPromotable && word.listType === 'ok'"
+                                                        @click="promoteWord(word.id)"
+                                                        class="promote-btn"
+                                                        :disabled="promotingWords.has(word.id)"
+                                                        x-text="promotingWords.has(word.id) ? 'Promoting...' : '^'">
+                                                    </button>
+                                                </div>
                                             </template>
                                         </div>
                                     </td>
@@ -588,6 +620,8 @@
             showOnlyFun: false,
             excludeBoring: false,
             excludeDeferred: false,
+            // Promotion state
+            promotingWords: new Set(),
             usedWordsCount: {{ $dto->usedWordsCount }},
             totalWordsCount: {{ $dto->matchedWordsCount }},
 
@@ -724,6 +758,61 @@
                 this.savePreferences();
             },
 
+            async promoteWord(wordId) {
+                if (this.promotingWords.has(wordId)) return;
+
+                this.promotingWords.add(wordId);
+
+                try {
+                    const response = await fetch(`/api/words/${wordId}/promote`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+                        }
+                    });
+
+                    const result = await response.json();
+
+                    if (result.ok) {
+                        // Update the word in the matchedWords data
+                        this.updateWordListType(wordId, 'fun');
+                        // Remove from promoting set
+                        this.promotingWords.delete(wordId);
+                    } else {
+                        alert(result.error || 'Failed to promote word');
+                        this.promotingWords.delete(wordId);
+                    }
+                } catch (error) {
+                    alert('Failed to promote word');
+                    this.promotingWords.delete(wordId);
+                }
+            },
+
+            updateWordListType(wordId, newListType) {
+                // Find and update the word in matchedWords
+                for (const token in this.matchedWords) {
+                    for (const listType in this.matchedWords[token]) {
+                        const words = this.matchedWords[token][listType];
+                        const wordIndex = words.findIndex(w => w.id === wordId);
+                        if (wordIndex !== -1) {
+                            // Update the word's listType
+                            words[wordIndex].listType = newListType;
+                            words[wordIndex].isPromotable = false;
+
+                            // Move word to the new list type
+                            const word = words.splice(wordIndex, 1)[0];
+                            if (!this.matchedWords[token][newListType]) {
+                                this.matchedWords[token][newListType] = [];
+                            }
+                            this.matchedWords[token][newListType].push(word);
+
+                            return;
+                        }
+                    }
+                }
+            },
+
             savePreferences() {
                 localStorage.setItem('wordFilters', JSON.stringify({
                     showOnlyUsed: this.showOnlyUsed,
@@ -746,12 +835,10 @@
             },
 
             get filteredPhrasesCount() {
-                if (this.selectedWords.length === 0) return 0;
-
                 let count = 0;
                 this.patternsFilled.forEach(pattern => {
                     pattern.alterEgos.forEach(phrase => {
-                        if (this.isPhraseVisible(phrase.id)) {
+                        if (this.shouldShowPhrase(phrase)) {
                             count++;
                         }
                     });

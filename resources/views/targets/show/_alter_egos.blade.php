@@ -1,7 +1,9 @@
 {{-- resources/views/targets/show/_alter_egos.blade.php --}}
 <div class="card">
     <h3 class="word-matches-header">
-        Alter Egos
+        Alter Egos - showing <span x-text="filteredPhrasesCount"></span>of {{ $dto->alterEgosCount }}
+    </h3>
+    <h4>
         <span class="alter-egos-controls">
             <label class="control-label">
                 <input type="checkbox" x-model="showOnlyFun"> Only fun ({{ $dto->funAlterEgosCount }})
@@ -13,11 +15,7 @@
                 <input type="checkbox" x-model="excludeDeferred"> Exclude deferred ({{ $dto->deferredAlterEgosCount }})
             </label>
         </span>
-    </h3>
-
-    <div x-show="selectedWords.length > 0" class="word-filter-status">
-        Showing <span x-text="filteredPhrasesCount"></span> phrases containing selected words
-    </div>
+    </h4>
 
     <div id="alterEgoGroups">
         <template x-for="pattern in patternsFilled" :key="pattern.id">
@@ -29,7 +27,7 @@
                 </div>
                 <ul class="alter-ego-list">
                     <template x-for="phrase in pattern.alterEgos" :key="phrase.id">
-                        <li x-show="shouldShowPhrase(phrase)" 
+                        <li x-show="shouldShowPhrase(phrase)"
                             :class="{
                                 'phrase-fun': phrase.isFun,
                                 'phrase-boring': phrase.hasBoring

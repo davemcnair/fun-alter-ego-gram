@@ -372,7 +372,10 @@ class TargetController extends Controller
         })
             ->where('phrase', $data['phrase'])
             ->update(['starred' => true]);
-        return response()->json(['ok' => true] + $this->lookupProgressPayload($target->fresh())) ;
+
+        // Return minimal payload needed by the UI to avoid heavy serialization
+        $starred = $target->alterEgos()->where('starred', true)->pluck('phrase')->all();
+        return response()->json(['ok' => true, 'starred' => $starred]);
     }
 
     public function unstar(Target $target, Request $request)
@@ -385,7 +388,10 @@ class TargetController extends Controller
         })
             ->where('phrase', $data['phrase'])
             ->update(['starred' => false]);
-        return response()->json(['ok' => true] + $this->lookupProgressPayload($target->fresh())) ;
+
+        // Return minimal payload needed by the UI to avoid heavy serialization
+        $starred = $target->alterEgos()->where('starred', true)->pluck('phrase')->all();
+        return response()->json(['ok' => true, 'starred' => $starred]);
     }
 //
 //    public function rephrase(Target $target, Request $request)

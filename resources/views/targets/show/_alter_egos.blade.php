@@ -31,8 +31,16 @@
                             :class="{
                                 'phrase-fun': phrase.isFun,
                                 'phrase-boring': phrase.hasBoring
-                            }"
-                            x-text="phrase.phrase"></li>
+                            }">
+                            <button
+                                class="star-btn"
+                                :class="{ 'starred': isStarred(phrase) }"
+                                @click="toggleStar(phrase)"
+                                :title="isStarred(phrase) ? 'Unstar' : 'Star'"
+                                x-text="isStarred(phrase) ? '★' : '☆'">
+                            </button>
+                            <span x-text="phrase.phrase"></span>
+                        </li>
                     </template>
                 </ul>
             </div>

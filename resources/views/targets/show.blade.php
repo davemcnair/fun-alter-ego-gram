@@ -607,10 +607,13 @@
     function targetApp() {
         return {
             // Data
+            targetId: {{ $dto->targetId }},
             matchedWords: @js($dto->matchedWords),
             wordToPhraseMap: @js($dto->wordToPhraseMap),
             wordUsageCounts: @js($dto->wordUsageCounts),
             patternsFilled: @js($dto->patternsFilled->toArray()),
+            starred: @js($dto->starred),
+            starredSet: new Set(),
 
             // Filters
             showOnlyUsed: false,
@@ -626,6 +629,13 @@
             totalWordsCount: {{ $dto->matchedWordsCount }},
 
             init() {
+                // Initialize starred set
+                if (Array.isArray(this.starred)) {
+                    this.starredSet = new Set(this.starred);
+                }
+                // Sync phrase objects' starred flags
+                this.syncPhraseStarredFlags();
+
                 // Load saved preferences without overriding defaults
                 const saved = localStorage.getItem('wordFilters');
                 if (saved) {
@@ -703,6 +713,53 @@
                     }
                 }
                 return '';
+            },
+
+            // Star/unstar helpers
+            syncPhraseStarredFlags() {
+                try {
+                    const set = this.starredSet || new Set();
+                    this.patternsFilled.forEach(p => {
+                        p.alterEgos.forEach(ae => {
+                            ae.starred = set.has(ae.phrase);
+                        });
+                    });
+                } catch (e) { /* ignore */ }
+            },
+            isStarred(phrase) {
+                if (!phrase) { return false; }
+                if (typeof phrase.starred === 'boolean') { return phrase.starred; }
+                return this.starredSet.has(phrase.phrase);
+            },
+            async toggleStar(phrase) {
+                if (!phrase || !phrase.phrase) { return; }
+                const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+                const isStarred = this.isStarred(phrase);
+                const url = `/api/targets/${this.targetId}/${isStarred ? 'unstar' : 'star'}`;
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf },
+                        body: JSON.stringify({ phrase: phrase.phrase })
+                    });
+                    const result = await response.json();
+                    if (!response.ok || !result.ok) {
+                        alert(result.error || 'Failed to update star');
+                        return;
+                    }
+                    // Update local starred list from server truth
+                    if (Array.isArray(result.starred)) {
+                        this.starred = result.starred;
+                        this.starredSet = new Set(this.starred);
+                        this.syncPhraseStarredFlags();
+                    } else {
+                        // Fallback: toggle locally if payload missing
+                        phrase.starred = !isStarred;
+                        if (phrase.starred) { this.starredSet.add(phrase.phrase); } else { this.starredSet.delete(phrase.phrase); }
+                    }
+                } catch (e) {
+                    alert('Network error updating star');
+                }
             },
 
             // Phrase filtering

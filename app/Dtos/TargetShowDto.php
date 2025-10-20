@@ -18,6 +18,7 @@ class TargetShowDto extends Data
         public bool       $includeNearly,
         public bool       $includeDeferred,
         public bool       $includeUsed,
+        public bool       $onlyStarred,
         public bool       $completed,
         public string     $elapsed,
         public int        $patternsCount,
@@ -27,6 +28,7 @@ class TargetShowDto extends Data
         public int        $deferredPatternsCount,
         public Collection $deferredPatterns,
         public int        $alterEgosCount,
+        public int        $starredAlterEgosCount,
         public int        $funAlterEgosCount,
         public int        $boringAlterEgosCount,
         public int        $deferredAlterEgosCount,
@@ -64,10 +66,7 @@ class TargetShowDto extends Data
 
         $deferredPatterns = $patterns->filter(fn($p) => $p->status === TargetPatternStatus::DEFERRED->value);
         $alterEgos = $target->alterEgos;
-        $starred = $target->alterEgos()
-            ->where('starred', true)
-            ->pluck('phrase')
-            ->all();
+        $starred = $alterEgos->filter(fn($ae) => $ae->starred);
 
         $matchedSignaturesCount = $target->tokenSignatures()->count();
         $matchedWordsCount = $target->tokenSignatureWords()->count();
@@ -85,15 +84,17 @@ class TargetShowDto extends Data
             includeNearly: false,
             includeDeferred: true,
             includeUsed: true,
+            onlyStarred: false,
             completed: $target->status === TargetStatus::processed->name,
             elapsed: number_format($elapsed,1),
             patternsCount: $patterns->count(),
             patternsFilledCount: $filledPatterns->count(),
-            starred: $starred,
+            starred: $starred->pluck('phrase')->toArray(),
             patternsFilled: $filledPatterns,
             deferredPatternsCount: $deferredPatterns->count(),
             deferredPatterns: $deferredPatterns,
             alterEgosCount: $alterEgos->count(),
+            starredAlterEgosCount: $starred->count(),
             funAlterEgosCount: $alterEgos->filter(fn($ae) => $ae->isFun)->count(),
             boringAlterEgosCount: $alterEgos->filter(fn($ae) => $ae->hasBoring)->count(),
             deferredAlterEgosCount: $alterEgos->filter(fn($ae) => $ae->hasDeferred)->count(),

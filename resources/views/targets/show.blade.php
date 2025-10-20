@@ -620,6 +620,7 @@
             showOnlyNonDeferred: false,
             selectedWords: [],
             // Phrase visibility controls
+            showOnlyStarred: false,
             showOnlyFun: false,
             excludeBoring: false,
             excludeDeferred: false,
@@ -643,6 +644,7 @@
                     if (prefs && typeof prefs === 'object') {
                         if ('showOnlyUsed' in prefs) this.showOnlyUsed = prefs.showOnlyUsed;
                         if ('showOnlyNonDeferred' in prefs) this.showOnlyNonDeferred = prefs.showOnlyNonDeferred;
+                        if ('showOnlyStarred' in prefs) this.showOnlyStarred = prefs.showOnlyStarred;
                         if ('showOnlyFun' in prefs) this.showOnlyFun = prefs.showOnlyFun;
                         if ('excludeBoring' in prefs) this.excludeBoring = prefs.excludeBoring;
                         if ('excludeDeferred' in prefs) this.excludeDeferred = prefs.excludeDeferred;
@@ -652,6 +654,7 @@
                 // Persist preference changes (Alpine v3: use instance $watch inside component)
                 this.$watch('showOnlyUsed', () => this.savePreferences());
                 this.$watch('showOnlyNonDeferred', () => this.savePreferences());
+                this.$watch('showOnlyStarred', () => this.savePreferences());
                 this.$watch('showOnlyFun', () => this.savePreferences());
                 this.$watch('excludeBoring', () => this.savePreferences());
                 this.$watch('excludeDeferred', () => this.savePreferences());
@@ -782,6 +785,11 @@
                     return false;
                 }
 
+                // Starred filter
+                if (this.showOnlyStarred && !phrase.starred) {
+                    return false;
+                }
+
                 // Fun filter
                 if (this.showOnlyFun && !phrase.isFun) {
                     return false;
@@ -874,6 +882,7 @@
                 localStorage.setItem('wordFilters', JSON.stringify({
                     showOnlyUsed: this.showOnlyUsed,
                     showOnlyNonDeferred: this.showOnlyNonDeferred,
+                    showOnlyStarred: this.showOnlyStarred,
                     showOnlyFun: this.showOnlyFun,
                     excludeBoring: this.excludeBoring,
                     excludeDeferred: this.excludeDeferred

@@ -6,6 +6,9 @@
     <h4>
         <span class="alter-egos-controls">
             <label class="control-label">
+                <input type="checkbox" x-model="showOnlyStarred"> Only starred ({{ $dto->starredAlterEgosCount }})
+            </label>
+            <label class="control-label">
                 <input type="checkbox" x-model="showOnlyFun"> Only fun ({{ $dto->funAlterEgosCount }})
             </label>
             <label class="control-label">

@@ -38,7 +38,9 @@
         <div class="flex" style="justify-content: space-between; align-items:center;">
             <h2 style="margin:0;">Words</h2>
             <div class="flex" style="gap:8px;">
-                <button id="commitBtn" class="btn" {{ $hasUncommitted ? '' : 'disabled' }} title="Commit DB words to resources" >Commit Resources</button>
+                <button id="commitBtn" class="btn" {{ $hasUncommitted ? '' : 'disabled' }} title="Commit DB words to resources" >
+                    Commit Resources  $uncommittedCount
+                </button>
                 <a href="{{ route('words.create') }}" class="btn">Add word</a>
             </div>
         </div>
@@ -51,6 +53,12 @@
                     <label class="muted" for="q">Search</label>
                     <input id="q" name="q" type="text" value="{{ $q }}" style="width:100%; padding:6px 8px; border:1px solid #d1d5db; border-radius:6px;">
                     <label style="display:block; margin-top:6px; font-size:14px;"><input type="checkbox" name="exact" value="1" {{ $exact ? 'checked' : '' }}> Exact match</label>
+                </div>
+                <div>
+                    <label class="muted" for="uncommitted">Uncommitted</label>
+                    <select id="uncommitted" name="uncommitted" style="width:100%; padding:6px 8px; border:1px solid #d1d5db; border-radius:6px;">
+
+                    </select>
                 </div>
                 <div>
                     <label class="muted" for="token">Token</label>
@@ -97,11 +105,11 @@
             <table>
                 <thead>
                     <tr>
-                        <th>ID</th>
+                        <th>Uncommitted</th>
                         <th>Word</th>
                         <th>Token</th>
                         <th>List</th>
-                        <th>Signature</th>
+                        <th>Deferred</th>
                         <th>Anagrams</th>
                         <th>Actions</th>
                     </tr>
@@ -109,7 +117,7 @@
                 <tbody>
                     @foreach($items as $w)
                         <tr data-id="{{ $w->id }}">
-                            <td>{{ $w->id }}</td>
+                            <td>{{ $w->uncommitted }}</td>
                             <td>{{ $w->word }}</td>
                             <td>{{ $w->token_type }}</td>
                             <td>
@@ -118,7 +126,7 @@
                                     <span class="badge badge-yellow">fun</span>
                                 @endif
                             </td>
-                            <td>{{ $w->signature }}</td>
+                            <td>{{ $w->is_deferred }}</td>
                             <td>
                                 @php $hasA = (bool)($hasAnagsMap[$w->id] ?? false); @endphp
                                 @if($hasA)
@@ -146,6 +154,9 @@
                                 @php $funAble = in_array(strtolower($w->token_type), ['forename','surname'], true); @endphp
                                 @if($funAble && strtolower($w->list_type) !== 'fun')
                                     <button class="btn-link js-promote" data-id="{{ $w->id }}">Promote to fun</button>
+                                    @if($w->token_type == 'surname')
+                                    <button class="btn-link js-demote" data-id="{{ $w->id }}">Demote to boring</button>
+                                    @endif
                                 @endif
                             </td>
                         </tr>
@@ -205,6 +216,18 @@
                     alert(res.error || 'Failed to promote');
                 }
             }).catch(() => alert('Failed to promote'));
+        });
+    });document.querySelectorAll('.js-demote').forEach(btn => {
+        btn.addEventListener('click', function(){
+            const id = this.dataset.id;
+            const url = '{{ route('api.words.demote', ['word' => 'WORD_ID']) }}'.replace('WORD_ID', String(id));
+            postJson(url, {}).then(res => {
+                if (res && res.ok) {
+                    location.reload();
+                } else {
+                    alert(res.error || 'Failed to demote');
+                }
+            }).catch(() => alert('Failed to demote'));
         });
     });
 })();

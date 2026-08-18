@@ -216,6 +216,25 @@ class WordController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    // Demote a word from OK to BORING (AJAX)
+    public function demote(Request $request, TokenSignatureWord $word)
+    {
+        // Only allow demotion for fun-able tokens (based on token name)
+        $ts = $word->tokenSignature()->with('token')->first();
+        $tokenName = strtolower((string)($ts?->token?->name ?? ''));
+        $demotable = [ 'surname'];
+        if (!in_array($tokenName, $demotable, true)) {
+            return response()->json(['ok' => false, 'error' => 'Token not demotable'], 400);
+        }
+        // No-op if already boring
+        if (strtolower((string)$word->list_type) === 'boring') {
+            return response()->json(['ok' => true, 'already' => true]);
+        }
+        $word->list_type = 'boring';
+        $word->save();
+        return response()->json(['ok' => true]);
+    }
+
     private function validateData(Request $request, ?int $ignoreId = null): array
     {
         return $request->validate([

@@ -84,12 +84,24 @@ class TargetService
             return;
         }
 
-        $target->status = TargetStatus::filterable;
-        $target->save();
-        $this->filterPatterns($target, $matchingSignatures);
-        $target->status = TargetStatus::processing;
-        $target->save();
-        $this->processDeferredPatterns($target);
+        // Increase execution time limit for large targets with many patterns
+        // This prevents timeout when processing synchronously
+        $originalTimeLimit = ini_get('max_execution_time');
+        set_time_limit(300); // 5 minutes for large targets
+
+        try {
+            $target->status = TargetStatus::filterable;
+            $target->save();
+            $this->filterPatterns($target, $matchingSignatures);
+            $target->status = TargetStatus::processing;
+            $target->save();
+            $this->processDeferredPatterns($target);
+        } finally {
+            // Restore original time limit
+            if ($originalTimeLimit !== false) {
+                set_time_limit((int)$originalTimeLimit);
+            }
+        }
     }
 
     private function filterPatterns(Target $target, Collection $matchingSignatures): void
@@ -99,6 +111,10 @@ class TargetService
             return;
         }
         TargetTokenSignature::bulkInsertOrIgnore($target, $matchingSignatures);
+        
+        // Free memory from the large matching signatures collection
+        // The target now has the relationships loaded, so we don't need the original collection
+        unset($matchingSignatures);
 
         // Steps 2–5: compute mins, filter, insert, and enqueue fills for this target
         $this->filterMatchingPatternsForTarget($target);
@@ -112,13 +128,16 @@ class TargetService
             ->where('status', TargetPatternStatus::PENDING)
             ->pluck('id');
 
+        $pendingCount = $pendingIds->count();
         Log::info('fill_patterns', [
             'target' => $target->name,
-            'pending_patterns' => $pendingIds->count(),
+            'pending_patterns' => $pendingCount,
         ]);
+        
         if (config('search.queue')){
             Log::info('Async search.');
         }
+        
         foreach ($pendingIds as $pid) {
             $this->scaledDispatch(FillPatternSignaturesJob::class, (int)$pid);
         }
@@ -129,15 +148,13 @@ class TargetService
      */
     private function filterMatchingPatternsForTarget(Target $target): void
     {
-        $target->loadMissing([
-            'tokenSignatures.tokenSignature.signature',
-            'tokenSignatures.tokenSignature.token',
-            'signature'
-        ]);
+        // Load signature first (small, needed for length check)
+        $target->loadMissing('signature');
 
-        // Compute minimum lengths from current matching signatures
+        // Use query-based approach to compute minimum lengths without loading all models into memory
+        // This avoids memory exhaustion with large numbers of token signatures (e.g., 701+)
         [$storedMinLengths, $matchedMinLengths] =
-            $this->wordMatchService->extractTargetTokenSignatureMinimumLengths($target->tokenSignatures);
+            $this->wordMatchService->extractTargetTokenSignatureMinimumLengthsFromQuery($target);
 
         // List patterns within the target signature length
         $standardShortEnoughPatterns = $this->patternsService->listWithinMinLength((int) $target->signature->length);

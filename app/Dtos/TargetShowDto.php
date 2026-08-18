@@ -7,6 +7,7 @@ use App\Enums\TargetStatus;
 use App\Models\Target;
 use App\Models\TargetPattern;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Spatie\LaravelData\Data;
 
 class TargetShowDto extends Data
@@ -45,13 +46,15 @@ class TargetShowDto extends Data
 
     public static function fromTarget(Target $target): self
     {
+        // Only load essential relationships - avoid loading all words to prevent memory exhaustion
+        // For large targets (e.g., 701+ token signatures), loading all words causes memory issues
         $target->loadMissing([
             'patterns.pattern',
             'signaturedPatterns',
             'alterEgos',
             'tokenSignatures.tokenSignature.token',
-            'tokenSignatures.tokenSignature.words',
-            'tokenSignatureWords.tokenSignatureWord'
+            // Removed: 'tokenSignatures.tokenSignature.words' - too memory intensive
+            // Removed: 'tokenSignatureWords.tokenSignatureWord' - will load via query when needed
         ]);
 
         $patterns = $target->patterns
@@ -110,35 +113,42 @@ class TargetShowDto extends Data
 
     /**
      * Build mappings: word_id => [phrase_ids] and word_id => count
+     * Uses SQL queries to avoid loading all models into memory
      */
     private static function buildWordMappings(Target $target): array
     {
-        $alterEgos = $target->alterEgos()
-            ->with([
-                'targetSignaturedPattern.targetTokenSignatures.tokenSignature.words'
+        // Use SQL to build word-to-phrase mappings without loading all models
+        // This is memory-efficient for targets with many alter egos and words
+        $results = DB::table('alter_egos as ae')
+            ->join('target_signatured_patterns as tsp', 'tsp.id', '=', 'ae.target_signatured_pattern_id')
+            ->join('target_patterns as tp', 'tp.id', '=', 'tsp.target_pattern_id')
+            ->join('target_signatured_pattern_target_token_signature as tsptts', 'tsptts.target_signatured_pattern_id', '=', 'tsp.id')
+            ->join('target_token_signatures as tts', 'tts.id', '=', 'tsptts.target_token_signature_id')
+            ->join('token_signature_words as tsw', 'tsw.token_signature_id', '=', 'tts.token_signature_id')
+            ->where('tp.target_id', $target->id)
+            ->select([
+                'tsw.id as word_id',
+                'ae.id as alter_ego_id'
             ])
             ->get();
 
         $wordToPhraseMap = [];
         $wordUsageCounts = [];
 
-        foreach ($alterEgos as $alterEgo) {
-            $wordIds = [];
-
-            foreach ($alterEgo->targetSignaturedPattern->targetTokenSignatures as $tts) {
-                foreach ($tts->tokenSignature->words as $word) {
-                    $wordIds[] = $word->id;
-                }
+        foreach ($results as $row) {
+            $wordId = $row->word_id;
+            $alterEgoId = $row->alter_ego_id;
+            
+            if (!isset($wordToPhraseMap[$wordId])) {
+                $wordToPhraseMap[$wordId] = [];
+                $wordUsageCounts[$wordId] = 0;
             }
-
-            foreach (array_unique($wordIds) as $wordId) {
-                if (!isset($wordToPhraseMap[$wordId])) {
-                    $wordToPhraseMap[$wordId] = [];
-                    $wordUsageCounts[$wordId] = 0;
-                }
-                $wordToPhraseMap[$wordId][] = $alterEgo->id;
-                $wordUsageCounts[$wordId]++;
+            
+            // Only add if not already in the list (avoid duplicates)
+            if (!in_array($alterEgoId, $wordToPhraseMap[$wordId])) {
+                $wordToPhraseMap[$wordId][] = $alterEgoId;
             }
+            $wordUsageCounts[$wordId]++;
         }
 
         return [$wordToPhraseMap, $wordUsageCounts];

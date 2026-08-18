@@ -38,6 +38,13 @@ class TokenSignatureWord extends Model
         return $this->belongsTo(TokenSignature::class);
     }
 
+    protected function uncommitted(): Attribute
+    {
+        return Attribute::make(
+            get: fn () => $this->committed_at < $this->updated_at
+        );
+    }
+
     protected function isPromotable(): Attribute
     {
         return Attribute::make(

@@ -6,11 +6,12 @@
     "keywords": ["laravel", "framework"],
     "license": "MIT",
     "require": {
-        "php": "^8.2",
+        "php": "^8.4",
         "laravel/framework": "^12.0",
         "laravel/tinker": "^2.10.1",
         "spatie/laravel-data": "^4.17",
-        "staudenmeir/eloquent-has-many-deep": "^1.21"
+        "staudenmeir/eloquent-has-many-deep": "^1.21",
+        "ext-pdo": "*"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",

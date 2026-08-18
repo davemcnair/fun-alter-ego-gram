@@ -42,6 +42,7 @@ Route::get('/words/{word}/edit', [WordController::class, 'edit'])->name('api.wor
 Route::put('/words/{word}', [WordController::class, 'update'])->name('api.words.update');
 Route::delete('/words/{word}', [WordController::class, 'destroy'])->name('api.words.destroy');
 Route::post('/words/{word}/promote', [WordController::class, 'promote'])->name('api.words.promote');
+Route::post('/words/{word}/demote', [WordController::class, 'demote'])->name('api.words.demote');
 Route::post('/words/commit-resources', [WordController::class, 'commitResources'])->name('api.words.commit-resources');
 
 // System API

@@ -422,12 +422,31 @@
             cursor: pointer;
             transition: background-color 0.2s;
         }
+        .demote-btn {
+            background: red;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
 
         .promote-btn:hover:not(:disabled) {
             background: #059669;
         }
 
+        .demote-btn:hover:not(:disabled) {
+            background: #059669;
+        }
+
         .promote-btn:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+
+        .demote-btn:disabled {
             background: #9ca3af;
             cursor: not-allowed;
         }
@@ -586,6 +605,13 @@
                                                         :disabled="promotingWords.has(word.id)"
                                                         x-text="promotingWords.has(word.id) ? 'Promoting...' : '^'">
                                                     </button>
+                                                    <button
+                                                        x-show="word.isPromotable && word.listType === 'ok'"
+                                                        @click="demoteWord(word.id)"
+                                                        class="demote-btn"
+                                                        :disabled="demotingWords.has(word.id)"
+                                                        x-text="demotingWords.has(word.id) ? 'Demoting...' : 'v'">
+                                                    </button>
                                                 </div>
                                             </template>
                                         </div>
@@ -626,6 +652,7 @@
             excludeDeferred: false,
             // Promotion state
             promotingWords: new Set(),
+            demotingWords: new Set(),
             usedWordsCount: {{ $dto->usedWordsCount }},
             totalWordsCount: {{ $dto->matchedWordsCount }},
 
@@ -851,6 +878,37 @@
                 } catch (error) {
                     alert('Failed to promote word');
                     this.promotingWords.delete(wordId);
+                }
+            },
+
+            async demoteWord(wordId) {
+                if (this.demotingWords.has(wordId)) return;
+
+                this.demotingWords.add(wordId);
+
+                try {
+                    const response = await fetch(`/api/words/${wordId}/demote`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+                        }
+                    });
+
+                    const result = await response.json();
+
+                    if (result.ok) {
+                        // Update the word in the matchedWords data
+                        this.updateWordListType(wordId, 'boring');
+                        // Remove from demoting set
+                        this.demotingWords.delete(wordId);
+                    } else {
+                        alert(result.error || 'Failed to demote word');
+                        this.demotingWords.delete(wordId);
+                    }
+                } catch (error) {
+                    alert('Failed to demote word');
+                    this.demotingWords.delete(wordId);
                 }
             },
 

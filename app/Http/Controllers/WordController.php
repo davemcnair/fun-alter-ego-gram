@@ -3,9 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\TokenSignatureWord;
-use App\Services\WordCommitService;
-use App\Services\WordMatchService;
-use App\Traits\HelpsMatchWords;
+use App\Services\WordCatalog;
+use App\Support\NameNormalizer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Throwable;
@@ -13,7 +12,6 @@ use Throwable;
 
 class WordController extends Controller
 {
-    use HelpsMatchWords;
 
     public function index(Request $request)
     {
@@ -115,18 +113,17 @@ class WordController extends Controller
     public function store(Request $request)
     {
         $data = $this->validateData($request);
-        $signature = $this->makeSignature($data['word'] ?? '');
+        $signature = NameNormalizer::anagramSignature($data['word'] ?? '')->signature;
         if ($signature === '') {
             return back()->withErrors(['word' => 'Please include at least one letter.'])->withInput();
         }
         $token = strtolower((string)$data['token_type']);
         $list = (string)$data['list_type'];
 
-        $store = app(\App\Services\WordStoreService::class);
+        $catalog = app(WordCatalog::class);
 
         if (!$request->boolean('confirm', false)) {
-            // If there are existing anagrams for this token/signature, show confirmation
-            [$existing, $selectedId] = $store->getExistingAnagrams($token, $signature);
+            [$existing, $selectedId] = $catalog->existingAnagrams($token, $signature);
             if ($existing->isNotEmpty()) {
                 return view('words.confirm_anagrams', [
                     'token_type' => $token,
@@ -136,12 +133,10 @@ class WordController extends Controller
                     'selected_id' => $selectedId,
                 ]);
             }
-            // No existing anagrams; create immediately via service (emits event if eligible)
-            $store->addWordAndSearchIfSearchable($token, $data['word'], $list);
+            $catalog->add($token, $data['word'], $list);
             return redirect()->route('words.index')->with('status', 'Word created.');
         }
 
-        // Confirmation submitted
         $choice = (string)$request->get('search_choice', 'new');
         $selectedExistingId = null;
         if (str_starts_with($choice, 'existing:')) {
@@ -150,11 +145,10 @@ class WordController extends Controller
 
         $created = null;
         if ($selectedExistingId === null && $choice === 'new') {
-            $created = $store->addWordAndSearchIfSearchable($token, $data['word'], $list);
+            $created = $catalog->add($token, $data['word'], $list);
         }
 
-        // Designate representative and possibly emit event if newly created rep is eligible
-        $store->designateRepresentativeAndMaybeDispatch($token, $signature, $selectedExistingId, $created);
+        $catalog->chooseRepresentative($token, $signature, $selectedExistingId, $created);
 
         return redirect()->route('words.index')->with('status', 'Word saved.');
     }
@@ -174,20 +168,7 @@ class WordController extends Controller
         $newWord = (string)$data['word'];
         $newList = (string)$data['list_type'];
 
-        // Recreate via service for simplicity if anything changes substantially
-        $svc = app(WordMatchService::class);
-        $created = $svc->addTokenWord($newToken, $newWord, $newList);
-        if ($created) {
-            // remove the old row if different id
-            if ((int)$created->id !== (int)$word->id) {
-                $word->delete();
-            } else {
-                // same row, update list_type if needed
-                $word->list_type = $newList;
-                $word->word = $newWord;
-                $word->save();
-            }
-        }
+        $created = app(WordCatalog::class)->replace($word, $newToken, $newWord, $newList);
         return redirect()->route('words.index')->with('status', 'Word updated.');
     }
 
@@ -198,41 +179,22 @@ class WordController extends Controller
     }
 
     // Promote a word from OK to FUN (AJAX)
-    public function promote(Request $request, TokenSignatureWord $word)
+    public function promote(Request $request, TokenSignatureWord $word, WordCatalog $catalog)
     {
-        // Only allow promotion for fun-able tokens (based on token name)
-        $ts = $word->tokenSignature()->with('token')->first();
-        $tokenName = strtolower((string)($ts?->token?->name ?? ''));
-        $funAble = ['forename', 'surname'];
-        if (!in_array($tokenName, $funAble, true)) {
-            return response()->json(['ok' => false, 'error' => 'Token not fun-able'], 400);
+        $result = $catalog->promote($word);
+        if (! ($result['ok'] ?? false)) {
+            return response()->json($result, 400);
         }
-        // No-op if already fun
-        if (strtolower((string)$word->list_type) === 'fun') {
-            return response()->json(['ok' => true, 'already' => true]);
-        }
-        $word->list_type = 'fun';
-        $word->save();
-        return response()->json(['ok' => true]);
+        return response()->json($result);
     }
 
-    // Demote a word from OK to BORING (AJAX)
-    public function demote(Request $request, TokenSignatureWord $word)
+    public function demote(Request $request, TokenSignatureWord $word, WordCatalog $catalog)
     {
-        // Only allow demotion for fun-able tokens (based on token name)
-        $ts = $word->tokenSignature()->with('token')->first();
-        $tokenName = strtolower((string)($ts?->token?->name ?? ''));
-        $demotable = [ 'surname'];
-        if (!in_array($tokenName, $demotable, true)) {
-            return response()->json(['ok' => false, 'error' => 'Token not demotable'], 400);
+        $result = $catalog->demote($word);
+        if (! ($result['ok'] ?? false)) {
+            return response()->json($result, 400);
         }
-        // No-op if already boring
-        if (strtolower((string)$word->list_type) === 'boring') {
-            return response()->json(['ok' => true, 'already' => true]);
-        }
-        $word->list_type = 'boring';
-        $word->save();
-        return response()->json(['ok' => true]);
+        return response()->json($result);
     }
 
     private function validateData(Request $request, ?int $ignoreId = null): array
@@ -262,9 +224,7 @@ class WordController extends Controller
         }
 
         try {
-            /** @var WordCommitService $svc */
-            $svc = app(WordCommitService::class);
-            $result = $svc->commit();
+            $result = app(WordCatalog::class)->commit();
             return response()->json([
                 'ok' => true,
                 'committed_count' => (int)($result['committed_count'] ?? 0),

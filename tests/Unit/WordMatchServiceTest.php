@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Models\Signature;
 use App\Models\Token;
+use App\Services\WordCatalog;
 use App\Services\WordMatchService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
@@ -13,6 +14,7 @@ class WordMatchServiceTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected WordCatalog $catalog;
     protected WordMatchService $svc;
 
     protected function setUp(): void
@@ -20,6 +22,7 @@ class WordMatchServiceTest extends TestCase
         parent::setUp();
         // Disable cache for these tests per issue requirement
         Config::set('search.enable_match_cache', false);
+        $this->catalog = app(WordCatalog::class);
         $this->svc = app(WordMatchService::class);
 
         // Seed minimal tokens used throughout tests
@@ -36,20 +39,20 @@ class WordMatchServiceTest extends TestCase
 
         // Create matching candidates under forename
         // New signature 'aadm' with ok (not deferred since signature is newly created)
-        $w1 = $this->svc->addTokenWord('forename', 'adam', 'ok');
+        $w1 = $this->catalog->add('forename', 'adam', 'ok');
         // Another subset 'aad' (shorter) ok
-        $w2 = $this->svc->addTokenWord('forename', 'ada', 'ok');
+        $w2 = $this->catalog->add('forename', 'ada', 'ok');
         // Boring subset that should be excluded by default
-        $w3 = $this->svc->addTokenWord('forename', 'am', 'boring');
+        $w3 = $this->catalog->add('forename', 'am', 'boring');
         // Non-subset (has n) should never match
-        $w4 = $this->svc->addTokenWord('forename', 'anna', 'ok');
+        $w4 = $this->catalog->add('forename', 'anna', 'ok');
 
         // Create a deferred candidate intentionally: create fun first for signature, then ok.
-        $this->svc->addTokenWord('forename', 'adam', 'fun');
-        $deferred = $this->svc->addTokenWord('forename', 'dama', 'ok'); // same signature as 'adam', should be deferred
+        $this->catalog->add('forename', 'adam', 'fun');
+        $deferred = $this->catalog->add('forename', 'dama', 'ok'); // same signature as 'adam', should be deferred
 
         // Also add a surname subset candidate
-        $ws = $this->svc->addTokenWord('surname', 'dam', 'ok');
+        $ws = $this->catalog->add('surname', 'dam', 'ok');
 
         $matches = $this->svc->findMatchingTokenSignatureWords($targetSignature);
 
@@ -65,8 +68,8 @@ class WordMatchServiceTest extends TestCase
     public function test_include_boring_true_includes_boring_words(): void
     {
         $targetSignature = Signature::firstOrCreate(['signature' => 'aadm'], ['length' => 4, 'a_count' => 2, 'd_count' => 1, 'm_count' => 1]);
-        $ok = $this->svc->addTokenWord('forename', 'adam', 'ok');
-        $boring = $this->svc->addTokenWord('forename', 'am', 'boring');
+        $ok = $this->catalog->add('forename', 'adam', 'ok');
+        $boring = $this->catalog->add('forename', 'am', 'boring');
 
         $matches = $this->svc->findMatchingTokenSignatureWords($targetSignature, ['include_boring' => true]);
         $ids = $matches->pluck('id')->all();
@@ -78,9 +81,9 @@ class WordMatchServiceTest extends TestCase
     {
         $targetSignature = Signature::firstOrCreate(['signature' => 'aadm'], ['length' => 4, 'a_count' => 2, 'd_count' => 1, 'm_count' => 1]);
         // Use different matching signatures for OK vs FUN to avoid retroactive deferral of the OK word
-        $ok = $this->svc->addTokenWord('forename', 'ada', 'ok');     // signature 'aad'
-        $fun = $this->svc->addTokenWord('forename', 'adam', 'fun');  // signature 'aadm'
-        $boring = $this->svc->addTokenWord('forename', 'am', 'boring');
+        $ok = $this->catalog->add('forename', 'ada', 'ok');     // signature 'aad'
+        $fun = $this->catalog->add('forename', 'adam', 'fun');  // signature 'aadm'
+        $boring = $this->catalog->add('forename', 'am', 'boring');
 
         $matchesFunOnly = $this->svc->findMatchingTokenSignatureWords($targetSignature, ['list' => 'fun']);
         $idsFun = $matchesFunOnly->pluck('id')->all();
@@ -98,8 +101,8 @@ class WordMatchServiceTest extends TestCase
     public function test_token_filter_limits_to_specific_token(): void
     {
         $targetSignature = Signature::firstOrCreate(['signature' => 'aadm'], ['length' => 4, 'a_count' => 2, 'd_count' => 1, 'm_count' => 1]);
-        $forenameOk = $this->svc->addTokenWord('forename', 'adam', 'ok');
-        $surnameOk = $this->svc->addTokenWord('surname', 'dam', 'ok');
+        $forenameOk = $this->catalog->add('forename', 'adam', 'ok');
+        $surnameOk = $this->catalog->add('surname', 'dam', 'ok');
 
         $matchesForenameOnly = $this->svc->findMatchingTokenSignatureWords($targetSignature, ['token' => 'forename']);
         $idsA = $matchesForenameOnly->pluck('id')->all();
@@ -116,8 +119,8 @@ class WordMatchServiceTest extends TestCase
     {
         // Target with only b's should not match any word containing 'a'
         $targetSignature = Signature::firstOrCreate(['signature' => 'bbb'], ['length' => 3, 'b_count' => 3]);
-        $this->svc->addTokenWord('forename', 'bb', 'ok');       // should match
-        $aWord = $this->svc->addTokenWord('forename', 'ab', 'ok'); // should not match (has 'a')
+        $this->catalog->add('forename', 'bb', 'ok');       // should match
+        $aWord = $this->catalog->add('forename', 'ab', 'ok'); // should not match (has 'a')
 
         $matches = $this->svc->findMatchingTokenSignatureWords($targetSignature);
         $words = $matches->pluck('word')->all();

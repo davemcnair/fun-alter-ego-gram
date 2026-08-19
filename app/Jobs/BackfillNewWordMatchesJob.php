@@ -4,7 +4,6 @@ namespace App\Jobs;
 
 use App\Models\Target;
 use App\Models\TokenSignatureWord;
-use App\Traits\HelpsMatchWords;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -16,7 +15,7 @@ use Schema;
 
 class BackfillNewWordMatchesJob implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, HelpsMatchWords;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tokenSignatureWordId;
 

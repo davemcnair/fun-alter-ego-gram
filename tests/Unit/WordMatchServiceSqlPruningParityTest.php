@@ -5,6 +5,7 @@ namespace Tests\Unit;
 use App\Models\Signature;
 use App\Models\Token;
 use App\Models\TokenSignatureWord;
+use App\Services\WordCatalog;
 use App\Services\WordMatchService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -75,15 +76,16 @@ class WordMatchServiceSqlPruningParityTest extends TestCase
 
     public function test_sql_pruning_equals_php_filtering_basic(): void
     {
+        $catalog = app(WordCatalog::class);
+        $catalog->add('forename', 'aa', 'ok');
+        $catalog->add('forename', 'ab', 'ok');
+        $catalog->add('forename', 'abc', 'ok');
+        $catalog->add('forename', 'b', 'ok');
+        $catalog->add('forename', 'cc', 'ok');
+        $catalog->add('forename', 'cab', 'boring');
+        $catalog->add('forename', 'dddd', 'ok');
+
         $svc = app(WordMatchService::class);
-        // Add a mix of words for forename
-        $svc->addTokenWord('forename', 'aa', 'ok');     // sig: aa
-        $svc->addTokenWord('forename', 'ab', 'ok');     // ab
-        $svc->addTokenWord('forename', 'abc', 'ok');    // abc
-        $svc->addTokenWord('forename', 'b', 'ok');      // b
-        $svc->addTokenWord('forename', 'cc', 'ok');     // cc
-        $svc->addTokenWord('forename', 'cab', 'boring'); // abc (boring)
-        $svc->addTokenWord('forename', 'dddd', 'ok');   // dddd (too long / letters not in target)
 
         $targetSignature = Signature::firstOrCreate(['signature' => 'aabcc'], [
             'length' => 5,

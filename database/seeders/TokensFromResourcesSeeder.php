@@ -2,14 +2,13 @@
 
 namespace Database\Seeders;
 
-use App\Traits\HelpsMatchWords;
+use App\Support\NameNormalizer;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 
 class TokensFromResourcesSeeder extends Seeder
 {
-    use HelpsMatchWords;
 
     public function run(): void
     {
@@ -65,7 +64,7 @@ class TokensFromResourcesSeeder extends Seeder
             $all = array_merge($ok, $fun, $boring);
             $min = null;
             foreach ($all as $word) {
-                $sig = $this->makeSignature($word);
+                $sig = NameNormalizer::anagramSignature($word)->signature;
                 $len = strlen($sig);
                 if ($len === 0) {
                     continue;

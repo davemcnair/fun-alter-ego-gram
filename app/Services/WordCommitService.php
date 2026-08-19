@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\Models\TokenSignatureWord;
-use App\Traits\HelpsMatchWords;
+use App\Support\NameNormalizer;
 use FilesystemIterator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
@@ -14,7 +14,6 @@ use ZipArchive;
 
 class WordCommitService
 {
-    use HelpsMatchWords;
 
     public function commit(): array
     {
@@ -61,7 +60,7 @@ class WordCommitService
             $token = (string)($row->tokenSignature?->token?->name ?? '');
             if ($token === '') continue; // skip if not resolvable
             $list = strtolower((string)$row->list_type);
-            $grouped[$token][$list][] = $this->normalize($row->word);
+            $grouped[$token][$list][] = NameNormalizer::letterString($row->word);
         }
 
         // Write updates per token/list, using temp files and rename

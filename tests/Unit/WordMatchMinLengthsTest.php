@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Models\Signature;
 use App\Models\Token;
+use App\Services\WordCatalog;
 use App\Services\WordMatchService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -23,11 +24,9 @@ class WordMatchMinLengthsTest extends TestCase
 
     public function test_extract_min_lengths_reads_signature_relation_length(): void
     {
-        $svc = app(WordMatchService::class);
-
-        // Add candidate words
-        $svc->addTokenWord('forename', 'ada', 'ok'); // sig: aad (len 3)
-        $svc->addTokenWord('surname', 'vinci', 'ok'); // sig: ciinv (len 5)
+        $catalog = app(WordCatalog::class);
+        $catalog->add('forename', 'ada', 'ok');
+        $catalog->add('surname', 'vinci', 'ok');
 
         // Target signature 'aacddiimnrv' (David McNair) length 11
         $sig = Signature::firstOrCreate(['signature' => 'aacddiimnrv'], [

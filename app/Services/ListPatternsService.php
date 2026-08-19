@@ -4,13 +4,11 @@ namespace App\Services;
 
 use App\Models\Pattern;
 use App\Models\Token;
-use App\Traits\HelpsMatchWords;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class ListPatternsService
 {
-    use HelpsMatchWords;
 
     /**
      * Plain list of patterns (no source-based filtering).

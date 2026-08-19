@@ -4,9 +4,7 @@ namespace App\Models;
 
 use App\Dtos\PhraseDto;
 use App\Dtos\WordDto;
-use App\Services\PhraseBuilderService;
 use Illuminate\Database\Eloquent\Model;
-use Throwable;
 
 class Pattern extends Model
 {
@@ -62,7 +60,6 @@ class Pattern extends Model
         return $patternTokenPositions;
     }
 
-    // Returns a human-friendly example string for this pattern's template using PhraseBuilderService
     public function getExampleAttribute(): PhraseDto
     {
         // Prepare sample words by token according to requirement

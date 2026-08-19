@@ -13,83 +13,73 @@ use Spatie\LaravelData\Data;
 class TargetShowDto extends Data
 {
     public function __construct(
-        public int        $targetId,
-        public string     $name,
-        public bool       $includeBoring,
-        public bool       $includeNearly,
-        public bool       $includeDeferred,
-        public bool       $includeUsed,
-        public bool       $onlyStarred,
-        public bool       $completed,
-        public string     $elapsed,
-        public int        $patternsCount,
-        public int        $patternsFilledCount,
-        public array      $starred,
+        public int $targetId,
+        public string $name,
+        public string $status,
+        public bool $completed,
+        public string $elapsed,
+        public int $patternsCount,
+        public int $patternsFilledCount,
+        public array $starred,
         public Collection $patternsFilled,
-        public int        $deferredPatternsCount,
+        public int $deferredPatternsCount,
         public Collection $deferredPatterns,
-        public int        $alterEgosCount,
-        public int        $starredAlterEgosCount,
-        public int        $funAlterEgosCount,
-        public int        $boringAlterEgosCount,
-        public int        $deferredAlterEgosCount,
-        public int        $matchedSignaturesCount,
-        public int        $usedSignaturesCount,
-        public int        $matchedWordsCount,
-        public int        $usedWordsCount,
-        public array      $matchedWords,
-        public array      $wordToPhraseMap,
-        public array      $wordUsageCounts, // NEW: word_id => phrase count
-    )
-    {
-    }
+        public int $alterEgosCount,
+        public int $starredAlterEgosCount,
+        public int $funAlterEgosCount,
+        public int $boringAlterEgosCount,
+        public int $deferredAlterEgosCount,
+        public int $matchedSignaturesCount,
+        public int $usedSignaturesCount,
+        public int $matchedWordsCount,
+        public int $usedWordsCount,
+        public array $matchedWords,
+        public array $wordToPhraseMap,
+        public array $wordUsageCounts,
+        public bool $hasUncommitted,
+    ) {}
 
     public static function fromTarget(Target $target): self
     {
-        // Only load essential relationships - avoid loading all words to prevent memory exhaustion
-        // For large targets (e.g., 701+ token signatures), loading all words causes memory issues
         $target->loadMissing([
             'patterns.pattern',
             'signaturedPatterns',
             'alterEgos',
             'tokenSignatures.tokenSignature.token',
-            // Removed: 'tokenSignatures.tokenSignature.words' - too memory intensive
-            // Removed: 'tokenSignatureWords.tokenSignatureWord' - will load via query when needed
         ]);
 
         $patterns = $target->patterns
-            ->map(fn(TargetPattern $p) => TargetPatternShowDto::fromTargetPattern($p));
-        $livePatterns = $patterns->filter(fn($p) => $p->status !== TargetPatternStatus::DEFERRED->value);
-        $filledPatterns = $livePatterns->filter(fn($p) => $p->status === TargetPatternStatus::FILLED->value);
+            ->map(fn (TargetPattern $p) => TargetPatternShowDto::fromTargetPattern($p));
+        $livePatterns = $patterns->filter(fn ($p) => $p->status !== TargetPatternStatus::DEFERRED->value);
+        $filledPatterns = $livePatterns->filter(fn ($p) => $p->status === TargetPatternStatus::FILLED->value);
 
         $elapsed = 0;
-        foreach($filledPatterns as $pattern){
+        foreach ($filledPatterns as $pattern) {
             $elapsed += $pattern->elapsed;
         }
 
-        $deferredPatterns = $patterns->filter(fn($p) => $p->status === TargetPatternStatus::DEFERRED->value);
+        $deferredPatterns = $patterns->filter(fn ($p) => $p->status === TargetPatternStatus::DEFERRED->value);
         $alterEgos = $target->alterEgos;
-        $starred = $alterEgos->filter(fn($ae) => $ae->starred);
+        $starred = $alterEgos->filter(fn ($ae) => $ae->starred);
 
         $matchedSignaturesCount = $target->tokenSignatures()->count();
         $matchedWordsCount = $target->tokenSignatureWords()->count();
         $usedSignaturesCount = $target->tokenSignatures()->where('usedInPattern', true)->count();
         $usedWordsCount = $target->tokenSignatureWords()->where('usedInPhrase', true)->count();
-        $matchedWords = $target->matchingWordsByUseTokenAndType();
+        $matchedWords = self::matchedWordsByTokenAndType($target);
 
-        // Build word-to-phrase mapping
         [$wordToPhraseMap, $wordUsageCounts] = self::buildWordMappings($target);
+
+        $hasUncommitted = $target->tokenSignatureWords()
+            ->whereHas('tokenSignatureWord', fn ($q) => $q->whereNull('committed_at'))
+            ->exists();
 
         return new self(
             targetId: $target->id,
             name: $target->name,
-            includeBoring: true,
-            includeNearly: false,
-            includeDeferred: true,
-            includeUsed: true,
-            onlyStarred: false,
-            completed: $target->status === TargetStatus::processed->name,
-            elapsed: number_format($elapsed,1),
+            status: $target->status->name,
+            completed: $target->status === TargetStatus::processed,
+            elapsed: number_format($elapsed, 1),
             patternsCount: $patterns->count(),
             patternsFilledCount: $filledPatterns->count(),
             starred: $starred->pluck('phrase')->toArray(),
@@ -98,9 +88,9 @@ class TargetShowDto extends Data
             deferredPatterns: $deferredPatterns,
             alterEgosCount: $alterEgos->count(),
             starredAlterEgosCount: $starred->count(),
-            funAlterEgosCount: $alterEgos->filter(fn($ae) => $ae->isFun)->count(),
-            boringAlterEgosCount: $alterEgos->filter(fn($ae) => $ae->hasBoring)->count(),
-            deferredAlterEgosCount: $alterEgos->filter(fn($ae) => $ae->hasDeferred)->count(),
+            funAlterEgosCount: $alterEgos->filter(fn ($ae) => $ae->isFun)->count(),
+            boringAlterEgosCount: $alterEgos->filter(fn ($ae) => $ae->hasBoring)->count(),
+            deferredAlterEgosCount: $alterEgos->filter(fn ($ae) => $ae->hasDeferred)->count(),
             matchedSignaturesCount: $matchedSignaturesCount,
             usedSignaturesCount: $usedSignaturesCount,
             matchedWordsCount: $matchedWordsCount,
@@ -108,17 +98,66 @@ class TargetShowDto extends Data
             matchedWords: $matchedWords,
             wordToPhraseMap: $wordToPhraseMap,
             wordUsageCounts: $wordUsageCounts,
+            hasUncommitted: $hasUncommitted,
         );
     }
 
     /**
-     * Build mappings: word_id => [phrase_ids] and word_id => count
-     * Uses SQL queries to avoid loading all models into memory
+     * @return array<string, array<string, list<WordDto>>>
      */
-    private static function buildWordMappings(Target $target): array
+    private static function matchedWordsByTokenAndType(Target $target): array
     {
-        // Use SQL to build word-to-phrase mappings without loading all models
-        // This is memory-efficient for targets with many alter egos and words
+        $words = DB::table('target_token_signature_words as ttsw')
+            ->join('token_signature_words as tsw', 'tsw.id', '=', 'ttsw.token_signature_word_id')
+            ->join('token_signatures as ts', 'ts.id', '=', 'tsw.token_signature_id')
+            ->join('tokens as t', 't.id', '=', 'ts.token_id')
+            ->where('ttsw.target_id', $target->id)
+            ->select([
+                'tsw.id as word_id',
+                'tsw.word',
+                'tsw.list_type',
+                'tsw.is_deferred',
+                DB::raw("CASE WHEN tsw.list_type = 'ok' AND t.name IN ('forename', 'surname') THEN 1 ELSE 0 END as is_promotable"),
+                't.name as token_name',
+                'ttsw.usedInPhrase',
+            ])
+            ->get();
+
+        $usageCounts = self::wordUsageCounts($target);
+
+        $out = [];
+        foreach ($words as $row) {
+            $token = $row->token_name;
+            $list = $row->list_type;
+            if (! isset($out[$token][$list])) {
+                $out[$token][$list] = [];
+            }
+            $out[$token][$list][] = new WordDto(
+                tokenType: $token,
+                word: $row->word,
+                listType: $list,
+                isPromotable: (bool) ($row->is_promotable ?? false),
+                id: (string) $row->word_id,
+                deferred: (bool) $row->is_deferred,
+                used: (bool) $row->usedInPhrase,
+                usageCount: (int) ($usageCounts[$row->word_id] ?? 0),
+            );
+        }
+
+        foreach ($out as &$lists) {
+            foreach ($lists as &$items) {
+                usort($items, fn ($a, $b) => strcasecmp($a->word, $b->word));
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private static function wordUsageCounts(Target $target): array
+    {
         $results = DB::table('alter_egos as ae')
             ->join('target_signatured_patterns as tsp', 'tsp.id', '=', 'ae.target_signatured_pattern_id')
             ->join('target_patterns as tp', 'tp.id', '=', 'tsp.target_pattern_id')
@@ -128,7 +167,34 @@ class TargetShowDto extends Data
             ->where('tp.target_id', $target->id)
             ->select([
                 'tsw.id as word_id',
-                'ae.id as alter_ego_id'
+                DB::raw('COUNT(DISTINCT ae.id) as usage_count'),
+            ])
+            ->groupBy('tsw.id')
+            ->get();
+
+        $counts = [];
+        foreach ($results as $row) {
+            $counts[$row->word_id] = (int) $row->usage_count;
+        }
+
+        return $counts;
+    }
+
+    /**
+     * @return array{0: array<int, list<int>>, 1: array<int, int>}
+     */
+    private static function buildWordMappings(Target $target): array
+    {
+        $results = DB::table('alter_egos as ae')
+            ->join('target_signatured_patterns as tsp', 'tsp.id', '=', 'ae.target_signatured_pattern_id')
+            ->join('target_patterns as tp', 'tp.id', '=', 'tsp.target_pattern_id')
+            ->join('target_signatured_pattern_target_token_signature as tsptts', 'tsptts.target_signatured_pattern_id', '=', 'tsp.id')
+            ->join('target_token_signatures as tts', 'tts.id', '=', 'tsptts.target_token_signature_id')
+            ->join('token_signature_words as tsw', 'tsw.token_signature_id', '=', 'tts.token_signature_id')
+            ->where('tp.target_id', $target->id)
+            ->select([
+                'tsw.id as word_id',
+                'ae.id as alter_ego_id',
             ])
             ->get();
 
@@ -138,14 +204,13 @@ class TargetShowDto extends Data
         foreach ($results as $row) {
             $wordId = $row->word_id;
             $alterEgoId = $row->alter_ego_id;
-            
-            if (!isset($wordToPhraseMap[$wordId])) {
+
+            if (! isset($wordToPhraseMap[$wordId])) {
                 $wordToPhraseMap[$wordId] = [];
                 $wordUsageCounts[$wordId] = 0;
             }
-            
-            // Only add if not already in the list (avoid duplicates)
-            if (!in_array($alterEgoId, $wordToPhraseMap[$wordId])) {
+
+            if (! in_array($alterEgoId, $wordToPhraseMap[$wordId], true)) {
                 $wordToPhraseMap[$wordId][] = $alterEgoId;
             }
             $wordUsageCounts[$wordId]++;

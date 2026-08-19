@@ -2,6 +2,8 @@
 
 namespace Tests\Unit;
 
+use App\Dtos\SignatureDto;
+use App\Enums\TargetStatus;
 use App\Jobs\FillPatternSignaturesJob;
 use App\Models\Pattern;
 use App\Models\Signature;
@@ -30,14 +32,13 @@ class TargetAddWordTest extends TestCase
 
     private function makeTarget(string $name = 'Jane Doe', string $signature = 'adeejno'): Target
     {
-        $sig = Signature::firstOrCreate(['signature' => $signature], [
-            'length' => strlen($signature),
-        ]);
+        $dto = SignatureDto::fromWord($signature);
+        $sig = Signature::firstOrCreate(['signature' => $dto->signature], $dto->defaults);
         return Target::create([
             'name' => $name,
             'signature_id' => $sig->id,
             'normalized_key' => strtolower(str_replace(' ', '', $name)),
-            'status' => 'running',
+            'status' => TargetStatus::filterable,
         ]);
     }
 
@@ -81,7 +82,9 @@ class TargetAddWordTest extends TestCase
         $res->assertStatus(200);
         $json = $res->json();
         $this->assertTrue($json['ok'] ?? false, 'ok should be true');
-        $this->assertArrayHasKey('item', $json);
+        $this->assertArrayHasKey('progress', $json);
+        $this->assertArrayHasKey('matchedWords', $json['progress']);
+        $this->assertArrayHasKey('hasUncommitted', $json['progress']);
         // Ensure link exists and has timestamps
         $row = DB::table('target_token_signature_words')->where('target_id', $target->id)->first();
         $this->assertNotNull($row, 'pivot link should exist');

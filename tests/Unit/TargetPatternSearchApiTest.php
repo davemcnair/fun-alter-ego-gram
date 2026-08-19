@@ -2,6 +2,8 @@
 
 namespace Tests\Unit;
 
+use App\Dtos\SignatureDto;
+use App\Enums\TargetStatus;
 use App\Models\Pattern;
 use App\Models\Signature;
 use App\Models\Target;
@@ -15,12 +17,13 @@ class TargetPatternSearchApiTest extends TestCase
 
     private function makeTarget(string $name = 'Jane Doe', string $sig = 'adeejno'): Target
     {
-        $signature = Signature::firstOrCreate(['signature' => $sig], [ 'length' => strlen($sig) ]);
+        $dto = SignatureDto::fromWord($sig);
+        $signature = Signature::firstOrCreate(['signature' => $dto->signature], $dto->defaults);
         return Target::create([
             'name' => $name,
             'signature_id' => $signature->id,
             'normalized_key' => strtolower(str_replace(' ', '', $name)),
-            'status' => 'running',
+            'status' => TargetStatus::processing,
         ]);
     }
 

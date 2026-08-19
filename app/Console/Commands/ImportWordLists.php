@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Services\WordMatchService;
+use App\Services\WordCatalog;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\DB;
@@ -22,7 +22,7 @@ class ImportWordLists extends Command
         }
         DB::transaction(function () use ($basePath) {
             $committedAt = now();
-            $svc = app(WordMatchService::class);
+            $svc = app(WordCatalog::class);
             foreach (File::directories($basePath) as $tokenTypePath) {
                 $tokenType = basename($tokenTypePath);
                 foreach (File::files($tokenTypePath) as $file) {
@@ -31,7 +31,7 @@ class ImportWordLists extends Command
                     $lines = @file($file->getRealPath(), FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
 
                     foreach ($lines as $word) {
-                        $svc->addTokenWord($tokenType, trim($word), $listType, $committedAt);
+                        $svc->add($tokenType, trim($word), $listType, $committedAt);
                     }
                 }
             }

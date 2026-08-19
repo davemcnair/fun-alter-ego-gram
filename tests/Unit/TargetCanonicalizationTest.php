@@ -32,10 +32,9 @@ class TargetCanonicalizationTest extends TestCase
         $mock->shouldReceive('filterPatternsForTarget')->andReturn(collect());
         $this->app->instance(ListPatternsService::class, $mock);
 
-        // Mock WordMatchService minimal interactions
         $wm = Mockery::mock(WordMatchService::class);
-        $wm->shouldReceive('findMatchingTokenSignatureWords')->andReturn(collect());
-        $wm->shouldReceive('extractTargetTokenSignatureWordMinimumLengths')->andReturn([[], []]);
+        $wm->shouldReceive('findMatchingTokenSignatures')->andReturn(collect());
+        $wm->shouldReceive('extractTargetTokenSignatureMinimumLengthsFromQuery')->andReturn([[], []]);
         $this->app->instance(WordMatchService::class, $wm);
     }
 

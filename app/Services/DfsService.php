@@ -3,12 +3,10 @@ namespace App\Services;
 
 use App\Models\TargetTokenSignature;
 use App\Models\TokenSignature;
-use App\Traits\HelpsMatchWords;
 use Generator;
 
 final class DfsService
 {
-    use HelpsMatchWords;
 
     /**
      * Depth-first search (DFS) over slots:
@@ -103,4 +101,62 @@ final class DfsService
         }
     }
 
+    /**
+     * @param array<string,int> $neededLetterCounts
+     * @param array<string,int> $candidateLetterCounts
+     */
+    private function candidateLettersExceedNeededCounts(array $neededLetterCounts, array $candidateLetterCounts): bool
+    {
+        foreach ($candidateLetterCounts as $ch => $n) {
+            if (($neededLetterCounts[$ch] ?? 0) < $n) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * @param array<string,int> $a
+     * @param array<string,int> $b
+     * @return array<string,int>
+     */
+    private function subtract(array $a, array $b): array
+    {
+        foreach ($b as $ch => $n) {
+            if (! isset($a[$ch])) {
+                continue;
+            }
+            $a[$ch] -= $n;
+            if ($a[$ch] <= 0) {
+                unset($a[$ch]);
+            }
+        }
+        return $a;
+    }
+
+    /**
+     * @param list<array<string,int>> $availableLetterPools
+     * @param array<string,int> $requiredLetters
+     */
+    private function canFillFromAvailableLetterPools(array $availableLetterPools, array $requiredLetters): bool
+    {
+        $availablePool = [];
+
+        foreach ($availableLetterPools as $lettersForToken) {
+            foreach ($requiredLetters as $char => $neededCount) {
+                if (! isset($lettersForToken[$char])) {
+                    continue;
+                }
+                $availablePool[$char] = ($availablePool[$char] ?? 0) + (int) $lettersForToken[$char];
+            }
+        }
+
+        foreach ($requiredLetters as $char => $neededCount) {
+            if (($availablePool[$char] ?? 0) < $neededCount) {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }

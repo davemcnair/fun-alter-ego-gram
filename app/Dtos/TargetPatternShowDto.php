@@ -42,7 +42,7 @@ class TargetPatternShowDto extends Data
             boringAlterEgosCount: count($alterEgos->filter(fn($ae) => $ae->hasBoring)),
             deferredAlterEgosCount: count($alterEgos->filter(fn($ae) => $ae->hasDeferred)),
             alterEgos: $alterEgos,
-            elapsed: number_format($targetPattern->elapsed_ms / 1000, 1),
+            elapsed: number_format(($targetPattern->elapsed_ms ?? 0) / 1000, 1),
         );
     }
 }

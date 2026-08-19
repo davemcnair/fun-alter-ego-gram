@@ -6,20 +6,21 @@ use App\Enums\TargetPatternStatus;
 use App\Jobs\ExpandSignaturedPatternsJob;
 use App\Models\Pattern;
 use App\Models\TargetPattern;
-use App\Traits\HelpsMatchWords;
+use App\Models\TargetTokenSignature;
 use App\Traits\ScalesJobs;
 use App\Support\Metrics;
+use Generator;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class FillPatternSignaturesService
 {
-    use HelpsMatchWords, ScalesJobs;
+    use ScalesJobs;
 
-    public function __construct(public SignatureFillService $signatureFillService) {}
     /**
-     * Execute the fill step for a TargetNamePattern using the provided collaborator services.
+     * DFS-fill a TargetPattern that is still pending or deferred.
      */
     public function fillWithSignatures(
         int $targetPatternId,
@@ -31,8 +32,7 @@ class FillPatternSignaturesService
             return;
         }
 
-        // Only process patterns that are pending
-        if ($targetPattern->status !== TargetPatternStatus::PENDING) {
+        if (! in_array($targetPattern->status, [TargetPatternStatus::PENDING, TargetPatternStatus::DEFERRED], true)) {
             return;
         }
 
@@ -83,7 +83,7 @@ class FillPatternSignaturesService
 
         $signaturePatterns = [];
         $count = 0;
-        foreach ($this->signatureFillService->generateSignaturedPatterns(
+        foreach ($this->generateSignaturedPatterns(
             $targetLetterCountsNeeded,
             $tokenPositionsOrderedBySignatureCount,
             $targetPattern->target->tokenSignatures
@@ -183,5 +183,64 @@ class FillPatternSignaturesService
 
             return $createdCount;
         });
+    }
+
+    /**
+     * @param Collection<int, TargetTokenSignature> $targetTokenSignatures
+     */
+    private function generateSignaturedPatterns(
+        array $targetLetterCountsNeeded,
+        array $patternTokenPositions,
+        Collection $targetTokenSignatures
+    ): Generator {
+        $tokenSignaturesByTokenId = $this->buildGroupedTargetTokenSignaturesByTokenId($targetTokenSignatures);
+
+        $dfs = new DfsService();
+        yield from $dfs->dfs($patternTokenPositions, $targetLetterCountsNeeded, $tokenSignaturesByTokenId, []);
+    }
+
+    /**
+     * @param Collection<int, TargetTokenSignature> $targetTokenSignatures
+     * @return array<int, array{
+     *   targetTokenSignatures: array<int, TargetTokenSignature>,
+     *   maxLetterCounts: array<string, int>,
+     *   precomputedLetterCounts: array<int, array<string, int>>
+     * }>
+     */
+    private function buildGroupedTargetTokenSignaturesByTokenId(Collection $targetTokenSignatures): array
+    {
+        $grouped = [];
+        foreach ($targetTokenSignatures as $targetTokenSignature) {
+            $tokenSignature = $targetTokenSignature->tokenSignature;
+            $grouped[$tokenSignature->token_id][] = $targetTokenSignature;
+        }
+
+        $result = [];
+        foreach ($grouped as $token_id => $targetTokenSignaturesGroup) {
+            usort($targetTokenSignaturesGroup, function (TargetTokenSignature $a, TargetTokenSignature $b) {
+                if ($a->tokenSignature->signature->length === $b->tokenSignature->signature->length) {
+                    return $a->tokenSignature->signature->signature <=> $b->tokenSignature->signature->signature;
+                }
+                return $a->tokenSignature->signature->length <=> $b->tokenSignature->signature->length;
+            });
+
+            $maxLetterCounts = [];
+            $precomputedLetterCounts = [];
+            foreach ($targetTokenSignaturesGroup as $i => $targetTokenSignature) {
+                $letterCounts = $targetTokenSignature->tokenSignature->signature->letterCounts();
+                $precomputedLetterCounts[$i] = $letterCounts;
+                foreach ($letterCounts as $ch => $n) {
+                    $maxLetterCounts[$ch] = max($maxLetterCounts[$ch] ?? 0, $n);
+                }
+            }
+
+            $result[$token_id] = [
+                'targetTokenSignatures' => $targetTokenSignaturesGroup,
+                'maxLetterCounts' => $maxLetterCounts,
+                'precomputedLetterCounts' => $precomputedLetterCounts,
+            ];
+        }
+
+        return $result;
     }
 }

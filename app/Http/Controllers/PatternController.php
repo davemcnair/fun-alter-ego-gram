@@ -3,8 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Pattern;
+use App\Services\PatternCatalog;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class PatternController extends Controller
@@ -90,57 +90,23 @@ class PatternController extends Controller
     }
 
     // Reorder by updating popularity_rank according to provided ordered ids
-    public function reorder(Request $request)
+    public function reorder(Request $request, PatternCatalog $catalog)
     {
         $data = $request->validate([
             'ids' => ['required','array','min:1'],
             'ids.*' => ['integer','distinct','exists:patterns,id'],
         ]);
-        $ids = $data['ids'];
-        DB::transaction(function () use ($ids) {
-            $rank = 1;
-            foreach ($ids as $id) {
-                DB::table('patterns')->where('id', $id)->update(['popularity_rank' => $rank++]);
-            }
-        });
-        return response()->json(['ok' => true, 'count' => count($ids)]);
+        $count = $catalog->reorder($data['ids']);
+        return response()->json(['ok' => true, 'count' => $count]);
     }
 
-    // Export current patterns (ordered) to resources/patterns/patterns.json
-    public function export(Request $request)
+    public function export(Request $request, PatternCatalog $catalog)
     {
-        $items = Pattern::query()->orderBy('popularity_rank')->get();
-        $out = [];
-        $includeType = Schema::hasColumn('patterns', 'pattern_type');
-        foreach ($items as $p) {
-            $row = [
-                'template' => $p->template,
-                'popularity_rank' => (int)$p->popularity_rank,
-                'min_total_length' => (int)$p->min_total_length,
-                'forename_count' => (int)$p->forename_count,
-                'surname_count' => (int)$p->surname_count,
-                'has_title' => (bool)$p->has_title,
-                'has_initials' => (bool)$p->has_initials,
-                'has_prefix' => (bool)$p->has_prefix,
-                'has_suffix' => (bool)$p->has_suffix,
-                'has_honorific' => (bool)$p->has_honorific,
-            ];
-            if ($includeType) {
-                $row['pattern_type'] = (string)$p->pattern_type;
-            }
-            $out[] = $row;
+        $result = $catalog->export();
+        if (! ($result['ok'] ?? false)) {
+            return response()->json($result, 500);
         }
-        $dir = resource_path('patterns');
-        if (!is_dir($dir)) {
-            @mkdir($dir, 0777, true);
-        }
-        $file = $dir . DIRECTORY_SEPARATOR . 'patterns.json';
-        $json = json_encode($out, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-        if ($json === false) {
-            return response()->json(['ok' => false, 'error' => 'Failed to encode JSON'], 500);
-        }
-        file_put_contents($file, $json);
-        return response()->json(['ok' => true, 'file' => $file, 'count' => count($out)]);
+        return response()->json($result);
     }
 
     /**

@@ -3,9 +3,8 @@
 namespace App\Jobs;
 
 use App\Models\TargetPattern;
-use App\Services\FillPatternSignaturesService;
+use App\Services\TargetSearch;
 use Illuminate\Support\Facades\Log;
-use App\Traits\HelpsMatchWords;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -15,7 +14,7 @@ use Throwable;
 
 class FillPatternSignaturesJob implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, HelpsMatchWords;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     /**
      * Maximum seconds a worker may allow this job to run before timing out.
@@ -76,12 +75,10 @@ class FillPatternSignaturesJob implements ShouldQueue
     /**
      * Handle filling pattern signatures for the associated TargetNamePattern.
      */
-    public function handle(
-        FillPatternSignaturesService $fillPatternSignaturesService
-    ): void
+    public function handle(TargetSearch $targetSearch): void
     {
         try {
-            $fillPatternSignaturesService->fillWithSignatures($this->targetPatternId);
+            $targetSearch->fillPattern($this->targetPatternId);
         } catch (Throwable $e) {
             Log::error('job.fill.error', [
                 'target_pattern_id' => $this->targetPatternId,

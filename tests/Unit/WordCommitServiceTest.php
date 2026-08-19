@@ -4,8 +4,8 @@ namespace Tests\Unit;
 
 use App\Models\Token;
 use App\Models\TokenSignatureWord;
+use App\Services\WordCatalog;
 use App\Services\WordCommitService;
-use App\Services\WordMatchService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Artisan;
@@ -67,11 +67,10 @@ class WordCommitServiceTest extends TestCase
     public function test_commit_merges_writes_backup_changelog_and_marks_committed(): void
     {
         // Arrange: create some uncommitted words under tokens and lists
-        /** @var WordMatchService $match */
-        $match = app(WordMatchService::class);
-        $w1 = $match->addTokenWord('forename', 'Alice', 'ok');
-        $w2 = $match->addTokenWord('forename', 'Lacie', 'fun'); // anagram, should both normalize and dedupe handled by file merge
-        $w3 = $match->addTokenWord('surname', 'Brown', 'boring');
+        $match = app(WordCatalog::class);
+        $w1 = $match->add('forename', 'Alice', 'ok');
+        $w2 = $match->add('forename', 'Lacie', 'fun');
+        $w3 = $match->add('surname', 'Brown', 'boring');
         $this->assertNull($w1->committed_at);
         $this->assertNull($w2->committed_at);
         $this->assertNull($w3->committed_at);
@@ -126,7 +125,7 @@ class WordCommitServiceTest extends TestCase
         $funLines = array_filter(array_map('trim', file($funFile)));
         $boringLines = array_filter(array_map('trim', file($boringFile)));
 
-        // Normalization in HelpsMatchWords lowercases and strips non-letters
+        // letterString lowercases and keeps a-z after transliteration
         $this->assertEquals(['alice','bob','zoe'], array_values($okLines));
         $this->assertEquals(['amy','lacie'], array_values($funLines));
         $this->assertEquals(['adamson','brown'], array_values($boringLines));

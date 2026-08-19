@@ -3,7 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\TargetPattern;
-use App\Services\ExpandSignaturedPatternService;
+use App\Services\TargetSearch;
 use App\Support\Metrics;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Bus\Queueable;
@@ -72,9 +72,7 @@ class ExpandSignaturedPatternsJob implements ShouldQueue
     /**
      * Handle filling pattern signatures for the associated TargetNamePattern.
      */
-    public function handle(
-        ExpandSignaturedPatternService $expandService
-    ): void
+    public function handle(TargetSearch $targetSearch): void
     {
         Log::info('job.expand.start', [
             'job' => 'ExpandSignaturedPatternsJob',
@@ -86,7 +84,7 @@ class ExpandSignaturedPatternsJob implements ShouldQueue
             'target_pattern_id' => $this->targetNamePatternId,
         ]);
         try {
-            $expandService->expandSignaturedPatterns($this->targetNamePatternId);
+            $targetSearch->expandPattern($this->targetNamePatternId);
             Metrics::counter('job_expand_succeeded', 1, [
                 'target_pattern_id' => $this->targetNamePatternId,
             ]);

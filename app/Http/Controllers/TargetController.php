@@ -7,10 +7,9 @@ use App\Enums\TargetPatternStatus;
 use App\Models\Target;
 use App\Models\TargetPattern;
 use App\Models\AlterEgo;
-use App\Services\TargetService;
-use App\Services\WordMatchService;
-use App\Traits\HelpsMatchWords;
-use App\Traits\ScalesJobs;
+use App\Services\TargetSearch;
+use App\Services\WordCatalog;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -19,10 +18,7 @@ use Throwable;
 
 class TargetController extends Controller
 {
-    use HelpsMatchWords, ScalesJobs;
-
-    // vimto/vomit
-    public function addWord(Target $target, Request $request, WordMatchService $wordMatchService, TargetService $targetService)
+    public function addWord(Target $target, Request $request, WordCatalog $wordCatalog, TargetSearch $targetSearch)
     {
         // Perform explicit validation so we can return a consistent JSON error shape on failure
         $validator = Validator::make($request->all(), [
@@ -51,12 +47,13 @@ class TargetController extends Controller
             return response()->json(['ok' => false, 'error' => 'Invalid list_type'], 422);
         }
 
-        $wordMatchService->addTokenWord($data['token_type'], $data['word'], $listType);
-        $matchingSignatures = $wordMatchService->findMatchingTokenSignatures($target->signature);
+        $wordCatalog->add($data['token_type'], $data['word'], $listType);
+        $targetSearch->resume($target);
 
-        $targetService->processTarget($target, $matchingSignatures);
-
-        return response()->json(['ok' => true] + $this->lookupProgressPayload($target->fresh()));
+        return response()->json([
+            'ok' => true,
+            'progress' => TargetShowDto::fromTarget($target->fresh())->toArray(),
+        ]);
     }
 
     public function index()
@@ -94,36 +91,14 @@ class TargetController extends Controller
         return view('targets.index', compact('items'));
     }
 
-    public function store(Request $request, TargetService $targetService, WordMatchService $wordMatchService)
+    public function store(Request $request, TargetSearch $targetSearch)
     {
-        $overallStart = microtime(true);
         $data = $request->validate([
             'name' => ['required','string','min:1','max:100'],
             'allow_boring' => ['nullable','boolean'],
         ]);
 
-        $t1 = microtime(true);
-        $target = $targetService->create($data['name']);
-        $createMs = round((microtime(true) - $t1) * 1000, 1);
-
-        $t2 = microtime(true);
-        $matchingSignatures = $wordMatchService->findMatchingTokenSignatures($target->signature);
-        $findMs = round((microtime(true) - $t2) * 1000, 1);
-
-        $t3 = microtime(true);
-        $targetService->processTarget($target, $matchingSignatures);
-        $processMs = round((microtime(true) - $t3) * 1000, 1);
-
-        $totalMs = round((microtime(true) - $overallStart) * 1000, 1);
-
-        Log::info('Target.store timing', [
-            'name' => $target->name,
-            'matching_signatures' => count($matchingSignatures),
-            'create_ms' => $createMs,
-            'find_signatures_ms' => $findMs,
-            'process_ms' => $processMs,
-            'total_ms' => $totalMs,
-        ]);
+        $target = $targetSearch->search($data['name']);
 
         return redirect()->route('targets.show', $target);
     }
@@ -212,21 +187,21 @@ class TargetController extends Controller
     // JSON-only Target detail for API v1
     public function apiShow(Target $target)
     {
-        $payload = $this->lookupProgressPayload($target);
+        $progress = TargetShowDto::fromTarget($target);
 
         return response()->json([
             'ok' => true,
             'data' => [
-                'id' => $target->id,
-                'name' => $target->name,
-                'status' => $target->status->label(),
-                'updated_at' => optional($target->updated_at)?->toIso8601String(),
+                'id' => $progress->targetId,
+                'name' => $progress->name,
+                'status' => $progress->status,
+                'completed' => $progress->completed,
                 'metrics' => [
-                    'patterns_processed' => $payload['patternsProcessedCount'],
-                    'patterns_total' => $payload['patternsCount'],
-                    'alter_egos' => $payload['alterEgosCount'],
+                    'patterns_processed' => $progress->patternsFilledCount,
+                    'patterns_total' => $progress->patternsCount,
+                    'alter_egos' => $progress->alterEgosCount,
                 ],
-                'starred' => $payload['starred'],
+                'starred' => $progress->starred,
             ],
         ]);
     }
@@ -284,8 +259,7 @@ class TargetController extends Controller
      */
     public function searchTargetPattern(
         TargetPattern $pattern,
-        FillPatternSignaturesService $fillService,
-        SignatureFillService $signatureFillService
+        TargetSearch $targetSearch
     ): JsonResponse
     {
         $start = microtime(true);
@@ -311,8 +285,7 @@ class TargetController extends Controller
             $pattern->started_at = now();
             $pattern->save();
         }
-        // Run fill inline (it will set status=processing and dispatch expand)
-        $fillService->fillWithServices($pattern->id);
+        $targetSearch->fillPattern($pattern->id);
 
         $pattern->refresh();
         $payload = [
@@ -426,50 +399,6 @@ class TargetController extends Controller
 //        }
 //        return response()->json(['ok' => true] + $this->lookupProgressPayload($target->fresh()));
 //    }
-
-    private function lookupProgressPayload(Target $target): array
-    {
-        $deferredPatternsQuery =$target->patterns()
-            ->whereIn('status', [TargetPatternStatus::DEFERRED]);
-        $data = [
-            'item' => $target,
-            'patternsProcessedCount' => $target->patterns()->where('status', TargetPatternStatus::FILLED)->count(),
-            'patternsCount' => $target->patterns()->count(),
-            'patternsLive' => $target->patterns()->whereIn('status', [TargetPatternStatus::FILLED, TargetPatternStatus::PROCESSING])->get()
-                ->map(fn($pattern) => $this->lookupPatternPayload($pattern)),
-            'deferredPatternsCount' => $deferredPatternsQuery->count(),
-            'deferredPatterns' => $deferredPatternsQuery
-                ->get()
-                ->map(fn($pattern) => $this->lookupPatternPayload($pattern)),
-            'signaturedPatternsCount' => $target->signaturedPatterns()->count(),
-            'alterEgosCount' => $target->alterEgos()->count(),
-            'starred' => $target->alterEgos()->where('starred', true)->pluck('phrase')->all(),
-            'matchedWordsCount' => $target->tokenSignatureWords()->count(),
-            'matchedWords' => $target->matchingWordsByTokenAndType(),
-            'hasUncommitted' => $target->tokenSignatureWords
-                ->filter( fn($w) => is_null($w->committed_at))
-                ->isNotEmpty()
-        ];
-        return $data;
-    }
-
-    private function lookupPatternPayload(TargetPattern $targetPattern): array
-    {
-        $signaturedPatterns = $targetPattern->signaturedPatterns;
-        $alterEgos = $targetPattern->alterEgos;
-        return [
-            'id' => $targetPattern->id,
-            'status' => $targetPattern->status,
-            'template' => optional($targetPattern->pattern)->template,
-            'signaturedPatternsCount' => $signaturedPatterns->count(),
-            'alterEgosCount' => $alterEgos->count(),
-            'elapsed_ms' => $targetPattern->elapsed_ms,
-            'started_at' => $targetPattern->started_at,
-            'finished_at' => $targetPattern->finished_at,
-            'signaturedPatterns' => $signaturedPatterns,
-            'alterEgos' => $alterEgos,
-        ];
-    }
 
     public function destroy(Target $target)
     {

@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Services\PatternGenerationService;
+use App\Services\PatternCatalog;
 use Illuminate\Console\Attributes\AsCommand;
 use Illuminate\Console\Command;
 
@@ -11,12 +11,12 @@ class GeneratePatternsCommand extends Command
 {
     protected $signature = 'patterns:generate {--dry-run} {--print=20}';
 
-    public function handle(PatternGenerationService $svc): int
+    public function handle(PatternCatalog $catalog): int
     {
         $dry = (bool) $this->option('dry-run');
         $printN = (int) $this->option('print');
         try {
-            $res = $svc->generate($dry, $printN);
+            $res = $catalog->generate($dry);
         } catch (\Throwable $e) {
             $this->error($e->getMessage());
             return self::FAILURE;

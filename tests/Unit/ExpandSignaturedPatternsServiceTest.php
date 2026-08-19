@@ -2,18 +2,14 @@
 
 namespace Tests\Unit;
 
-
+use App\Enums\TargetStatus;
 use App\Models\AlterEgo;
 use App\Models\Pattern;
-use App\Models\Signature;
-use App\Models\TargetSignaturedPattern;
-use App\Models\Target;
-use App\Models\TargetPattern;
 use App\Models\Token;
-use App\Services\PhraseBuilderService;
-use App\Services\WordMatchService;
-use App\Services\ExpandSignaturedPatternService;
+use App\Services\TargetSearch;
+use App\Services\WordCatalog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Config;
 use Tests\TestCase;
 
 class ExpandSignaturedPatternsServiceTest extends TestCase
@@ -23,107 +19,63 @@ class ExpandSignaturedPatternsServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        // Seed required tokens used by Pattern::parsePatternTokenSlotPositions
         Token::insert([
-            ['name' => 'forename', 'prio' => 1, 'min_length' => 2],
-            ['name' => 'surname', 'prio' => 2, 'min_length' => 2],
+            ['name' => 'forename', 'prio' => 1, 'min_length' => 2, 'allow_nearly' => false, 'has_fun' => true, 'has_boring' => true, 'max_multiples' => 2],
+            ['name' => 'surname', 'prio' => 2, 'min_length' => 2, 'allow_nearly' => false, 'has_fun' => true, 'has_boring' => false, 'max_multiples' => 2],
         ]);
+        Config::set('search.queue', null);
+        Config::set('queue.default', 'sync');
     }
 
-    public function test_expands_single_signatured_pattern_with_fun_preference(): void
+    public function test_search_persists_title_cased_forename_and_surname(): void
     {
-        // Arrange: a target with one pattern {forename}{surname}
-        $sig = Signature::firstOrCreate(['signature' => 'dmmuy'], [
-            'length' => 5,
-            'd_count' => 1,
-            'm_count' => 2,
-            'u_count' => 1,
-            'y_count' => 1,
-        ]);
-        $target = Target::create([
-            'name' => 'Dummy',
-            'signature_id' => $sig->id,
-            'normalized_key' => 'dummy',
-            'status' => 'running',
-        ]);
-        $pattern = Pattern::create(['template' => '{forename}{surname}']);
-        $targetPattern = TargetPattern::create([
-            'target_id' => $target->id,
-            'pattern_id' => $pattern->id,
+        Pattern::create([
+            'template' => '{forename}{surname}',
             'popularity_rank' => 1,
-            'status' => 'pending',
+            'pattern_type' => 'standard',
+            'min_total_length' => 4,
+            'forename_count' => 1,
+            'surname_count' => 1,
+            'has_title' => false,
+            'has_initials' => false,
+            'has_prefix' => false,
+            'has_suffix' => false,
+            'has_honorific' => false,
         ]);
-        // Signatured fill to expand: Adam + Vinci
-        TargetSignaturedPattern::create([
-            'target_pattern_id' => $targetPattern->id,
-            'pattern' => '{1:aadm}{2:ciinv}',
-        ]);
 
-        $wordService = app(WordMatchService::class);
-        // Words: forename 'Adam' (fun) matches aadm; surname: prefer fun over ok for the same signature
-        $wordService->addTokenWord('forename','Adam', 'fun');
-        // Only one representative row is allowed per (token_type, signature) due to a partial unique index.
-        // So we provide a single FUN representative for the surname signature.
-        $wordService->addTokenWord('surname','InVic', 'fun');
+        $words = app(WordCatalog::class);
+        $words->add('forename', 'adam', 'fun');
+        $words->add('surname', 'invic', 'fun');
 
-        // Act: run expansion via service
-        app(ExpandSignaturedPatternService::class)
-            ->expandSignaturedPatterns($targetPattern->id, app(PhraseBuilderService::class));
+        $target = app(TargetSearch::class)->search('Adam Invic');
 
-        // Assert: an AlterEgo was created with the fun-preferred surname and proper capitalization
-        /** @var AlterEgo $ae */
-        $ae = $targetPattern->alterEgos()->first();
-        $this->assertNotNull($ae, 'AlterEgo should have been created');
-        // PhraseBuilderService capitalizes tokens; expect "Adam Invic"
-        $this->assertSame('Adam Invic', $ae->phrase);
-
-        // Status should be marked done
-        $this->assertSame('filled', $targetPattern->fresh()->status);
+        $this->assertSame(['Adam Invic'], AlterEgo::pluck('phrase')->all());
+        $this->assertTrue((bool) AlterEgo::first()->isFun);
+        $this->assertSame(TargetStatus::processed, $target->fresh()->status);
     }
 
-    public function test_expands_double_surname_hyphenated_and_marks_done(): void
+    public function test_search_persists_hyphenated_double_surname(): void
     {
-        // Arrange: a pattern with two surnames
-        $sig = Signature::firstOrCreate(['signature' => 'dmmuy'], [
-            'length' => 5,
-            'd_count' => 1,
-            'm_count' => 2,
-            'u_count' => 1,
-            'y_count' => 1,
-        ]);
-        $target = Target::create([
-            'name' => 'Dummy',
-            'signature_id' => $sig->id,
-            'normalized_key' => 'dummy',
-            'status' => 'running',
-        ]);
-        $pattern2 = Pattern::create(['template' => '{surname:2}']);
-        $snp = TargetPattern::create([
-            'target_id' => $target->id,
-            'pattern_id' => $pattern2->id,
+        Pattern::create([
+            'template' => '{surname:2}',
             'popularity_rank' => 1,
-            'status' => 'pending',
+            'pattern_type' => 'standard',
+            'min_total_length' => 4,
+            'forename_count' => 0,
+            'surname_count' => 2,
+            'has_title' => false,
+            'has_initials' => false,
+            'has_prefix' => false,
+            'has_suffix' => false,
+            'has_honorific' => false,
         ]);
-        TargetSignaturedPattern::create([
-            'target_pattern_id' => $snp->id,
-            'pattern' => '{2:ary}{2:ciinv}',
-        ]);
 
+        $words = app(WordCatalog::class);
+        $words->add('surname', 'ray', 'fun');
+        $words->add('surname', 'vinci', 'ok');
 
-        $wordService = app(WordMatchService::class);
+        app(TargetSearch::class)->search('Ray Vinci');
 
-        // Words for the two signatures
-        $wordService->addTokenWord('surname','ray', 'fun');
-        $wordService->addTokenWord('surname','vinci', 'ok');
-
-        // Act via service
-        app(ExpandSignaturedPatternService::class)
-            ->expandSignaturedPatterns($snp->id, app(PhraseBuilderService::class));
-
-        // Assert: hyphenated and capitalized surnames
-        $ae = $snp->alterEgos()->first();
-        $this->assertNotNull($ae);
-        $this->assertSame('Ray-Vinci', $ae->phrase);
-        $this->assertSame('filled', $snp->fresh()->status);
+        $this->assertEqualsCanonicalizing(['Ray-Vinci', 'Vinci-Ray'], AlterEgo::pluck('phrase')->all());
     }
 }

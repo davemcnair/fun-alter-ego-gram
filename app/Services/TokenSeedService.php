@@ -2,13 +2,12 @@
 
 namespace App\Services;
 
-use App\Traits\HelpsMatchWords;
+use App\Support\NameNormalizer;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 
 class TokenSeedService
 {
-    use HelpsMatchWords;
 
     public function seedFromResources(string $basePath): array
     {
@@ -58,7 +57,7 @@ class TokenSeedService
             $all = array_merge($ok, $fun, $boring);
             $min = null;
             foreach ($all as $word) {
-                $sig = $this->makeSignature($word);
+                $sig = NameNormalizer::anagramSignature($word)->signature;
                 $len = strlen($sig);
                 if ($len === 0) continue;
                 if ($min === null || $len < $min) $min = $len;

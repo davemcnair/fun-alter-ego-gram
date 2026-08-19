@@ -2,10 +2,13 @@
 
 namespace Tests\Unit;
 
+use App\Dtos\SignatureDto;
 use App\Enums\TargetPatternStatus;
+use App\Enums\TargetStatus;
 use App\Jobs\FillPatternSignaturesJob;
 use App\Models\AlterEgo;
 use App\Models\Pattern;
+use App\Models\Signature;
 use App\Models\Target;
 use App\Models\TargetPattern;
 use App\Models\Token;
@@ -14,6 +17,8 @@ use App\Services\WordCatalog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
@@ -128,5 +133,84 @@ class TargetSearchTest extends TestCase
         $this->assertSame(['Jane Ray'], AlterEgo::pluck('phrase')->all());
         $this->assertTrue((bool) AlterEgo::first()->isFun);
         $this->assertSame(TargetPatternStatus::FILLED, $target->patterns()->first()->status);
+    }
+
+    public function test_attach_word_links_matching_targets_without_resuming(): void
+    {
+        Event::fake();
+
+        $matching = $this->makeTarget('Jane', 'Jane');
+        $other = $this->makeTarget('Jo', 'Jo');
+        $word = app(WordCatalog::class)->add('forename', 'jane', 'fun');
+
+        app(TargetSearch::class)->attachWord((int) $word->id);
+
+        $this->assertSame(1, DB::table('target_token_signatures')->count());
+        $this->assertSame(1, DB::table('target_token_signature_words')->count());
+        $this->assertTrue(
+            DB::table('target_token_signatures')
+                ->where('target_id', $matching->id)
+                ->where('token_signature_id', $word->token_signature_id)
+                ->exists()
+        );
+        $this->assertTrue(
+            DB::table('target_token_signature_words')
+                ->where('target_id', $matching->id)
+                ->where('token_signature_word_id', $word->id)
+                ->exists()
+        );
+        $this->assertFalse(
+            DB::table('target_token_signatures')->where('target_id', $other->id)->exists()
+        );
+        $this->assertSame(0, TargetPattern::count());
+    }
+
+    public function test_attach_word_is_idempotent(): void
+    {
+        Event::fake();
+
+        $this->makeTarget('Jane', 'Jane');
+        $word = app(WordCatalog::class)->add('forename', 'jane', 'fun');
+        $search = app(TargetSearch::class);
+
+        $search->attachWord((int) $word->id);
+        $search->attachWord((int) $word->id);
+
+        $this->assertSame(1, DB::table('target_token_signatures')->count());
+        $this->assertSame(1, DB::table('target_token_signature_words')->count());
+    }
+
+    public function test_attach_word_skips_missing_deferred_and_boring(): void
+    {
+        Event::fake();
+
+        $this->makeTarget('Jane', 'Jane');
+        $catalog = app(WordCatalog::class);
+        $search = app(TargetSearch::class);
+
+        $search->attachWord(999999);
+        $this->assertSame(0, DB::table('target_token_signature_words')->count());
+
+        $deferred = $catalog->add('forename', 'jane', 'ok');
+        $this->assertTrue((bool) $deferred->is_deferred);
+        $search->attachWord((int) $deferred->id);
+        $this->assertSame(0, DB::table('target_token_signature_words')->count());
+
+        $boring = $catalog->add('forename', 'aejn', 'boring');
+        $search->attachWord((int) $boring->id);
+        $this->assertSame(0, DB::table('target_token_signature_words')->count());
+    }
+
+    private function makeTarget(string $name, string $letters): Target
+    {
+        $dto = SignatureDto::fromWord($letters);
+        $sig = Signature::firstOrCreate(['signature' => $dto->signature], $dto->defaults);
+
+        return Target::create([
+            'name' => $name,
+            'signature_id' => $sig->id,
+            'normalized_key' => strtolower(str_replace(' ', '', $name)),
+            'status' => TargetStatus::filterable,
+        ]);
     }
 }

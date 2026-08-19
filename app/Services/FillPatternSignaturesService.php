@@ -129,7 +129,7 @@ class FillPatternSignaturesService
         // that both queued and inline execution paths record timing.
     }
 
-    public function bulkInsert($signaturePatterns)
+    private function bulkInsert($signaturePatterns)
     {
 
         DB::transaction(function () use ($signaturePatterns) {

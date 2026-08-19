@@ -2,11 +2,8 @@
 
 namespace App\Models;
 
-use Arr;
-use DB;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Collection;
 
 class TargetTokenSignatureWord extends Model
 {
@@ -24,45 +21,4 @@ class TargetTokenSignatureWord extends Model
     {
         return $this->belongsTo(TokenSignatureWord::class);
     }
-
-    /**
-     * Link provided TokenSignatureWord rows to the target.
-     * Existing links are left untouched. Newly linked rows get timestamps.
-     *
-     * @param Target $target
-     * @param Collection<TokenSignatureWord> $tokenSignatureWords
-     * @return Collection<TokenSignatureWord, TargetTokenSignatureWord>
-     */
-    public static function bulkInsertOrIgnore(Target $target, Collection $tokenSignatureWords): array
-    {
-        $wordIds = $tokenSignatureWords->pluck('id')->map(fn($v) => (int)$v)->values();
-
-        // Determine which links already exist - why would they exist?
-        $existing = DB::table('target_token_signature_words')
-            ->where('target_id', $target->id)
-            ->whereIn('token_signature_word_id', $wordIds)
-            ->pluck('token_signature_word_id')
-            ->map(fn($v) => (int)$v)
-            ->all();
-        $existingSet = array_flip($existing);
-
-        $now = now();
-        $newRows = [];
-        foreach ($wordIds as $wid) {
-            if (!isset($existingSet[$wid])) {
-                $newRows[] = [
-                    'target_id' => $target->id,
-                    'token_signature_word_id' => $wid,
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ];
-            }
-        }
-
-        if (!empty($newRows)) {
-            DB::table('target_token_signature_words')->insert($newRows);
-        }
-        return Arr::pluck($newRows, 'token_signature_word_id');
-    }
-
 }

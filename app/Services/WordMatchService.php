@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Signature;
 use App\Models\Target;
 use App\Models\TokenSignature;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -30,20 +31,21 @@ class WordMatchService
             ->get();
     }
 
-    public function extractTargetTokenSignatureMinimumLengths(Collection $targetTokenSignatures): array
+    /**
+     * Targets whose Signature contains $signature (inverse of findMatchingTokenSignatures).
+     */
+    public function findTargetsContainingSignature(Signature $signature): Builder
     {
-        $storedSignatureBasedMins = [];
-        $matchingSignatureBasedMins = [];
-        foreach($targetTokenSignatures as $targetTokenSignature) {
-            $tokenSignature = $targetTokenSignature->tokenSignature;
-            $length = (int) ($tokenSignature->signature->length ?? 0);
-            $token_id = $tokenSignature->token_id;
-            $storedSignatureBasedMins[$token_id] = $tokenSignature->token->min_length;
-            if (!isset($matchingSignatureBasedMins[$token_id]) || $length < $matchingSignatureBasedMins[$token_id]) {
-                $matchingSignatureBasedMins[$token_id] = $length;
-            }
-        }
-        return array($storedSignatureBasedMins, $matchingSignatureBasedMins);
+        return Target::query()
+            ->whereHas('signature', function ($q) use ($signature) {
+                $q->where('length', '>=', (int) ($signature->length ?? 0));
+                foreach (range('a', 'z') as $ch) {
+                    $n = (int) ($signature->{$ch . '_count'} ?? 0);
+                    if ($n > 0) {
+                        $q->where($ch . '_count', '>=', $n);
+                    }
+                }
+            });
     }
 
     /**

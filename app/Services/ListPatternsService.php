@@ -2,9 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\Pattern;
-use App\Models\Token;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class ListPatternsService
@@ -52,59 +49,6 @@ class ListPatternsService
         ];
 
         return ['meta' => $meta, 'rows' => $presentRows];
-    }
-
-    public function listWithinMinLength(int $totalLength): Collection
-    {
-        return Pattern::where('min_total_length', '<=', $totalLength)
-            ->orderBy('popularity_rank')
-            ->get();
-    }
-
-    /**
-     * Filter patterns for a given source by effective word match minimums.
-     */
-    public function filterPatternsForTarget(
-        int $targetLength,
-        Collection $patterns,
-        array $storedWordBasedMins,
-        array $matchingWordBasedMins
-    ): Collection
-    {
-        $tokenIdsByName = Token::all()->pluck('id', 'name')->toArray();
-
-        return $patterns->filter(function ($row) use (
-            $storedWordBasedMins,
-            $matchingWordBasedMins,
-            $targetLength,
-            $tokenIdsByName
-        ) {
-            $dynamicMin = 0;
-            foreach ($tokenIdsByName as $name => $id) {
-                if ($row->has($name)) {
-                    // Require at least one matched word for any token used by this pattern
-                    if (!isset($matchingWordBasedMins[$id])) {
-                        return false;
-                    }
-                    // Sum dynamic min only for tokens used by this pattern
-                    $count = match ($name) {
-                        Token::TOKEN_NAME_FORENAME => (int)$row->forename_count,
-                        Token::TOKEN_NAME_SURNAME => (int)$row->surname_count,
-                        default => 1,
-                    };
-                    $count = max(1, $count);
-                    $stored = (int)($storedWordBasedMins[$id] ?? 0);
-                    $matched = (int)$matchingWordBasedMins[$id];
-                    $effectiveMin = max($stored, $matched);
-                    $dynamicMin += $effectiveMin * $count;
-                    if ($dynamicMin > $targetLength) {
-                        return false; // early exit if already exceeds source length
-                    }
-                }
-            }
-
-            return $dynamicMin <= $targetLength;
-        });
     }
 
 }

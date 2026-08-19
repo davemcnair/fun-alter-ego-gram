@@ -5,8 +5,11 @@ namespace App\Services;
 use App\Enums\TargetPatternStatus;
 use App\Enums\TargetStatus;
 use App\Jobs\FillPatternSignaturesJob;
+use App\Models\Pattern;
 use App\Models\Target;
 use App\Models\TargetTokenSignature;
+use App\Models\Token;
+use App\Models\TokenSignatureWord;
 use App\Support\Metrics;
 use App\Traits\ScalesJobs;
 use Illuminate\Support\Collection;
@@ -17,13 +20,21 @@ final class TargetSearch
 {
     use ScalesJobs;
 
-    public function __construct(
-        private readonly TargetService $targets,
-        private readonly WordMatchService $wordMatch,
-        private readonly ListPatternsService $patterns,
-        private readonly FillPatternSignaturesService $fill,
-        private readonly ExpandSignaturedPatternService $expand,
-    ) {}
+    private readonly TargetService $targets;
+
+    private readonly WordMatchService $wordMatch;
+
+    private readonly FillPatternSignaturesService $fill;
+
+    private readonly ExpandSignaturedPatternService $expand;
+
+    public function __construct()
+    {
+        $this->targets = new TargetService();
+        $this->wordMatch = new WordMatchService();
+        $this->fill = new FillPatternSignaturesService();
+        $this->expand = new ExpandSignaturedPatternService();
+    }
 
     /**
      * Create or reuse a Target and run Target search through fill and expand.
@@ -66,6 +77,57 @@ final class TargetSearch
         $this->expand->expandSignaturedPatterns($targetPatternId);
     }
 
+    /**
+     * Attach this Token Signature and word to Targets whose Signature contains it.
+     * Does not resume Target search.
+     */
+    public function attachWord(int $tokenSignatureWordId): void
+    {
+        $word = TokenSignatureWord::find($tokenSignatureWordId);
+        if (! $word || $word->is_deferred || ! in_array((string) $word->list_type, ['fun', 'ok'], true)) {
+            return;
+        }
+
+        $word->loadMissing('tokenSignature.signature');
+        $tokenSignatureId = (int) $word->token_signature_id;
+        $signature = $word->tokenSignature->signature;
+        $count = 0;
+
+        $this->wordMatch
+            ->findTargetsContainingSignature($signature)
+            ->orderBy('id')
+            ->chunkById(1000, function ($targets) use ($tokenSignatureId, $tokenSignatureWordId, &$count) {
+                $now = now();
+                $signatureRows = [];
+                $wordRows = [];
+                foreach ($targets as $target) {
+                    $targetId = (int) $target->id;
+                    $signatureRows[] = [
+                        'target_id' => $targetId,
+                        'token_signature_id' => $tokenSignatureId,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
+                    $wordRows[] = [
+                        'target_id' => $targetId,
+                        'token_signature_word_id' => $tokenSignatureWordId,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
+                }
+                if ($signatureRows !== []) {
+                    DB::table('target_token_signatures')->insertOrIgnore($signatureRows);
+                    DB::table('target_token_signature_words')->insertOrIgnore($wordRows);
+                    $count += count($signatureRows);
+                }
+            });
+
+        Log::info('Target.attachWord', [
+            'token_signature_word_id' => $tokenSignatureWordId,
+            'matches' => $count,
+        ]);
+    }
+
     private function run(Target $target): void
     {
         $matchingSignatures = $this->wordMatch->findMatchingTokenSignatures($target->signature);
@@ -105,15 +167,16 @@ final class TargetSearch
         [$storedMinLengths, $matchedMinLengths] =
             $this->wordMatch->extractTargetTokenSignatureMinimumLengthsFromQuery($target);
 
-        $standardShortEnoughPatterns = $this->patterns->listWithinMinLength((int) $target->signature->length);
+        $targetLength = (int) $target->signature->length;
+        $standardShortEnoughPatterns = $this->patternsWithinMinLength($targetLength);
         Log::info('patterns.short_enough.collected', [
             'target_id' => $target->id,
-            'signature_length' => (int) $target->signature->length,
+            'signature_length' => $targetLength,
             'count' => $standardShortEnoughPatterns->count(),
         ]);
 
-        $filteredPatterns = $this->patterns->filterPatternsForTarget(
-            (int) $target->signature->length,
+        $filteredPatterns = $this->filterPatternsForTarget(
+            $targetLength,
             $standardShortEnoughPatterns,
             $storedMinLengths,
             $matchedMinLengths
@@ -160,5 +223,56 @@ final class TargetSearch
         foreach ($pendingIds as $pid) {
             $this->scaledDispatch(FillPatternSignaturesJob::class, (int) $pid);
         }
+    }
+
+    private function patternsWithinMinLength(int $totalLength): Collection
+    {
+        return Pattern::where('min_total_length', '<=', $totalLength)
+            ->orderBy('popularity_rank')
+            ->get();
+    }
+
+    /**
+     * @param array<int, int> $storedWordBasedMins
+     * @param array<int, int> $matchingWordBasedMins
+     */
+    private function filterPatternsForTarget(
+        int $targetLength,
+        Collection $patterns,
+        array $storedWordBasedMins,
+        array $matchingWordBasedMins
+    ): Collection {
+        $tokenIdsByName = Token::all()->pluck('id', 'name')->toArray();
+
+        return $patterns->filter(function ($row) use (
+            $storedWordBasedMins,
+            $matchingWordBasedMins,
+            $targetLength,
+            $tokenIdsByName
+        ) {
+            $dynamicMin = 0;
+            foreach ($tokenIdsByName as $name => $id) {
+                if ($row->has($name)) {
+                    if (! isset($matchingWordBasedMins[$id])) {
+                        return false;
+                    }
+                    $count = match ($name) {
+                        Token::TOKEN_NAME_FORENAME => (int) $row->forename_count,
+                        Token::TOKEN_NAME_SURNAME => (int) $row->surname_count,
+                        default => 1,
+                    };
+                    $count = max(1, $count);
+                    $stored = (int) ($storedWordBasedMins[$id] ?? 0);
+                    $matched = (int) $matchingWordBasedMins[$id];
+                    $effectiveMin = max($stored, $matched);
+                    $dynamicMin += $effectiveMin * $count;
+                    if ($dynamicMin > $targetLength) {
+                        return false;
+                    }
+                }
+            }
+
+            return $dynamicMin <= $targetLength;
+        });
     }
 }

@@ -38,8 +38,8 @@
         <div class="flex" style="justify-content: space-between; align-items:center;">
             <h2 style="margin:0;">Words</h2>
             <div class="flex" style="gap:8px;">
-                <button id="commitBtn" class="btn" {{ $hasUncommitted ? '' : 'disabled' }} title="Commit DB words to resources" >
-                    Commit Resources  $uncommittedCount
+                <button id="commitBtn" class="btn" {{ $snapshot->hasUncommitted ? '' : 'disabled' }} title="Commit DB words to resources" >
+                    Commit Resources
                 </button>
                 <a href="{{ route('words.create') }}" class="btn">Add word</a>
             </div>
@@ -55,16 +55,10 @@
                     <label style="display:block; margin-top:6px; font-size:14px;"><input type="checkbox" name="exact" value="1" {{ $exact ? 'checked' : '' }}> Exact match</label>
                 </div>
                 <div>
-                    <label class="muted" for="uncommitted">Uncommitted</label>
-                    <select id="uncommitted" name="uncommitted" style="width:100%; padding:6px 8px; border:1px solid #d1d5db; border-radius:6px;">
-
-                    </select>
-                </div>
-                <div>
                     <label class="muted" for="token">Token</label>
                     <select id="token" name="token" style="width:100%; padding:6px 8px; border:1px solid #d1d5db; border-radius:6px;">
                         <option value="">All</option>
-                        @foreach($tokenOptions as $opt)
+                        @foreach($snapshot->tokenOptions as $opt)
                             <option value="{{ $opt }}" {{ $token === $opt ? 'selected' : '' }}>{{ $opt }}</option>
                         @endforeach
                     </select>
@@ -73,7 +67,7 @@
                     <label class="muted" for="list">List</label>
                     <select id="list" name="list" style="width:100%; padding:6px 8px; border:1px solid #d1d5db; border-radius:6px;">
                         <option value="">All</option>
-                        @foreach($listOptions as $opt)
+                        @foreach($snapshot->listOptions as $opt)
                             <option value="{{ $opt }}" {{ $list === $opt ? 'selected' : '' }}>{{ $opt }}</option>
                         @endforeach
                     </select>
@@ -115,25 +109,24 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach($items as $w)
+                    @foreach($snapshot->items as $w)
                         <tr data-id="{{ $w->id }}">
                             <td>{{ $w->uncommitted }}</td>
                             <td>{{ $w->word }}</td>
-                            <td>{{ $w->token_type }}</td>
+                            <td>{{ $w->token }}</td>
                             <td>
-                                {{ $w->list_type }}
-                                @if(strtolower($w->list_type) === 'fun')
+                                {{ $w->list }}
+                                @if(strtolower($w->list) === 'fun')
                                     <span class="badge badge-yellow">fun</span>
                                 @endif
                             </td>
-                            <td>{{ $w->is_deferred }}</td>
+                            <td>{{ $w->deferred }}</td>
                             <td>
-                                @php $hasA = (bool)($hasAnagsMap[$w->id] ?? false); @endphp
-                                @if($hasA)
+                                @if($w->anagrams)
                                     <details>
-                                        <summary>Show ({{ count($anagsListMap[$w->id] ?? []) }})</summary>
+                                        <summary>Show ({{ count($w->anagrams) }})</summary>
                                         <div>
-                                            @foreach(($anagsListMap[$w->id] ?? []) as $a)
+                                            @foreach($w->anagrams as $a)
                                                 <div class="flex" style="gap:6px; margin:3px 0;">
                                                     <span>{{ $a['word'] }}</span>
                                                 </div>
@@ -145,16 +138,16 @@
                                 @endif
                             </td>
                             <td>
-                                <a class="btn" href="{{ route('api.words.edit', $w) }}">Edit</a>
-                                <form method="post" action="{{ route('api.words.destroy', $w) }}" style="display:inline;" onsubmit="return confirm('Delete this word?');">
+                                <a class="btn" href="{{ route('api.words.edit', $w->id) }}">Edit</a>
+                                <form method="post" action="{{ route('api.words.destroy', $w->id) }}" style="display:inline;" onsubmit="return confirm('Delete this word?');">
                                     @csrf
                                     @method('DELETE')
                                     <button type="submit" class="btn danger">Delete</button>
                                 </form>
-                                @php $funAble = in_array(strtolower($w->token_type), ['forename','surname'], true); @endphp
-                                @if($funAble && strtolower($w->list_type) !== 'fun')
+                                @php $funAble = in_array(strtolower($w->token), ['forename','surname'], true); @endphp
+                                @if($funAble && strtolower($w->list) !== 'fun')
                                     <button class="btn-link js-promote" data-id="{{ $w->id }}">Promote to fun</button>
-                                    @if($w->token_type == 'surname')
+                                    @if($w->token == 'surname')
                                     <button class="btn-link js-demote" data-id="{{ $w->id }}">Demote to boring</button>
                                     @endif
                                 @endif
@@ -165,7 +158,7 @@
             </table>
         </div>
         <div style="margin-top:10px;">
-            {{ $items->links() }}
+            {{ $snapshot->items->links() }}
         </div>
     </div>
 </div>

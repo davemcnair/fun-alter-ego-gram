@@ -2,6 +2,8 @@
 
 namespace Tests\Unit;
 
+use App\Dtos\WordCatalogQuery;
+use App\Dtos\WordCatalogRow;
 use App\Events\TokenWordAdded;
 use App\Models\Token;
 use App\Models\TokenSignatureWord;
@@ -9,6 +11,7 @@ use App\Services\WordCatalog;
 use App\Support\NameNormalizer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Request;
 use Tests\TestCase;
 
 class WordCatalogTest extends TestCase
@@ -117,5 +120,135 @@ class WordCatalogTest extends TestCase
         Event::fake();
         app(WordCatalog::class)->add('forename', 'adam', 'fun', now());
         Event::assertNotDispatched(TokenWordAdded::class);
+    }
+
+    public function test_list_returns_snapshot_with_anagrams_and_uncommitted(): void
+    {
+        $catalog = app(WordCatalog::class);
+        $ok = $catalog->add('forename', 'dama', 'ok');
+        $fun = $catalog->add('forename', 'adam', 'fun');
+        $catalog->add('surname', 'ray', 'ok');
+
+        $snapshot = $catalog->list(new WordCatalogQuery());
+
+        $this->assertTrue($snapshot->hasUncommitted);
+        $this->assertSame(['forename', 'surname'], $snapshot->tokenOptions);
+        $this->assertSame(['fun', 'ok'], $snapshot->listOptions);
+        $this->assertCount(3, $snapshot->items);
+
+        $adam = $snapshot->items->first(fn (WordCatalogRow $row) => $row->id === $fun->id);
+        $this->assertNotNull($adam);
+        $this->assertSame('adam', $adam->word);
+        $this->assertSame('forename', $adam->token);
+        $this->assertSame('fun', $adam->list);
+        $this->assertFalse($adam->deferred);
+        $this->assertTrue($adam->uncommitted);
+        $this->assertSame([['id' => $ok->id, 'word' => 'dama']], $adam->anagrams);
+
+        $committed = $catalog->add('surname', 'brown', 'boring', now());
+        $committed->committed_at = now();
+        $committed->updated_at = now();
+        $committed->save();
+
+        $snapshot = $catalog->list(new WordCatalogQuery(q: 'brown', exact: true));
+        $this->assertCount(1, $snapshot->items);
+        $this->assertFalse($snapshot->items->first()->uncommitted);
+        $this->assertTrue($snapshot->hasUncommitted);
+    }
+
+    public function test_list_filters_and_uses_explicit_page(): void
+    {
+        $catalog = app(WordCatalog::class);
+        $catalog->add('forename', 'adam', 'fun');
+        $catalog->add('forename', 'dama', 'ok');
+        $lone = $catalog->add('surname', 'kinky', 'ok');
+
+        Request::merge(['page' => 99]);
+
+        $pageTwo = $catalog->list(new WordCatalogQuery(token: 'forename', perPage: 1, page: 2));
+        $this->assertSame(2, $pageTwo->items->currentPage());
+        $this->assertCount(1, $pageTwo->items);
+        $this->assertSame('dama', $pageTwo->items->first()->word);
+
+        $anagramsOnly = $catalog->list(new WordCatalogQuery(hasAnagrams: true));
+        $this->assertEqualsCanonicalizing(['adam', 'dama'], $anagramsOnly->items->pluck('word')->all());
+
+        $surnames = $catalog->list(new WordCatalogQuery(token: 'surname', list: 'ok'));
+        $this->assertSame([$lone->id], $surnames->items->pluck('id')->all());
+
+        $clamped = $catalog->list(new WordCatalogQuery(perPage: 0, page: 0));
+        $this->assertSame(1, $clamped->items->perPage());
+        $this->assertSame(1, $clamped->items->currentPage());
+    }
+
+    public function test_delete_live_word_prefers_fun_sibling_and_emits(): void
+    {
+        Event::fake();
+        $catalog = app(WordCatalog::class);
+        $ok = $catalog->add('forename', 'dama', 'ok');
+        $fun = $catalog->add('forename', 'adam', 'fun');
+        $sig = NameNormalizer::anagramSignature('adam')->signature;
+        $catalog->chooseRepresentative('forename', $sig, $ok->id, null);
+
+        Event::fake();
+        $catalog->delete($ok->fresh());
+
+        $this->assertNull(TokenSignatureWord::find($ok->id));
+        $this->assertFalse((bool) $fun->fresh()->is_deferred);
+        Event::assertDispatched(TokenWordAdded::class, function ($e) use ($fun) {
+            return (int) $e->tokenSignatureWordId === (int) $fun->id;
+        });
+    }
+
+    public function test_delete_live_word_falls_back_to_oldest_sibling(): void
+    {
+        Event::fake();
+        $catalog = app(WordCatalog::class);
+        $older = $catalog->add('surname', 'ray', 'ok');
+        $newer = $catalog->add('surname', 'ary', 'ok');
+        $sig = NameNormalizer::anagramSignature('ray')->signature;
+        $catalog->chooseRepresentative('surname', $sig, $newer->id, null);
+
+        Event::fake();
+        $catalog->delete($newer->fresh());
+
+        $this->assertFalse((bool) $older->fresh()->is_deferred);
+        Event::assertDispatched(TokenWordAdded::class, function ($e) use ($older) {
+            return (int) $e->tokenSignatureWordId === (int) $older->id;
+        });
+    }
+
+    public function test_delete_last_word_and_non_representative_do_not_undefer(): void
+    {
+        Event::fake();
+        $catalog = app(WordCatalog::class);
+        $only = $catalog->add('forename', 'jane', 'fun');
+        $catalog->delete($only);
+        $this->assertSame(0, TokenSignatureWord::count());
+
+        $ok = $catalog->add('forename', 'dama', 'ok');
+        $fun = $catalog->add('forename', 'adam', 'fun');
+        Event::fake();
+        $catalog->delete($ok->fresh());
+
+        $this->assertFalse((bool) $fun->fresh()->is_deferred);
+        Event::assertNotDispatched(TokenWordAdded::class);
+    }
+
+    public function test_replace_uses_delete_to_keep_a_representative(): void
+    {
+        Event::fake();
+        $catalog = app(WordCatalog::class);
+        $ok = $catalog->add('surname', 'ray', 'ok');
+        $fun = $catalog->add('surname', 'ary', 'fun');
+
+        Event::fake();
+        $catalog->replace($fun->fresh(), 'surname', 'brown', 'ok');
+
+        $this->assertNull(TokenSignatureWord::find($fun->id));
+        $this->assertFalse((bool) $ok->fresh()->is_deferred);
+        Event::assertDispatched(TokenWordAdded::class, function ($e) use ($ok) {
+            return (int) $e->tokenSignatureWordId === (int) $ok->id;
+        });
     }
 }

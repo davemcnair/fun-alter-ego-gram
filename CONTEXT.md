@@ -36,6 +36,10 @@ _Avoid_: show DTO, progress payload
 The curated Token words (fun/ok/boring) and their deferral and commit state.
 _Avoid_: word store, token word list
 
+**Representative**:
+The one non-deferred Token word for a Token Signature. When a fun word exists, it is the Representative.
+_Avoid_: live word, selected anagram, primary word
+
 **Pattern catalog**:
 The generated Pattern templates, their popularity ranks, and the export of that table.
 _Avoid_: pattern generation, pattern scorer

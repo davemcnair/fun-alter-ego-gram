@@ -3,6 +3,9 @@
 namespace App\Services;
 
 use App\Dtos\SignatureDto;
+use App\Dtos\WordCatalogList;
+use App\Dtos\WordCatalogQuery;
+use App\Dtos\WordCatalogRow;
 use App\Events\TokenWordAdded;
 use App\Models\Signature;
 use App\Models\Token;
@@ -10,6 +13,7 @@ use App\Models\TokenSignature;
 use App\Models\TokenSignatureWord;
 use App\Support\NameNormalizer;
 use DateTime;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 
 final class WordCatalog
@@ -148,14 +152,127 @@ final class WordCatalog
         return ['ok' => true];
     }
 
+    public function list(WordCatalogQuery $query): WordCatalogList
+    {
+        $perPage = max(1, $query->perPage);
+        $page = max(1, $query->page);
+
+        $builder = TokenSignatureWord::query()
+            ->join('token_signatures', 'token_signatures.id', '=', 'token_signature_words.token_signature_id')
+            ->join('tokens', 'tokens.id', '=', 'token_signatures.token_id')
+            ->select([
+                'token_signature_words.id',
+                'token_signature_words.word',
+                'token_signature_words.list_type',
+                'token_signature_words.is_deferred',
+                'token_signature_words.committed_at',
+                'token_signature_words.updated_at',
+                'token_signature_words.token_signature_id',
+                'tokens.name as token_type',
+            ])
+            ->orderBy('token_signature_words.id');
+
+        if ($query->q !== '') {
+            if ($query->exact) {
+                $builder->where('token_signature_words.word', $query->q);
+            } else {
+                $builder->where('token_signature_words.word', 'like', '%'.$query->q.'%');
+            }
+        }
+        if ($query->token !== '') {
+            $builder->where('tokens.name', $query->token);
+        }
+        if ($query->list !== '') {
+            $builder->where('token_signature_words.list_type', $query->list);
+        }
+        if ($query->hasAnagrams) {
+            $builder->whereExists(function ($inner) {
+                $inner->selectRaw('1')
+                    ->from('token_signature_words as tsw2')
+                    ->whereColumn('tsw2.token_signature_id', 'token_signature_words.token_signature_id')
+                    ->whereColumn('tsw2.id', '!=', 'token_signature_words.id');
+            });
+        }
+
+        $items = $builder->paginate($perPage, ['*'], 'page', $page);
+
+        $anagramsBySignature = $this->anagramsBySignatureId(
+            $items->getCollection()->pluck('token_signature_id')->map(fn ($id) => (int) $id)->all()
+        );
+
+        $rows = $items->getCollection()->map(function (TokenSignatureWord $word) use ($anagramsBySignature) {
+            $signatureId = (int) $word->token_signature_id;
+            $siblings = $anagramsBySignature[$signatureId] ?? [];
+            $anagrams = array_values(array_filter(
+                $siblings,
+                fn (array $anagram) => $anagram['id'] !== (int) $word->id
+            ));
+
+            return new WordCatalogRow(
+                id: (int) $word->id,
+                word: (string) $word->word,
+                token: (string) $word->token_type,
+                list: (string) $word->list_type,
+                deferred: (bool) $word->is_deferred,
+                uncommitted: $word->committed_at === null || $word->committed_at < $word->updated_at,
+                anagrams: $anagrams,
+            );
+        });
+        $items->setCollection($rows);
+
+        $tokenOptions = DB::table('tokens')->orderBy('name')->pluck('name')->all();
+        $listOptions = TokenSignatureWord::query()
+            ->select('list_type')
+            ->distinct()
+            ->orderBy('list_type')
+            ->pluck('list_type')
+            ->all();
+
+        return new WordCatalogList(
+            items: $items,
+            tokenOptions: array_values($tokenOptions),
+            listOptions: array_values($listOptions),
+            hasUncommitted: TokenSignatureWord::query()->whereNull('committed_at')->exists(),
+        );
+    }
+
     public function replace(TokenSignatureWord $word, string $tokenName, string $newWord, string $listType): TokenSignatureWord
     {
         $created = $this->add($tokenName, $newWord, $listType);
         if ((int) $created->id !== (int) $word->id) {
-            $word->delete();
+            $this->delete($word);
         }
 
         return $created;
+    }
+
+    public function delete(TokenSignatureWord $word): void
+    {
+        $signatureId = (int) $word->token_signature_id;
+        $wasRepresentative = ! $word->is_deferred;
+        $word->delete();
+
+        if (! $wasRepresentative) {
+            return;
+        }
+
+        $siblings = TokenSignatureWord::query()
+            ->where('token_signature_id', $signatureId)
+            ->orderBy('id')
+            ->get();
+        if ($siblings->isEmpty() || $siblings->contains(fn (TokenSignatureWord $sibling) => ! $sibling->is_deferred)) {
+            return;
+        }
+
+        $fun = $siblings->first(fn (TokenSignatureWord $sibling) => strtolower((string) $sibling->list_type) === 'fun');
+        $next = $fun ?? $siblings->first();
+        if (! $next) {
+            return;
+        }
+
+        $next->is_deferred = false;
+        $next->save();
+        $this->notifyIfSearchable($next, null);
     }
 
     public function commit(): array
@@ -176,6 +293,33 @@ final class WordCatalog
         } catch (Throwable $e) {
             // swallow
         }
+    }
+
+    /**
+     * @param list<int> $signatureIds
+     * @return array<int, list<array{id: int, word: string}>>
+     */
+    private function anagramsBySignatureId(array $signatureIds): array
+    {
+        $ids = array_values(array_unique(array_filter($signatureIds)));
+        if ($ids === []) {
+            return [];
+        }
+
+        $rows = TokenSignatureWord::query()
+            ->whereIn('token_signature_id', $ids)
+            ->orderBy('word')
+            ->get(['id', 'word', 'token_signature_id']);
+
+        $bySignature = [];
+        foreach ($rows as $row) {
+            $bySignature[(int) $row->token_signature_id][] = [
+                'id' => (int) $row->id,
+                'word' => (string) $row->word,
+            ];
+        }
+
+        return $bySignature;
     }
 
     private function findTokenSignature(string $tokenName, string $signature): ?TokenSignature

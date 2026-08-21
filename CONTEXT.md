@@ -12,6 +12,10 @@ _Avoid_: source, input name, search subject
 The letter-multiset identity of a string after transliteration to ASCII a–z (sorted letters plus per-letter counts). Target names and Token words share the same Signature.
 _Avoid_: histogram, key, fingerprint
 
+**Remainder**:
+The leftover letter-multiset of a Target Signature after subtracting the Signatures of a chosen set of Token words.
+_Avoid_: leftover letters (alone), unused letters, remainder.txt (leftover word-list files during catalog build)
+
 **Token**:
 A slot type in a name (title, forename, initials, prefix, surname, suffix, honorific).
 _Avoid_: part, field, component

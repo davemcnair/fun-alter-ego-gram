@@ -2,7 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Services\ListPatternsService;
+use App\Dtos\PatternCatalogPageQuery;
+use App\Services\PatternCatalog;
 use Illuminate\Console\Attributes\AsCommand;
 use Illuminate\Console\Command;
 
@@ -11,25 +12,22 @@ class ListPatternsCommand extends Command
 {
     protected $signature = 'patterns:list {--limit=20} {--page=1} {--like=}';
 
-    public function handle(ListPatternsService $svc): int
+    public function handle(PatternCatalog $catalog): int
     {
-        $opts = [
-            'limit' => (int)$this->option('limit'),
-            'page' => (int)$this->option('page'),
-            'like' => (string)$this->option('like'),
-        ];
+        $snapshot = $catalog->listPage(new PatternCatalogPageQuery(
+            like: (string) $this->option('like'),
+            perPage: (int) $this->option('limit'),
+            page: (int) $this->option('page'),
+        ));
+        $items = $snapshot->items;
 
-        $res = $svc->list($opts);
-
-        $meta = $res['meta'];
-        $rows = $res['rows'];
-
-        $header = 'Total: '.$meta['total'].' | Page '.$meta['page'].' of '.$meta['pages'].' | Showing '.$meta['count'].' (limit '.$opts['limit'].')';
+        $header = 'Total: '.$items->total().' | Page '.$items->currentPage().' of '.$items->lastPage().' | Showing '.$items->count().' (limit '.$items->perPage().')';
         $this->line($header);
 
-        foreach ($rows as $row) {
-            $this->line(sprintf('%5d. %s (min=%d)', $row['popularity_rank'], $row['template'], $row['min'] ?? 0));
+        foreach ($items as $row) {
+            $this->line(sprintf('%5d. %s (min=%d)', $row->rank, $row->template, $row->minLength));
         }
+
         return self::SUCCESS;
     }
 }

@@ -3,6 +3,9 @@
 namespace App\Services;
 
 use App\Dtos\PatternCatalogList;
+use App\Dtos\PatternCatalogPage;
+use App\Dtos\PatternCatalogPageQuery;
+use App\Dtos\PatternCatalogPageRow;
 use App\Dtos\PatternCatalogQuery;
 use App\Dtos\PatternCatalogRow;
 use App\Models\Pattern;
@@ -59,6 +62,29 @@ final class PatternCatalog
             items: $items,
             tokenOptions: self::TOKEN_OPTIONS,
         );
+    }
+
+    public function listPage(PatternCatalogPageQuery $query): PatternCatalogPage
+    {
+        $perPage = max(1, $query->perPage);
+        $page = max(1, $query->page);
+
+        $builder = Pattern::query()->orderBy('popularity_rank');
+        if ($query->like !== '') {
+            $builder->where('template', 'like', '%'.$query->like.'%');
+        }
+
+        $items = $builder->paginate($perPage, ['*'], 'page', $page);
+        $rows = $items->getCollection()->map(function (Pattern $pattern) {
+            return new PatternCatalogPageRow(
+                rank: (int) $pattern->popularity_rank,
+                template: (string) $pattern->template,
+                minLength: (int) $pattern->min_total_length,
+            );
+        });
+        $items->setCollection($rows);
+
+        return new PatternCatalogPage(items: $items);
     }
 
     /**

@@ -2,12 +2,15 @@
 
 namespace Tests\Unit;
 
+use App\Dtos\PatternCatalogPageQuery;
+use App\Dtos\PatternCatalogPageRow;
 use App\Dtos\PatternCatalogQuery;
 use App\Dtos\PatternCatalogRow;
 use App\Models\Pattern;
 use App\Models\Token;
 use App\Services\PatternCatalog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Request;
 use InvalidArgumentException;
 use Tests\TestCase;
 
@@ -210,6 +213,79 @@ class PatternCatalogTest extends TestCase
         $pattern = Pattern::query()->where('template', '{title}{surname}')->firstOrFail();
         $catalog->delete($pattern);
         $this->assertNull(Pattern::query()->where('template', '{title}{surname}')->first());
+    }
+
+    public function test_list_page_filters_like_and_returns_thinner_rows(): void
+    {
+        $this->insertListedPattern('{forename}{surname}', 1, 4);
+        $this->insertListedPattern('{title}{forename}{surname}', 2, 6);
+        $this->insertListedPattern('{forename}{surname}{suffix}', 3, 8);
+        $this->insertListedPattern('cool-{forename}-foo', 4, 3);
+
+        $snapshot = app(PatternCatalog::class)->listPage(new PatternCatalogPageQuery(like: 'foo', perPage: 2, page: 1));
+
+        $this->assertSame(1, $snapshot->items->total());
+        $this->assertSame(1, $snapshot->items->currentPage());
+        $this->assertSame(1, $snapshot->items->lastPage());
+        $this->assertCount(1, $snapshot->items);
+
+        $row = $snapshot->items->first();
+        $this->assertInstanceOf(PatternCatalogPageRow::class, $row);
+        $this->assertSame(4, $row->rank);
+        $this->assertSame('cool-{forename}-foo', $row->template);
+        $this->assertSame(3, $row->minLength);
+    }
+
+    public function test_list_page_uses_explicit_page_and_clamps(): void
+    {
+        $this->insertListedPattern('{forename}{surname}', 1, 4);
+        $this->insertListedPattern('{title}{forename}{surname}', 2, 6);
+        $this->insertListedPattern('{forename}{surname}{suffix}', 3, 8);
+
+        Request::merge(['page' => 99]);
+
+        $pageTwo = app(PatternCatalog::class)->listPage(new PatternCatalogPageQuery(perPage: 1, page: 2));
+        $this->assertSame(2, $pageTwo->items->currentPage());
+        $this->assertCount(1, $pageTwo->items);
+        $this->assertSame('{title}{forename}{surname}', $pageTwo->items->first()->template);
+
+        $clamped = app(PatternCatalog::class)->listPage(new PatternCatalogPageQuery(perPage: 0, page: 0));
+        $this->assertSame(1, $clamped->items->perPage());
+        $this->assertSame(1, $clamped->items->currentPage());
+        $this->assertCount(1, $clamped->items);
+        $this->assertSame('{forename}{surname}', $clamped->items->first()->template);
+    }
+
+    public function test_list_page_empty_like_is_all_and_defaults_to_twenty(): void
+    {
+        $this->insertListedPattern('{forename}{surname}', 1, 4);
+        $this->insertListedPattern('{title}{forename}{surname}', 2, 6);
+
+        $snapshot = app(PatternCatalog::class)->listPage(new PatternCatalogPageQuery());
+
+        $this->assertSame(20, $snapshot->items->perPage());
+        $this->assertSame(2, $snapshot->items->total());
+        $this->assertSame([
+            '{forename}{surname}',
+            '{title}{forename}{surname}',
+        ], $snapshot->items->pluck('template')->all());
+    }
+
+    private function insertListedPattern(string $template, int $rank, int $minLength): void
+    {
+        Pattern::query()->create([
+            'template' => $template,
+            'popularity_rank' => $rank,
+            'pattern_type' => 'standard',
+            'min_total_length' => $minLength,
+            'forename_count' => 1,
+            'surname_count' => str_contains($template, '{surname') ? 1 : 0,
+            'has_title' => str_contains($template, '{title}'),
+            'has_initials' => false,
+            'has_prefix' => false,
+            'has_suffix' => str_contains($template, '{suffix}'),
+            'has_honorific' => false,
+        ]);
     }
 
     private function rank(string $template): int

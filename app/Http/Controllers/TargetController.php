@@ -2,11 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Dtos\TargetProgressQuery;
 use App\Dtos\TargetShowDto;
 use App\Enums\TargetPatternStatus;
 use App\Models\Target;
 use App\Models\TargetPattern;
-use App\Models\AlterEgo;
+use App\Services\TargetProgress;
 use App\Services\TargetSearch;
 use App\Services\WordCatalog;
 use Illuminate\Http\JsonResponse;
@@ -56,39 +57,20 @@ class TargetController extends Controller
         ]);
     }
 
-    public function index()
+    public function index(Request $request, TargetProgress $progress)
     {
-        $items = Target::query()
-            ->select('targets.*')
-            ->addSelect([
-                'filled_matches_count' => DB::table('target_token_signatures as tts')
-                    ->selectRaw('count(*)')
-                    ->whereColumn('tts.target_id', 'targets.id')
-                    // Only apply the cutoff when last_processed_matches_at is set
-                    ->when(
-                        DB::raw('1'),
-                        function ($q) {
-                            $q->whereRaw('tts.created_at <= targets.last_processed_matches_at');
-                        }
-                    )
-                    ->whereNotNull('targets.last_processed_matches_at'),
+        $query = new TargetProgressQuery(
+            perPage: (int) $request->get('per_page', 25),
+            page: (int) $request->get('page', 1),
+        );
+        $snapshot = $progress->list($query);
+        $snapshot->items->appends([
+            'per_page' => $snapshot->items->perPage(),
+        ]);
 
-                'new_matches_count' => DB::table('target_token_signatures as tts')
-                    ->selectRaw('count(*)')
-                    ->whereColumn('tts.target_id', 'targets.id')
-                    // Only apply the cutoff when last_processed_matches_at is set
-                    ->when(
-                        DB::raw('1'),
-                        function ($q) {
-                            $q->whereRaw('tts.created_at > targets.last_processed_matches_at');
-                        }
-                    )
-                    ->whereNotNull('targets.last_processed_matches_at'),
-            ])
-            ->orderByDesc('id')
-            ->paginate(25);
-
-        return view('targets.index', compact('items'));
+        return view('targets.index', [
+            'snapshot' => $snapshot,
+        ]);
     }
 
     public function store(Request $request, TargetSearch $targetSearch)
@@ -335,35 +317,23 @@ class TargetController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    public function star(Target $target, Request $request)
+    public function star(Target $target, Request $request, TargetProgress $progress)
     {
         $data = $request->validate([
             'phrase' => ['required','string'],
         ]);
-        AlterEgo::whereHas('targetSignaturedPattern.targetPattern', function($q) use ($target){
-            $q->where('target_id', $target->id);
-        })
-            ->where('phrase', $data['phrase'])
-            ->update(['starred' => true]);
+        $starred = $progress->setStarred($target, $data['phrase'], true);
 
-        // Return minimal payload needed by the UI to avoid heavy serialization
-        $starred = $target->alterEgos()->where('starred', true)->pluck('phrase')->all();
         return response()->json(['ok' => true, 'starred' => $starred]);
     }
 
-    public function unstar(Target $target, Request $request)
+    public function unstar(Target $target, Request $request, TargetProgress $progress)
     {
         $data = $request->validate([
             'phrase' => ['required','string'],
         ]);
-        AlterEgo::whereHas('targetSignaturedPattern.targetPattern', function($q) use ($target){
-            $q->where('target_id', $target->id);
-        })
-            ->where('phrase', $data['phrase'])
-            ->update(['starred' => false]);
+        $starred = $progress->setStarred($target, $data['phrase'], false);
 
-        // Return minimal payload needed by the UI to avoid heavy serialization
-        $starred = $target->alterEgos()->where('starred', true)->pluck('phrase')->all();
         return response()->json(['ok' => true, 'starred' => $starred]);
     }
 //

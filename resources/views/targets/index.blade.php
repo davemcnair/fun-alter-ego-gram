@@ -163,21 +163,20 @@
             </tr>
             </thead>
             <tbody>
-            @forelse($items as $t)
+            @forelse($snapshot->items as $t)
                 <tr>
                     <td><input type="checkbox" name="ids[]" value="{{ $t->id }}" class="rowCheck"></td>
                     <td>{{ $t->name }}</td>
-                    @php $total = $t->patterns()->count(); $done = $t->patterns()->where('status','filled')->count(); $newCount = DB::table('target_token_signatures as t')->where('t.target_id', $t->id)->when($t->matches_seen_at, function($q) use ($t){ $q->where('t.created_at','>', $t->matches_seen_at); })->count(); @endphp
-                    <td>{{ $done }} / {{ $total }}</td>
-                    <td>{{ $t->alterEgos()->count() }}</td>
+                    <td>{{ $t->patternsFilled }} / {{ $t->patternsTotal }}</td>
+                    <td>{{ $t->alterEgosCount }}</td>
                     <td>
-                        {{ $t->filled_matches_count }}({{ $t->new_matches_count}})
+                        {{ $t->filledMatches }}({{ $t->newMatches }})
                     </td>
-                    <td>{{ $t->last_processed_matches_at }}</td>
+                    <td>{{ $t->lastProcessed }}</td>
                     <td style="display:flex; gap:6px; align-items:center;">
-                        <a class="btn" href="{{ route('targets.show', $t) }}">Open</a>
+                        <a class="btn" href="{{ route('targets.show', $t->id) }}">Open</a>
                         <button type="button"
-                                onclick="processNewMatches({{ $t->id }})" {{ $newCount > 0 ? '' : 'disabled' }}>Fill
+                                onclick="processNewMatches({{ $t->id }})" {{ $t->unseenMatches > 0 ? '' : 'disabled' }}>Fill
                             with new words
                         </button>
                         <button type="button" onclick="deleteSingle({{ $t->id }})" style="background:#dc2626;">Delete
@@ -192,7 +191,7 @@
             </tbody>
         </table>
     </form>
-    <div style="margin-top: 12px;">{{ $items->links() }}</div>
+    <div style="margin-top: 12px;">{{ $snapshot->items->links() }}</div>
 </div>
 <script>
     // Suppress a known noisy Chrome extension console error about duplicate context menu ids

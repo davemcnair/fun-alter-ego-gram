@@ -31,7 +31,7 @@
         <a class="btn" href="{{ route('patterns.index') }}">Back</a>
     </div>
 
-    <form method="post" action="{{ route('patterns.store') }}">
+    <form method="post" action="{{ route('api.patterns.store') }}">
         @csrf
         <div class="field">
             <label for="template">Template</label>

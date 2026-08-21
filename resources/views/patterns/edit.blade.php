@@ -31,7 +31,7 @@
         <a class="btn" href="{{ route('patterns.index') }}">Back</a>
     </div>
 
-    <form method="post" action="{{ route('patterns.update', $pattern) }}">
+    <form method="post" action="{{ route('api.patterns.update', $pattern) }}">
         @csrf
         @method('PUT')
         <div class="field">

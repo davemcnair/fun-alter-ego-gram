@@ -2,14 +2,105 @@
 
 namespace App\Services;
 
+use App\Dtos\PatternCatalogList;
+use App\Dtos\PatternCatalogQuery;
+use App\Dtos\PatternCatalogRow;
 use App\Models\Pattern;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use InvalidArgumentException;
 use RuntimeException;
 use Throwable;
 
 final class PatternCatalog
 {
+    private const TOKEN_OPTIONS = [
+        '' => 'All tokens',
+        'title' => 'Title',
+        'forename' => 'Forename',
+        'initials' => 'Initials',
+        'prefix' => 'Prefix',
+        'surname' => 'Surname',
+        'suffix' => 'Suffix',
+        'honorific' => 'Honorific',
+    ];
+
+    private const PATTERN_TYPES = ['standard', 'longer', 'exotic'];
+
+    public function list(PatternCatalogQuery $query): PatternCatalogList
+    {
+        $builder = Pattern::query()->orderBy('popularity_rank');
+        $token = strtolower(trim($query->token));
+        if ($token !== '') {
+            match ($token) {
+                'title' => $builder->where('has_title', true),
+                'forename' => $builder->where('forename_count', '>', 0),
+                'initials' => $builder->where('has_initials', true),
+                'prefix' => $builder->where('has_prefix', true),
+                'surname' => $builder->where('surname_count', '>', 0),
+                'suffix' => $builder->where('has_suffix', true),
+                'honorific' => $builder->where('has_honorific', true),
+                default => null,
+            };
+        }
+
+        $items = $builder->get()->map(function (Pattern $pattern) {
+            return new PatternCatalogRow(
+                id: (int) $pattern->id,
+                rank: (int) $pattern->popularity_rank,
+                type: (string) $pattern->pattern_type,
+                template: (string) $pattern->template,
+                example: (string) $pattern->example->phrase,
+                minLength: (int) $pattern->min_total_length,
+            );
+        });
+
+        return new PatternCatalogList(
+            items: $items,
+            tokenOptions: self::TOKEN_OPTIONS,
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    public function create(array $data): Pattern
+    {
+        $payload = $this->normalizeWriteData($data);
+        $this->assertUniqueTemplate($payload['template']);
+
+        return Pattern::create($payload);
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    public function update(Pattern $pattern, array $data): Pattern
+    {
+        $payload = $this->normalizeWriteData($data);
+        $this->assertUniqueTemplate($payload['template'], (int) $pattern->id);
+        $pattern->update($payload);
+
+        return $pattern->fresh();
+    }
+
+    public function delete(Pattern $pattern): void
+    {
+        $pattern->delete();
+    }
+
+    public function setType(Pattern $pattern, string $type): Pattern
+    {
+        $normalized = strtolower($type);
+        if (! in_array($normalized, self::PATTERN_TYPES, true)) {
+            throw new InvalidArgumentException('Invalid pattern type.');
+        }
+        $pattern->pattern_type = $normalized;
+        $pattern->save();
+
+        return $pattern;
+    }
+
     /**
      * @return array{list: array<int, array{template:string, score:int}>, stored?:int}
      */
@@ -275,6 +366,48 @@ final class PatternCatalog
         file_put_contents($file, $json);
 
         return ['ok' => true, 'file' => $file, 'count' => count($out)];
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @return array{
+     *   template: string,
+     *   popularity_rank: int,
+     *   min_total_length: int,
+     *   forename_count: int,
+     *   surname_count: int,
+     *   has_title: bool,
+     *   has_initials: bool,
+     *   has_prefix: bool,
+     *   has_suffix: bool,
+     *   has_honorific: bool
+     * }
+     */
+    private function normalizeWriteData(array $data): array
+    {
+        return [
+            'template' => (string) ($data['template'] ?? ''),
+            'popularity_rank' => (int) ($data['popularity_rank'] ?? 1),
+            'min_total_length' => (int) ($data['min_total_length'] ?? 0),
+            'forename_count' => (int) ($data['forename_count'] ?? 0),
+            'surname_count' => (int) ($data['surname_count'] ?? 0),
+            'has_title' => (bool) ($data['has_title'] ?? false),
+            'has_initials' => (bool) ($data['has_initials'] ?? false),
+            'has_prefix' => (bool) ($data['has_prefix'] ?? false),
+            'has_suffix' => (bool) ($data['has_suffix'] ?? false),
+            'has_honorific' => (bool) ($data['has_honorific'] ?? false),
+        ];
+    }
+
+    private function assertUniqueTemplate(string $template, ?int $ignoreId = null): void
+    {
+        $query = Pattern::query()->where('template', $template);
+        if ($ignoreId !== null) {
+            $query->where('id', '!=', $ignoreId);
+        }
+        if ($query->exists()) {
+            throw new InvalidArgumentException('Pattern template must be unique.');
+        }
     }
 
     /**

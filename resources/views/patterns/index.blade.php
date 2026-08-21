@@ -43,10 +43,9 @@
 
     <form class="tools" method="get" action="{{ route('patterns.index') }}">
         <div>
-            @php $opts = ['' => 'All tokens', 'title' => 'Title', 'forename' => 'Forename', 'initials' => 'Initials', 'prefix' => 'Prefix', 'surname' => 'Surname', 'suffix' => 'Suffix', 'honorific' => 'Honorific']; @endphp
             <select name="token" style="padding:10px 12px; border:1px solid #d1d5db; border-radius:6px; min-width: 200px;">
-                @foreach($opts as $val => $label)
-                    <option value="{{ $val }}" {{ (isset($token) && $token === $val) ? 'selected' : '' }}>{{ $label }}</option>
+                @foreach($snapshot->tokenOptions as $val => $label)
+                    <option value="{{ $val }}" {{ $token === $val ? 'selected' : '' }}>{{ $label }}</option>
                 @endforeach
             </select>
             <button type="submit">Filter</button>
@@ -65,20 +64,20 @@
         </tr>
         </thead>
         <tbody id="pattern-tbody">
-        @forelse($items as $p)
+        @forelse($snapshot->items as $p)
             <tr draggable="true" data-id="{{ $p->id }}">
                 <td style="cursor:grab;">⋮⋮</td>
-                <td class="rank-cell">{{ $p->popularity_rank }}</td>
+                <td class="rank-cell">{{ $p->rank }}</td>
                 <td>
-                    <select onchange="setType({{ $p->id }}, this.value, this)" data-prev="{{ $p->pattern_type }}" style="padding:6px 8px; border:1px solid #d1d5db; border-radius:6px;">
+                    <select onchange="setType({{ $p->id }}, this.value, this)" data-prev="{{ $p->type }}" style="padding:6px 8px; border:1px solid #d1d5db; border-radius:6px;">
                         @foreach(['standard','longer','exotic'] as $opt)
-                            <option value="{{ $opt }}" {{ $p->pattern_type === $opt ? 'selected' : '' }}>{{ ucfirst($opt) }}</option>
+                            <option value="{{ $opt }}" {{ $p->type === $opt ? 'selected' : '' }}>{{ ucfirst($opt) }}</option>
                         @endforeach
                     </select>
                 </td>
                 <td>{{ $p->template }}</td>
                 <td>{{ $p->example }}</td>
-                <td>{{ $p->min_total_length }}</td>
+                <td>{{ $p->minLength }}</td>
             </tr>
         @empty
             <tr><td colspan="6">No patterns found.</td></tr>
@@ -109,7 +108,7 @@
             if (!id || !value || !sel) return;
             const prev = sel.getAttribute('data-prev') || '';
             sel.disabled = true;
-            const url = '{{ route('patterns.update-type', ['pattern' => '__ID__']) }}'.replace('__ID__', String(id));
+            const url = '{{ route('api.patterns.update-type', ['pattern' => '__ID__']) }}'.replace('__ID__', String(id));
             const resp = await post(url, { pattern_type: String(value) });
             if (resp && resp.ok) {
                 sel.setAttribute('data-prev', String(value));
@@ -180,7 +179,7 @@
         async function submitOrder() {
             const ids = Array.from(tbody.querySelectorAll('tr')).map(function(tr){ return parseInt(tr.getAttribute('data-id') || '0', 10); }).filter(Boolean);
             try {
-                await post('{{ route('patterns.reorder') }}', { ids: ids });
+                await post('{{ route('api.patterns.reorder') }}', { ids: ids });
             } catch (e) {
                 alert('Failed to save order: ' + (e && e.message ? e.message : 'Unknown error'));
             }
@@ -190,7 +189,7 @@
     // Export button
     window.exportPatterns = async function() {
         try {
-            const resp = await post('{{ route('patterns.export') }}', {});
+            const resp = await post('{{ route('api.patterns.export') }}', {});
             if (resp && resp.ok) {
                 alert('Saved ' + resp.count + ' patterns to ' + resp.file);
             } else {
